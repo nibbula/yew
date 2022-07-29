@@ -978,6 +978,68 @@ calls. Returns NIL when there is an error."
 #+(or darwin freebsd openbsd netbsd linux)
 (defconstant +O_ACCMODE+ #x0003 "Mask for access modes.")
 
+;; st_mode bits
+(defconstant		S_IFMT   #o0170000)	; type of file (mask)
+(defconstant		S_IFIFO  #o0010000)	; named pipe (fifo)
+(defconstant		S_IFCHR  #o0020000)	; character special
+(defconstant		S_IFDIR  #o0040000)	; directory
+(defconstant		S_IFNAM  #o0050000)	; XENIX named IPC
+(defconstant		S_IFBLK  #o0060000)	; block special
+(defconstant		S_IFREG  #o0100000)	; regular
+(defconstant		S_IFLNK  #o0120000)	; symbolic link
+(defconstant   		S_IFSOCK #o0140000)	; socket
+#+sunos (defconstant	S_IFDOOR #o0150000)	; door
+#+darwin  (defconstant	S_IFWHT  #o0160000)	; whiteout (obsolete)
+#+sunos (defconstant	S_IFPORT #o0160000)	; event port
+
+;; These should be the same on any POSIX
+(defconstant S_ISUID #o0004000)	; set user id on execution
+(defconstant S_ISGID #o0002000)	; set group id on execution
+(defconstant S_ISVTX #o0001000)	; save swapped text even after use
+(defconstant S_IRUSR #o0000400)	; read permission, owner
+(defconstant S_IWUSR #o0000200)	; write permission, owner
+(defconstant S_IXUSR #o0000100)	; execute/search permission, owner
+(defconstant S_IRGRP #o0000040)	; read permission, group
+(defconstant S_IWGRP #o0000020)	; write permission, group
+(defconstant S_IXGRP #o0000010)	; execute/search permission, group
+(defconstant S_IROTH #o0000004)	; read permission, other
+(defconstant S_IWOTH #o0000002)	; write permission, other
+(defconstant S_IXOTH #o0000001)	; execute/search permission, other
+
+(defun is-user-readable    (mode) (/= (logand mode S_IRUSR) 0))
+(defun is-user-writable    (mode) (/= (logand mode S_IWUSR) 0))
+(defun is-user-executable  (mode) (/= (logand mode S_IXUSR) 0))
+(defun is-group-readable   (mode) (/= (logand mode S_IRGRP) 0))
+(defun is-group-writable   (mode) (/= (logand mode S_IWGRP) 0))
+(defun is-group-executable (mode) (/= (logand mode S_IXGRP) 0))
+(defun is-other-readable   (mode) (/= (logand mode S_IROTH) 0))
+(defun is-other-writable   (mode) (/= (logand mode S_IWOTH) 0))
+(defun is-other-executable (mode) (/= (logand mode S_IXOTH) 0))
+
+(defun is-set-uid          (mode) (/= (logand mode S_ISUID) 0))
+(defun is-set-gid          (mode) (/= (logand mode S_ISGID) 0))
+(defun is-sticky           (mode) (/= (logand mode S_ISVTX) 0))
+
+(defun is-fifo             (mode) (= (logand mode S_IFMT) S_IFIFO))
+(defun is-character-device (mode) (= (logand mode S_IFMT) S_IFCHR))
+(defun is-directory        (mode) (= (logand mode S_IFMT) S_IFDIR))
+(defun is-block-device     (mode) (= (logand mode S_IFMT) S_IFBLK))
+(defun is-regular-file     (mode) (= (logand mode S_IFMT) S_IFREG))
+(defun is-symbolic-link    (mode) (= (logand mode S_IFMT) S_IFLNK))
+(defun is-socket           (mode) (= (logand mode S_IFMT) S_IFSOCK))
+(defun is-door 		   (mode)
+  #+sunos (= (logand mode S_IFMT) S_IFDOOR)
+  #-sunos (declare (ignore mode))
+  )
+(defun is-whiteout         (mode)
+  #+darwin (= (logand mode S_IFMT) S_IFWHT)
+  #-darwin (declare (ignore mode))
+  )
+(defun is-port             (mode)
+  #+sunos (= (logand mode S_IFMT) S_IFPORT)
+  #-sunos (declare (ignore mode))
+  )
+
 ;; @@@ The "posix-" prefix for open, close, read, write make a little sense,
 ;; but do we really need it on the others, e.g. ioctl?
 
@@ -1518,68 +1580,6 @@ recommended to use with-temporary-file instead."
   (fd :int))
 
 ;; stat / lstat
-
-;; st_mode bits
-(defconstant		S_IFMT   #o0170000)	; type of file (mask)
-(defconstant		S_IFIFO  #o0010000)	; named pipe (fifo)
-(defconstant		S_IFCHR  #o0020000)	; character special
-(defconstant		S_IFDIR  #o0040000)	; directory
-(defconstant		S_IFNAM  #o0050000)	; XENIX named IPC
-(defconstant		S_IFBLK  #o0060000)	; block special
-(defconstant		S_IFREG  #o0100000)	; regular
-(defconstant		S_IFLNK  #o0120000)	; symbolic link
-(defconstant   		S_IFSOCK #o0140000)	; socket
-#+sunos (defconstant	S_IFDOOR #o0150000)	; door
-#+darwin  (defconstant	S_IFWHT  #o0160000)	; whiteout (obsolete)
-#+sunos (defconstant	S_IFPORT #o0160000)	; event port
-
-;; These should be the same on any POSIX
-(defconstant S_ISUID #o0004000)	; set user id on execution
-(defconstant S_ISGID #o0002000)	; set group id on execution
-(defconstant S_ISVTX #o0001000)	; save swapped text even after use
-(defconstant S_IRUSR #o0000400)	; read permission, owner
-(defconstant S_IWUSR #o0000200)	; write permission, owner
-(defconstant S_IXUSR #o0000100)	; execute/search permission, owner
-(defconstant S_IRGRP #o0000040)	; read permission, group
-(defconstant S_IWGRP #o0000020)	; write permission, group
-(defconstant S_IXGRP #o0000010)	; execute/search permission, group
-(defconstant S_IROTH #o0000004)	; read permission, other
-(defconstant S_IWOTH #o0000002)	; write permission, other
-(defconstant S_IXOTH #o0000001)	; execute/search permission, other
-
-(defun is-user-readable    (mode) (/= (logand mode S_IRUSR) 0))
-(defun is-user-writable    (mode) (/= (logand mode S_IWUSR) 0))
-(defun is-user-executable  (mode) (/= (logand mode S_IXUSR) 0))
-(defun is-group-readable   (mode) (/= (logand mode S_IRGRP) 0))
-(defun is-group-writable   (mode) (/= (logand mode S_IWGRP) 0))
-(defun is-group-executable (mode) (/= (logand mode S_IXGRP) 0))
-(defun is-other-readable   (mode) (/= (logand mode S_IROTH) 0))
-(defun is-other-writable   (mode) (/= (logand mode S_IWOTH) 0))
-(defun is-other-executable (mode) (/= (logand mode S_IXOTH) 0))
-
-(defun is-set-uid          (mode) (/= (logand mode S_ISUID) 0))
-(defun is-set-gid          (mode) (/= (logand mode S_ISGID) 0))
-(defun is-sticky           (mode) (/= (logand mode S_ISVTX) 0))
-
-(defun is-fifo             (mode) (= (logand mode S_IFMT) S_IFIFO))
-(defun is-character-device (mode) (= (logand mode S_IFMT) S_IFCHR))
-(defun is-directory        (mode) (= (logand mode S_IFMT) S_IFDIR))
-(defun is-block-device     (mode) (= (logand mode S_IFMT) S_IFBLK))
-(defun is-regular-file     (mode) (= (logand mode S_IFMT) S_IFREG))
-(defun is-symbolic-link    (mode) (= (logand mode S_IFMT) S_IFLNK))
-(defun is-socket           (mode) (= (logand mode S_IFMT) S_IFSOCK))
-(defun is-door 		   (mode)
-  #+sunos (= (logand mode S_IFMT) S_IFDOOR)
-  #-sunos (declare (ignore mode))
-  )
-(defun is-whiteout         (mode)
-  #+darwin (= (logand mode S_IFMT) S_IFWHT)
-  #-darwin (declare (ignore mode))
-  )
-(defun is-port             (mode)
-  #+sunos (= (logand mode S_IFMT) S_IFPORT)
-  #-sunos (declare (ignore mode))
-  )
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defstruct file-type-info
