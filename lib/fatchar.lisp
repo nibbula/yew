@@ -1839,7 +1839,7 @@ Note that this doesn't do any error checking on color values."
 
 (defun grok-ansi-color (str &key (start 0))
   "Take the ostring ‘str’ with an ANSI terminal color escape sequence, starting
-after the ^[[ and return NIL if there was no valid sequence, or an the values of
+after the ^[[ and return NIL if there was no valid sequence, or the values of
 an integer offset to after the sequence, the foreground, background and a list
 of attributes. NIL stands for whatever the default is, and :UNSET means that
 they were not set in this string."
@@ -1851,6 +1851,7 @@ they were not set in this string."
 	 (attr '())
 	 num offset attr-was-set hi-color-type r g b)
     (loop
+       :while (< i len)
        :do
        (setf (values num offset) (oparse-integer str :start i :junk-allowed t))
        ;; (dbugf :fatchar "@~s num ~s offset ~s~%" i num offset)
@@ -1943,8 +1944,7 @@ they were not set in this string."
 		    (otherwise #| just ignore unknown colors or attrs |#))))
 	       (when (ochar= (ochar str (1- i)) #\m)
 		 ;; (dbugf :fatchar "@~s done ~s~%" i num)
-		 (return)))))
-       :while (< i len))
+		 (return))))))
     (values
      ;; (if (and (eq fg :unset) (eq bg :unset) (not attr-was-set))
      ;; 	 1
