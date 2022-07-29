@@ -948,24 +948,45 @@ functions."
 (defmethod ostandard-char-p ((character fatchar)) nil) ;; @@@ Right?
 
 ;; I think this was intended to encode the attributes too, but we've made a
-;; character that's bigger than a fixnum. Should we really construct a bizzarely
-;; formatted bignum? Also we would have to define a limited fixed set of
-;; attributes. So this is inherently lossy.
+;; character that's likely bigger than a fixnum. Should we really construct a
+;; bizarrely formatted bignum? Also we have to define a limited fixed set of
+;; attributes, and we don't support multiple code point graphemes, so this is
+;; inherently lossy.
+#|
+ bottom <───┐
+  right <──┐│
+    top <─┐││
+   left <┐│││
+         ││││┌────────> [reserved]
+no bg <─┐│││││┌───────> [reserved]
+no fg <┐│││││││┌──────> [reserved]
+       │││││││││┌─────> [reserved]
+       ││││││││││┌────> :inverse
+       │││││││││││┌───> :bold
+       ││││││││││││┌──> :underline
+       │││││││││││││┌─> :standout
+       ││││││││││││││
+     3210321076543210       foreground              background
+     ┌──┬┬──┐┌──────┐┌──────┬┬──────┬┬──────┐ ┌──────┬┬──────┬┬──────┐
+     │ 4││ 4││  8   ││  8   ││  8   ││  8   │ │  8   ││  8   ││   8  │
+   flags line attrs  fg red  fg green fg blue  bg red bg green bg blue
+     ┌──────────────────────────────┐
+     │             32               │
+             character code
+|#
+
 (defmethod ochar-int ((character fatchar))
   (typecase (fatchar-c character)
     (character
      (let ((int 0)
-	   ;; @@@ How do a represent a NIL aka unspecified color as a number?
-	   ;; For now it's just black & white :(
-	   (fg (or (and (fatchar-fg character)
-			(convert-color-to
-			 (lookup-color (fatchar-fg character)) :rgb8))
-		   #(:rgb8 #xff #xff #xff)))
-	   (bg (or (and (fatchar-bg character)
-			(convert-color-to
-			 (lookup-color (fatchar-bg character)) :rgb8))
-		   #(:rgb8 0 0 0)))
-	   (line (logior (fatchar-line character) #b1111)))
+	   (flags 0)
+	   (fg (and (fatchar-fg character)
+		    (convert-color-to
+		     (lookup-color (fatchar-fg character)) :rgb8)))
+	   (bg (and (fatchar-bg character)
+		    (convert-color-to
+		     (lookup-color (fatchar-bg character)) :rgb8)))
+	   (line (logand (fatchar-line character) #b1111)))
        (flet ((add (value width)
 		(setf int (logior (ash int width) value)))
 	      (attr-bits ()
@@ -976,19 +997,45 @@ functions."
 			 (when (find a (fatchar-attrs character))
 			   (setf result (logior result (ash 1 i))))
 		      :finally (return result))))
-	 (add (attr-bits) (length (rest *known-attrs*)))
+	 ;; With no effects set, the whole thing should be zero before the
+	 ;; character code, so it'll just look like a character code.
+	 (when (not (fatchar-fg character))
+	   (setf flags (dpb 1 (byte 1 0) flags)))
+	 (when (not (fatchar-bg character))
+	   (setf flags (dpb 1 (byte 1 1) flags)))
+	 (add flags 4)
 	 (add line 4)
-	 (add (color-component fg :red)   8)
-	 (add (color-component fg :green) 8)
-	 (add (color-component fg :blue)  8)
-	 (add (color-component bg :red)   8)
-	 (add (color-component bg :green) 8)
-	 (add (color-component bg :blue)  8)
+	 (add (attr-bits) 8)
+	 (add (if fg (color-component fg :red)   0) 8)
+	 (add (if fg (color-component fg :green) 0) 8)
+	 (add (if fg (color-component fg :blue)  0) 8)
+	 (add (if bg (color-component bg :red)   0) 8)
+	 (add (if bg (color-component bg :green) 0) 8)
+	 (add (if bg (color-component bg :blue)  0) 8)
 	 (add (char-int (fatchar-c character)) 32))
        int))
     (string
      ;; Do you want a Zalgo text DDOS?
      (error "Heckin' no."))))
+
+(defmethod oint-char (int (type (eql 'fatchar)))
+  "Return a fatchar represented by the integer ‘int’."
+  (let* ((bg-p (not (logbitp 92 int)))
+	 (fg-p (not (logbitp 93 int)))
+	 (line (ldb (byte 4 88) int))
+	 (attrs nil)
+	 (fg   (when fg-p (vector :rgba (ldb (byte 8 72) int)
+				        (ldb (byte 8 64) int)
+				        (ldb (byte 8 56) int))))
+	 (bg   (when bg-p (vector :rgba (ldb (byte 8 48) int)
+				        (ldb (byte 8 40) int)
+				        (ldb (byte 8 32) int))))
+	 (c    (logand int (1- (ash 1 32)))))
+    (loop :for a :in (rest *known-attrs*)
+	  :and i :from 80
+	  :when (logbitp i int)
+	  :do (push a attrs))
+    (make-fatchar :c (code-char c) :fg fg :bg bg :line line :attrs attrs)))
 
 (defmethod ocode-char (code (type (eql 'fatchar)))
   (make-fatchar :c (code-char code)))
