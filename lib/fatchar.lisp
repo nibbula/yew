@@ -596,6 +596,36 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 					 (fat-string-string _)))
 				  collections))))
 
+(defmethod oremove (item (collection fat-string)
+		    &key from-end key
+		      (test #'ochar= test-p)
+		      (test-not #'ochar/= test-not-p)
+		      (start nil start-p)
+		      (end nil end-p)
+		      count)
+  (declare (ignorable start start-p end end-p test test-not))
+  (when test-p
+    (setf test-not nil))
+  (when test-not-p
+    (setf test nil))
+  (when test
+    (setf test-p t))
+  (call-with-start-end-test remove
+			    (item (fat-string-string collection)
+				  :from-end from-end
+				  :count count
+				  :key key)))
+
+(defmethod oremove-if (predicate (collection fat-string)
+		       &key from-end key (start nil start-p) (end nil end-p)
+			 count)
+  (declare (ignorable start start-p end end-p))
+  (call-with-start-and-end remove-if (predicate
+				      (fat-string-string collection)
+				      :from-end from-end
+				      :count count
+				      :key key)))
+
 (defmethod osplit ((separator fatchar) (string fat-string)
 		   &key omit-empty test key bag
 		     (start nil start-p)
