@@ -12,6 +12,7 @@
    #:set-viewers
    #:view-things
    #:view
+   #:view-raw
    #:!view
    #:!open
    ))
@@ -64,6 +65,9 @@
     ("nx"	    . ("text"  . "neox"))
     ("json"	    . ("application"  . "json"))
     ))
+
+(defparameter *raw-viewer* '(:pager :pager)
+  "The function")
 
 (defun find-in-list (cat name list)
   "Find the the type with ‘cat’ and ‘name’ in ‘list’."
@@ -185,6 +189,10 @@ or a system command, designated by either a string, or a list of
 		`(,thing ,(content-type-category type)
 			 ,(content-type-name type))))))
 
+(defun view-raw-file (thing)
+  "Look at a file's raw data."
+  (invoke-viewer (make-viewer-from *raw-viewer*) thing))
+
 (defmethod view ((thing string))
   (view-file thing))
 
@@ -201,6 +209,18 @@ or a system command, designated by either a string, or a list of
   (loop :for thing :in things :do
      (with-simple-restart (continue "View the next thing.")
        (view thing))))
+
+(defmethod view-raw ((thing string))
+  (view-raw-file thing))
+
+(defmethod view-raw ((thing ostring))
+  (view-raw-file (ostring-simplify thing)))
+
+(defmethod view-raw ((thing pathname))
+  (view-raw-file (namestring thing)))
+
+(defmethod view-raw ((thing stream))
+  (view-raw-file thing))
 
 ;; This is really stubby yet.
 #+lish

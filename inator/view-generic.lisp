@@ -5,10 +5,12 @@
 (defpackage :view-generic
   (:documentation
    "The generic view function, mostly by itself so as to minimize dependencies.
-This is currently mostly for use by the 'view' shell command.")
+This is currently mostly for use by the 'view' shell command or a view command
+in inators.")
   (:use :cl)
   (:export
    #:view
+   #:view-raw
    ))
 (in-package :view-generic)
 
@@ -21,5 +23,8 @@ This is currently mostly for use by the 'view' shell command.")
 
 (defgeneric view (thing)
   (:documentation "Look at something."))
+
+(defgeneric view-raw (thing)
+  (:documentation "View the raw data of ‘thing’."))
 
 ;; EOF
