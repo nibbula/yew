@@ -226,7 +226,7 @@
    #:make-os-stream-from-handle
    #:with-os-stream
 
-   ;; re-export the junk from lib
+   ;; re-export the junk from libc
    #:*stdin* #:*stdout* #:*stderr*
    #-(and windows (not unix)) #:fileno
    #:fopen #:fclose #:fflush
