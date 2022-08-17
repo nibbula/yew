@@ -1,10 +1,9 @@
 ;;;
-;;; ls.lisp - list your stuff
+;;; ls.lisp - List your stuff.
 ;;;
 
 (defpackage :ls
-  (:documentation
-   "This is a command I type too much.")
+  (:documentation "This is a command I type too much.")
   (:use :cl :dlib :dlib-misc :opsys :dtime :terminal :terminal-ansi :grout
 	:table :table-print :terminal-table :ochar :fatchar :fatchar-io :theme
         :style :magic :collections)
@@ -28,6 +27,8 @@
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defmacro when-not-missing (before &body after)
+    "Only do ‘after’ if we don't get an error that indicates a missing file
+in ‘before’."
     `(tagbody
 	(handler-case
 	    (progn ,before)
@@ -44,7 +45,9 @@
 	  ,@after)
       MISSING))
 
-  (defmacro with-error-handling ((thing) &body body)
+  (defmacro with-error-handling ((&optional thing) &body body)
+    "Evaluate ‘body’ continuably handling file related errors appropriately
+regarding ‘ls-state-signal-errors’."
     (declare (ignore thing))
     (with-unique-names (thunk)
       `(flet ((,thunk ()
@@ -318,7 +321,7 @@ by nos:read-directory."))
 (defun mime-type-string (file table)
   (or (gethash file table)
       (setf (gethash file table)
-	    (with-error-handling (t)
+	    (with-error-handling ()
 	      (let ((type (magic:guess-file-type (item-full-path file))))
 		(or (and type
 			 (s+ (magic:content-type-category type)
@@ -403,12 +406,6 @@ by nos:read-directory."))
       (when (= (opsys-error-code c) uos:+ENOENT+)
 	(uos:lstat path)))))
 
-;; (defun pad-to (string width) ;; @@@ also in puca (maybe move to dlib-misc?)
-;;   (if (< (olength string) width)
-;;       (oconcatenate string (make-string (- width (olength string))
-;; 					:initial-element #\space))
-;;       string))
-
 #+unix
 (defun colorize-symbolic-mode (mode)
   (if (uos:is-symbolic-link mode)
@@ -443,13 +440,7 @@ by nos:read-directory."))
 	 (uos:file-status-links s)
 	 (or (user-name (uos:file-status-uid s)) (uos:file-status-uid s))
 	 (or (group-name (uos:file-status-gid s)) (uos:file-status-gid s))
-	 ;;(format-the-size (uos:file-status-size s) (keywordify size-format))
 	 (uos:file-status-size s)
-	 ;; (format-the-date
-	 ;; 	(uos:unix-to-universal-time
-	 ;; 	 (uos:timespec-seconds
-	 ;; 	  (uos:file-status-modify-time s)))
-	 ;; 	(keywordify date-format))
 	 (uos:unix-to-universal-time
 	  (uos:timespec-seconds
 	   (uos:file-status-modify-time s)))
@@ -457,8 +448,6 @@ by nos:read-directory."))
 	     (fs+ (get-styled-file-name file) " -> "
 		  (uos:readlink (item-full-path file)))
 	     (get-styled-file-name file))))
-     ;; :column-names
-     ;; '("Mode" "Links" "User" "Group" ("Size" :right) "Date" "Name")
      :columns
      `((:name "Mode")
        (:name "Links" :type number)
@@ -482,17 +471,9 @@ by nos:read-directory."))
 	:collect (list
 		  (file-info-type s)
 		  (file-info-flags s)
-		  ;; (format-the-size (file-info-size s))
 		  (file-info-size s)
-		  ;; (format-the-date
-		  ;;  (os-time-seconds
-		  ;;   (file-info-modification-time s))
-		  ;;  (keywordify date-format))
 		  (os-time-seconds (file-info-modification-time s))
-		  (get-styled-file-name file)
-		  ))
-     ;; :column-names
-     ;; '("Type" "Flags" ("Size" :right) "Date" "Name")
+		  (get-styled-file-name file)))
      :columns
      `((:name "Type")
        (:name "Flags")
@@ -522,6 +503,10 @@ by nos:read-directory."))
 	   (get-styled-file-name item))
       (get-styled-file-name item)))
 
+(defun check-file-item (item)
+  (when (not (typep item 'nos:path-designator))
+    (error "Sorry. I don't know how to list a ~s: ~s." (type-of item) item)))
+
 (defun is-dir (x)
   "Take a file-item or a path, and return true if it's a directory."
   (etypecase x
@@ -529,9 +514,9 @@ by nos:read-directory."))
     (t (probe-directory x))))
 
 (defun gather-file-info (args)
-  "Gather file information for displaying as specified in the plist ARGS, which
-is mostly the args from ‘ls’ command. Returns two values, the list of FILE-ITEMs
-gathered, and a list of directories to be recursively listed."
+  "Gather file information for displaying as specified in the plist ‘args’,
+which is mostly the args from ‘ls’ command. Returns two values, the list of
+‘file-item's gathered, and a list of directories to be recursively listed."
   (let* (main-list dir-list file-list
 	 (sort-by (getf args :sort-by))
 	 (recursive (getf args :recursive))
@@ -549,56 +534,30 @@ gathered, and a list of directories to be recursively listed."
 		 (t
 		  (make-full-item (path-file-name f)
 				  (path-directory-name f))))))
-      #|
-      (loop :for file :in (getf args :files)
-	 :do
-	 (if (and (is-dir file) (not (getf args :directory)))
-	     (with-error-handling ((file-path file))
-	       (dbugf :ls "Jang dir ~s~%" (file-path file))
-	       (loop :for x :in
-		  (read-directory
-		   :full t :dir (file-path file)
-		   :omit-hidden (not (getf args :hidden)))
-		  :do
-		  (when-not-missing
-		   (setf item (file-item-for x file))
-		   ;; (format t "Floop~%")
-		   (when (and recursive (eq (file-item-type item) :directory))
-		     (push item more))
-		   (push item results))))
-	     (progn
-	       (dbugf :ls "Jing file~%")
-	       (when-not-missing
-		(setf item (file-item-for file file))
-		;; (when (and recursive (eq (file-item-type item) :directory))
-		;;   (push item more))
-		(push item main-list))
-	       (setf (ls-state-mixed-bag *ls-state*) t))))
-      |#
       ;; Separate the files into directories and regular files if we weren't
       ;; given the -d flag.
       (if (not (getf args :directory))
-	  (progn
-	    (loop :for file :in (getf args :files)
-	       :do
-	       (if (is-dir file)
-		   (push file dir-list)
-		   (push file file-list)))
+	  (with-error-handling ()
+	    (omapn (lambda (file)
+		     (with-simple-restart (continue "Skip the item.")
+		       (check-file-item file)
+		       (if (is-dir file)
+			   (push file dir-list)
+			   (push file file-list))))
+		   (getf args :files))
 	    (setf file-list (nreverse file-list)
 		  dir-list (nreverse dir-list)))
 	  (setf file-list (getf args :files)))
       ;; (dbugf :ls "file-list ~s~%dir-list ~s~%" file-list dir-list)
 
       ;; Collect the file-list into main-list.
-      (loop :for file :in file-list
-	 :do
-	    (when-not-missing
-	     (with-error-handling (t)
-	       (setf item (file-item-for file file)))
-	     ;; (when (and recursive (eq (file-item-type item) :directory))
-	     ;;   (push item more))
-	     (push item main-list))
-	    (setf (ls-state-mixed-bag *ls-state*) t))
+      (omapn (lambda (file)
+	       (when-not-missing
+		(with-error-handling ()
+		  (setf item (file-item-for file file)))
+		(push item main-list))
+	       (setf (ls-state-mixed-bag *ls-state*) t))
+	     file-list)
 
       ;; Deal with the dir-list.
       (if (cdr dir-list)
@@ -619,7 +578,7 @@ gathered, and a list of directories to be recursively listed."
 		      (push item more))
 		    (push item results)))))))
 
-      ;; group all the individual files into a list
+      ;; Group all the individual files into a list.
       (setf results (cond
 		      (main-list
 		       (append (list (nreverse main-list)) (list results)))
@@ -655,15 +614,11 @@ gathered, and a list of directories to be recursively listed."
 	  "Print the item list."
 	   (when (null x)
 	     (return-from get-it nil))
-	   (if (getf args :long)
-	       (setf (ls-state-nice-table *ls-state*)
-		     (list-long x (getf args :date-format)
-				(getf args :size-format))))))
-    (when files
-      (get-it (car files))
-      (loop :for list :in (cdr files) :do
-	    (when list
-	      (get-it list))))))
+	   (when (getf args :long)
+	     (setf (ls-state-nice-table *ls-state*)
+		   (list-long x (getf args :date-format)
+			      (getf args :size-format))))))
+    (omapn (_ (get-it _)) files)))
 
 (defun present-files (files args label-dir-p)
   "Show the FILES, displayed according the the plist ARGS. See the lish ‘ls’
@@ -736,6 +691,36 @@ command for details. If LABEL-DIR is true, print directory labels."
 	       (grout-princ #\newline)
 	       (print-it list)))))))
 
+;; Something like a customized assert.
+(defmacro check-thing (test datum (format &rest args) &body body)
+  "Check that ‘test’ is true, or signal an type-error, printing with ‘format’
+and ‘args’, and allow setting ‘datum’, and evaluating ‘body’."
+  (with-names (%datum %value %args)
+    `(progn
+       (loop :with ,%datum = ,datum :and ,%args = ,@args
+         :while (not ,test) :do
+	 (setf ,datum
+	       (restart-case
+		   (error 'simple-type-error
+			  :datum ,%datum
+			  :expected-type t
+			  :format-control ,format
+			  :format-arguments (list ,%args))
+		 (use-value (,%value)
+		   :report (lambda (stream)
+			     (format stream "Use a new value for ~s." ',datum))
+		   :interactive
+		   (lambda ()
+		     (multiple-value-list
+		      (eval
+		       (read-from-string
+			(rl:rl
+			 :prompt
+			 (format nil "Enter a new value for ~s (evaluated): "
+				 ',datum))))))
+		   ,%value))))
+       ,@body)))
+
 (defun list-files (&rest args &key files long 1-column wide hidden directory
 				case-insensitive sort-by reverse date-format
 				show-size size-format collect nice-table quiet
@@ -750,6 +735,12 @@ command for details. If LABEL-DIR is true, print directory labels."
   (when (not files)
     (setf files (list (current-directory))
 	  (getf args :files) files))
+
+  (check-thing (collection-p files) files
+   ("Files to list should be a nos:path-designator or a collection ~
+    of nos:path-designator, not a ~a." (type-of files))
+   (setf (getf args :files) files))
+
   (when (not sort-by)
     (setf (getf args :sort-by) :name))
   (when (and case-insensitive (eql (keywordify (getf args :sort-by)) :name))
@@ -889,13 +880,18 @@ traditional ‘ls’ command."
   ;;     ((lish:accepts 'table:table)
   ;;      (setf (getf args :nice-table) t))))
   (flet ((thunk ()
-	   (if (and lish:*input* (listp lish:*input*))
-	       (apply #'list-files :files lish:*input* args)
-	       ;; (progn
-	       ;; 	 (setf (getf args :files)
-	       ;; 	       (append lish:*input* (getf args :files)))
-	       ;; 	 (apply #'list-files args))
-	       (apply #'list-files args))))
+	   (typecase lish:*input*
+	     (null
+	      (apply #'list-files args))
+	     ;; @@@ It might be nice if we could say collection of
+	     ;; nos:path-designator, but I think the only way to do it
+	     ;; efficiently, would be as typed containers.
+	     (nos:path-designator
+	      (apply #'list-files :files (list lish:*input*) args))
+	     (cons
+	      (apply #'list-files :files lish:*input* args))
+	     (t ;; just pretend we can handle it?
+	      (apply #'list-files :files lish:*input* args)))))
     (if (or collect nice-table)
 	(setf lish:*output*
 	      (let ((result (thunk)))
