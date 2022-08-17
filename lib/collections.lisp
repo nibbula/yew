@@ -193,35 +193,62 @@ numbers."))
   (:method ((collection vector))	     t)
   (:method ((collection sequence))	     t)
   (:method ((collection hash-table))	     nil)
-  (:method ((collection structure-object))   nil)
-  (:method ((collection standard-object))    nil)
+  (:method ((collection structure-object))   nil) ; @@@ wrong?
+  (:method ((collection standard-object))    nil) ; @@@ wrong?
   (:method ((collection ordered-collection)) t))
 
 (defmethod ordered-collection-p ((collection container))
   (ordered-collection-p (container-data collection)))
 
-(defgeneric make-collection (type &key size initial-element element-type)
-  (:documentation "Return an ordered collection of TYPE. Make it with COUNT
-elements, if applicable to the type.")
-  (:method ((type (eql 'list)) &key (size 0) initial-element element-type)
-    (declare (ignore element-type))
+(defun check-make-collection-args
+  (size
+   initial-element
+   initial-element-supplied-p
+   element-type
+   generator)
+  "Check for simple problems in the arguments to ‘make-collection’, and error if
+there are any."
+  (declare (ignore size initial-element element-type))
+  ;; I guess we can leave all the other sutff to the lower functions.
+  (cond
+    ((and generator initial-element-supplied-p)
+     (error "generator and initial-element shouldn't both be supplied."))))
+
+(defgeneric make-collection (type &key size initial-element element-type
+				    generator)
+  (:documentation
+   "Return an ordered collection of ‘type’, with ‘size’ elements of
+‘element-type’. The elements will be ‘initial-element’ if given, or what is
+returned by successive calls to ‘generator’ if provided.")
+  (:method ((type (eql 'list)) &key (size 0)
+				 (initial-element nil initial-element-p)
+				 element-type
+				 generator)
+    (check-make-collection-args size initial-element initial-element-p
+				element-type generator)
     (make-list (or size 0) :initial-element initial-element))
-  (:method ((type (eql 'string)) &key (size 0)
-				   (initial-element (code-char 0))
-				   (element-type 'character))
+  (:method ((type (eql 'string))
+	    &key (size 0)
+	      (initial-element (code-char 0) initial-element-p)
+	      (element-type 'character)
+	      generator)
+    (check-make-collection-args size initial-element initial-element-p
+				element-type generator)
     (make-string (or size 0) :initial-element initial-element
 		 :element-type element-type))
-  (:method ((type (eql 'vector)) &key size initial-element element-type)
+  (:method ((type (eql 'vector))
+	    &key size (initial-element nil initial-element-p)
+	      element-type generator)
+    (check-make-collection-args size initial-element initial-element-p
+				element-type generator)
     (make-array (or size 0) :initial-element initial-element
 		:element-type element-type))
-  (:method ((type (eql 'hash-table)) &key size initial-element element-type)
-    (declare (ignore initial-element element-type))
-    (make-hash-table :size (or size 0)))
-  ;; @@@ What should we do?
-  ;; (:method (type &key size initial-element element-type)
-  ;;   (case type
-  ;;     (
-  )
+  (:method ((type (eql 'hash-table))
+	    &key size (initial-element nil initial-element-p)
+	      element-type generator)
+    (check-make-collection-args size initial-element initial-element-p
+				element-type generator)
+    (make-hash-table :size (or size 0))))
 
 ;; I know, iterators are so C++ you say? Yes, we sure don't want to use them
 ;; most of the time, but sometimes they are actually useful, like when you
