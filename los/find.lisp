@@ -4,7 +4,7 @@
 
 (defpackage :find
   (:documentation "Find files in an old fashioned and slow manner.")
-  (:use :cl :dlib :opsys :cl-ppcre #| :lparallel |# :char-util)
+  (:use :cl :dlib :opsys :collections :cl-ppcre #| :lparallel |# :char-util)
   (:export
    ;; Main entry point
    #:find-files
@@ -222,6 +222,44 @@ removeed."
   #-unix (or (and follow-links (ignore-errors (get-file-info path)))
 	     (get-file-info path :follow-links nil)))
 
+(defun gather-start-names (dir)
+  "Return two values:
+    a list of file names in ‘dir’
+    a list sub-directory names of ‘dir’,
+omitting ignored names. ‘dir’ can be a collection, in which case it combines the
+lists for all the directories. The names are returned prefixed with the
+directory. If there are any errors reading directories, just print them."
+  (let ((sub-dirs)
+	(result))
+    (flet ((collect-dir (d #| append |#)
+	     (loop
+	       :with path
+	       :for f :in (read-directory :dir d :full t)
+	       :when (not (ignored-file-name-p (dir-entry-name f)))
+	       :do
+		  (setf path
+			;; (if append
+			;;     (nos:path-append d (dir-entry-name f))
+			;;     (dir-entry-name f)))
+			(nos:path-append d (dir-entry-name f)))
+		  (when (eql (dir-entry-type f) :directory)
+		    (push path sub-dirs))
+	       :and
+	       :collect path)))
+      (handler-case
+	  (etypecase dir
+	    (nos:path-designator
+	     (setf result (collect-dir dir #|nil|#)))
+	    ((or list vector collection)
+	     (omap-as 'list
+		      (_ (when (not (ignored-file-name-p _))
+			   (setf result (nconc result (collect-dir _ #|t|#)))))
+		      dir)))
+	;; Just print the error and go on.
+	(error (e)
+	  (format t "~a: ~a~%" dir e))))
+    (values result sub-dirs)))
+
 ;; (defun matches-expr (filename expr)
 ;;   (typecase expr
 ;;     (cons
@@ -368,8 +406,8 @@ Options:
                   :insensitive matches any case.
 "
   (declare (type (or integer null) min-depth max-depth))
-  (when (not (or (stringp dir) (pathnamep dir)))
-    (error "DIR should be a string or a pathname."))
+  (when (not (or (stringp dir) (pathnamep dir) (ordered-collection-p dir)))
+    (error "DIR should be a string or a pathname or an ordered collection."))
   (when do
     (when action
       (error "Provided both ACTION and DO."))
@@ -381,19 +419,25 @@ Options:
 	 (files '())
 	 (need-to-stat (or perm user group size type time))
 	 (depth 0)
+	 (dir-list)
+	 (sub-dirs)
+	 #|
 	 (dir-list
-	  (handler-case (read-directory :dir dir :full t)
-	    ; just print the error and go on
+	  (handler-case
+	      (if (collection-p dir)
+		  (loop :for d :in dir
+			:when (not (ignored-file-name-p d))
+			:nconc (mapcar (_ (nos:path-append d _))
+				       (remove-if (_ (ignored-file-name-p _))
+                                (nos:read-directory :dir d #|:full t|#))))
+		  (read-directory :dir dir #|:full t |#))
+	    ;; Just print the error and go on.
 	    (error (e)
-		   (format t "~a: ~a~%" dir e)
-		   ;;(apply #'format t
-		   ;;	  (simple-condition-format-control e)
-		   ;;	  (simple-condition-format-arguments e))
-		   ;;(terpri)
-		   )))
+	      (format t "~a: ~a~%" dir e))))
 	 (sub-dirs (loop :for d :in dir-list
 			 :if (eql (dir-entry-type d) :directory)
 		      :collect (dir-entry-name d)))
+	 |#
 	 (case-insensitivity (or (and (eq case-mode :smart)
 				      (typep name 'sequence)
 				      (notany #'upper-case-p name))
@@ -429,11 +473,12 @@ Options:
     (flet ((perform-action (full)
 	     (loop :for a :in actions :do (funcall a full))
 	     nil))
+      (multiple-value-setq (dir-list sub-dirs) (gather-start-names dir))
       (when (or (not min-depth) (>= depth min-depth))
 	(loop :for f :in dir-list
-	   :if (not (ignored-file-name-p (dir-entry-name f))) :do
-	   (let* ((n (dir-entry-name f))
-		  (full (path-append dir n))
+	   :if (not (ignored-file-name-p #|(dir-entry-name f)|# f)) :do
+	   (let* ((n #|(dir-entry-name f)|# f)
+		  (full #|(path-append dir n) |# f)
 		  (name-matched
 		   (or (not name) (compare name n verbose case-insensitivity
 					   filter)))
@@ -465,11 +510,10 @@ Options:
       ;;(return-from find-files files)
       (return files))
     (loop :for f :in sub-dirs
-       ;;:if (not (or (equal ".." f) (equal "." f)))
-       :if (not (ignored-file-name-p f))
-       :do
+      :if (not (ignored-file-name-p f))
+      :do
 ;;;	    (let ((sub (concatenate 'string dir *directory-separator* f))
-       (let ((sub (s+ dir *directory-separator* f))
+       (let ((sub #|(nos:path-append dir f) |# f)
 	     result)
 	 (if verbose (format t "subdir: ~a~%" sub))
 	 (setf result
@@ -571,7 +615,7 @@ arguments are the same."
 ;; one of most complicated of any Unix command. For example it can take dates
 ;; in cvs(1) date format, such as "1 hour ago".  The whole thing is rather
 ;; insane, because file system designers keep adding new types of metadata to
-;; their filesystem, which a standardized find has little chance of being able
+;; their filesystems, which a standardized find has little chance of being able
 ;; to use.
 ;;
 ;; I really would prefer to use some SQL-like (or rather CLSQL) syntax for
@@ -586,7 +630,7 @@ arguments are the same."
 ;  (&key (dir ".") follow-links verbose regexp collect
 ;	name file-type path expr action print)
   ((thing	 case-preserving-object :required nil :help "A thing to find.")
-   (dir		 pathname :short-arg #\d :default "."
+   (dir		 case-preserving-object #|pathname|# :short-arg #\d :default "."
     :help        "Directory to start from.")
    (follow-links boolean  :short-arg #\l :default t
     :help        "True to follow symbolic links.")
@@ -654,6 +698,10 @@ by --dir, which defaults to the current directory."
     ((or string pathname) (setf (getf args :name) thing))
     (t (error "I don't know what to do with the ~s ~s." (type-of thing) thing)))
   (remf args :thing)
+  (when (not (or (consp dir) (vectorp dir) #|(collection-p dir)|#))
+    ;; (format t "dir = ~s ~s~%" (type-of dir) dir)
+    (setf dir (princ-to-string dir)
+	  (getf args :dir) dir))
   (let ((ff (apply #'find-files-interactive args)))
     (when collect (setf lish:*output* ff))
     ;; (format *debug-io* "end of find, *output* = ~s~%" lish:*output*)
