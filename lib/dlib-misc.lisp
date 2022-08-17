@@ -1262,8 +1262,8 @@ SPIN-STRING can be given and defaults to the value of *DEFAULT-SPIN-STRING*."
   "Cached table of ASDF loadable packages. Set to NIL to recompute.")
 
 (defun asdf-systems-in-directory (dir &key as-strings)
-  "Return a list of system in DIR. If AS-STRINGS is true, return them as strings,
-otherwise as keywords."
+  "Return a list of systems in ‘dir’. If ‘as-strings’ is true, return them as
+strings, otherwise as keywords."
   (loop :with base :and result
      :for f :in (glob (path-append dir "*.[Aa][Ss][Dd]"))
      :do (spin)
