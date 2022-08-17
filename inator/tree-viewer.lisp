@@ -466,6 +466,7 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
     (,(ctrl #\L)	. redraw)
     (#\i		. node-info)
     (#\v		. view-node)
+    (#\V		. view-node-raw)
     (#\?		. help)
     (,(meta-char #\n)	. next-file)
     (,(meta-char #\p)	. previous-file)
@@ -868,26 +869,36 @@ been encountered."
      ;; 	   (format nil " parent   : ~a" (get-parent current)))
      )))
 
+(defun %view-node (o &key raw)
+  "View the current node with a generic viewer. Use the raw viewer if ‘raw’
+is true."
+  (let ((viewer (if raw #'view-raw #'view)))
+    (with-slots (current) o
+      (with-simple-restart (abort "Go back to the tree viewer.")
+	(handler-case
+	    (typecase current
+	      (object-node
+	       (funcall viewer (node-object current)))
+	      (t
+	       ;; This is probably useless.
+	       (funcall viewer current)))
+	  (error (c)
+	    (if (fui:popup-y-or-n-p
+		 (fatchar:span-to-fat-string
+		  `((:red "Error: ") ,(apply #'format nil "~a" (list c))
+		    #\newline #\newline "Enter the debugger?"))
+		 :default #\N)
+		(invoke-debugger c)
+		;; (continue)
+		(invoke-restart (find-restart 'abort)))))))))
+
 (defun view-node (o)
   "View the current node with a generic viewer."
-  (with-slots (current) o
-    (with-simple-restart (abort "Go back to the tree viewer.")
-      (handler-case
-	  (typecase current
-	    (object-node
-	     (view (node-object current)))
-	    (t
-	     ;; This is probably useless.
-	     (view current)))
-	(error (c)
-	  (if (fui:popup-y-or-n-p
-	       (fatchar:span-to-fat-string
-		`((:red "Error: ") ,(apply #'format nil "~a" (list c))
-		  #\newline #\newline "Enter the debugger?"))
-	       :default #\N)
-	      (invoke-debugger c)
-	      ;; (continue)
-	      (invoke-restart (find-restart 'abort))))))))
+  (%view-node o))
+
+(defun view-node-raw (o)
+  "View the current node with a generic viewer."
+  (%view-node o :raw t))
 
 (defmethod sort-command ((o tree-viewer))
   "Sort the branches of the current node."
