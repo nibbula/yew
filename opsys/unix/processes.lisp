@@ -367,8 +367,7 @@ before execing."
 
 (defun fork-with-pipes (cmd args &key in-stream (out-stream :stream)
 				   ;;(environment nil env-p)
-				   environment
-				   )
+				   environment)
   "Fork and exec CMD with ARGS and ENVIRONMENT, posibly piping to IN-STREAM and
 OUT-STREAM. See pipe-program. Return an output stream and a process ID."
   (let (in-stream-write-side
@@ -459,16 +458,15 @@ OUT-STREAM. See pipe-program. Return an output stream and a process ID."
     
 (defun pipe-program (cmd args &key in-stream (out-stream :stream)
 				;; (environment nil env-p)
-				environment
-				)
-  "Return an input stream with the output of the system command.
-  IN-STREAM can be:
+				environment)
+"Return an input stream with the output of the system command and the process ID.
+  ‘in-stream’ can be:
     An OS-OUTPUT-STREAM which can written to to supply input to the process.
     NIL to use the current processes standard input.
-  OUT-STREAM can be:
+  ‘out-stream’ can be:
     :STREAM make a new input stream containing the processes output.
     NIL to use the current processes standard output.
-  ENVIRONMENT is:
+  ‘environment’ is:
     a list of strings of the form NAME=VALUE to be used as the process's
     environment. If ENVIRONMENT is not provided, it defaults to the current
     process's environment."
