@@ -25,7 +25,7 @@
    ))
 (in-package :view-html)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+;;(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   #-windows (d-add-feature :use-drakma))
