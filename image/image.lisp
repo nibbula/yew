@@ -421,10 +421,11 @@ read-image knows about all the formats."
    :format-control "~s doesn't seem to be an image"))
 
 (defun read-image-with-function (file-or-stream function)
-  "Try to read FILE-OR-STREAM as an image. Return an IMAGE object if we're
- successful. It tries to guess the format, but it might help if the format
-is loaded already. Otherwise it tries to load a guessed format.
-It signals unknown-image-type or non-image-file, if it can't figure it out."
+  "Try to read ‘file-or-stream’ as an image. Return an ‘image’ object, and an
+‘image-format’, if we're successful. It tries to guess the format, but it might
+help if the format is loaded already. Otherwise it tries to load a guessed
+format. It signals unknown-image-type or non-image-file, if it can't figure it
+out."
   (let* (array
 	 (thing (typecase file-or-stream
 		  (string (pathname file-or-stream))
@@ -474,11 +475,11 @@ It signals unknown-image-type or non-image-file, if it can't figure it out."
 		 :format-arguments `(,thing #|file-or-stream|#)))))))
 
 (defun read-image (file-or-stream)
-  "Try to read FILE-OR-STREAM as an image. Return an IMAGE object if we're
- successful. It tries to guess the format, but it might help if the format
-is loaded already. Otherwise it tries to load a guessed format.
-It signals unknown-image-type or non-image-file, if it can't figure it out.
-The format type is returned as the second value."
+  "Try to read ‘file-or-stream’ as an image. Return an ‘image’ object, and an
+‘image-format’, if we're successful. It tries to guess the format, but it might
+help if the format is loaded already. Otherwise it tries to load a guessed
+format. It signals unknown-image-type or non-image-file, if it can't figure it
+out."
   #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
   (read-image-with-function file-or-stream #'read-image-format))
 
@@ -487,11 +488,11 @@ The format type is returned as the second value."
    "Read a synopsis of an image from file or stream with a specific format."))
 
 (defun read-image-synopsis (file-or-stream)
-  "Try to read FILE-OR-STREAM as an image. Return an IMAGE object if we're
- successful, but without the image data. It tries to guess the format, but it
-might help if the format is loaded already. Otherwise it tries to load a
-guessed format. It signals unknown-image-type or non-image-file, if it can't
-figure it out. The format type is returned as the second value."
+  "Try to read ‘file-or-stream’ as an image. Return an ‘image’ object, and an
+‘image-format’, if we're successful, but without the image data. It tries to
+guess the format, but it might help if the format is loaded already. Otherwise
+it tries to load a guessed format. It signals unknown-image-type or
+non-image-file, if it can't figure it out."
   #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
   (read-image-with-function file-or-stream #'read-image-synopsis-format))
 
