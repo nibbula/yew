@@ -420,7 +420,7 @@ the first time it fails to identify the image."
 	    (declare (ignore c))
 	    (throw 'pequod nil))))
       (progn
-	(load-known-formats)
+	(load-known-formats :quiet t)
 	(read-image file))))
 
 (defun reload-file (o)
