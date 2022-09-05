@@ -383,29 +383,31 @@
 (defun report-and-continue (c)
   (typecase c
     (simple-condition
-     (apply #'show-error (simple-condition-format-control c)
+     (apply #'show-error c (simple-condition-format-control c)
 	    (simple-condition-format-arguments c))
-     (continue))
+     ;; (continue)
+     )
     (t
-     (show-error "~s" c))))
+     (show-error c "~s" c))))
 
 (defmacro with-image-error-handling ((file-name) &body body)
-  `(handler-bind
-       ((unknown-image-type #'report-and-continue)
-	(non-image-file #'report-and-continue))
-     (handler-case
-	 (progn
-	   ,@body)
-       ;; (cl-jpeg:jpeg-error (c)
-       ;; 	 (formatted-window "Error: ~a ~a" ,file-name c))
-       (error (c)
-	 (if (image-inator-debug *image-viewer*)
-	     (invoke-debugger c)
-	     (show-error "~a ~a" ,file-name c)))
-       (simple-error (c)
-	 (if (image-inator-debug *image-viewer*)
-	     (invoke-debugger c)
-	     (show-error "~a ~a" ,file-name c))))))
+  `(with-simple-restart (continue "Continue.")
+     (handler-bind
+	 ((unknown-image-type #'report-and-continue)
+	  (non-image-file #'report-and-continue))
+       (handler-case
+	   (progn
+	     ,@body)
+	 ;; (cl-jpeg:jpeg-error (c)
+	 ;; 	 (formatted-window "Error: ~a ~a" ,file-name c))
+	 (error (c)
+	   (if (image-inator-debug *image-viewer*)
+	       (invoke-debugger c)
+	       (show-error c "~a ~a" ,file-name c)))
+	 (simple-error (c)
+	   (if (image-inator-debug *image-viewer*)
+	       (invoke-debugger c)
+	       (show-error c "~a ~a" ,file-name c)))))))
 
 (defun perserverant-read-image (file)
   "Try to read an image, but try to load image format stragglers after
@@ -507,12 +509,17 @@ the first time it fails to identify the image."
   ;; (tt-get-key)
   )
 
-(defun show-error (format-string &rest args)
-  ;; (apply #'say format-string args)
-  ;; (tt-write-string " --More--")
-  (fui:show-text (apply #'format nil format-string args)
-		 :title "Error" :justify t)
-  (tt-get-key))
+(defun show-error (condition format-string &rest args)
+  ;; (fui:show-text (apply #'format nil format-string args)
+  ;; 		 :title "Error" :justify t)
+  ;; (tt-get-key)
+  (if (fui:popup-y-or-n-p
+       (fatchar:span-to-fat-string
+	`((:red "Error: ") ,(apply #'format nil format-string args)
+	  #\newline #\newline "Enter the debugger?"))
+       :default #\N)
+      (invoke-debugger condition)
+      (continue condition)))
 
 (defun binding-of-key (o)
   (say "Press a key: ")
@@ -1163,7 +1170,8 @@ Some useful functions or macros are:
 	     ;; 	(when (not errorp)
 	     ;; 	  (format *error-output* "Error: ~a ~a~%" file c)
 	     ;; 	  (throw 'git-out nil))))
-	     (simple-error
+	     ;; (simple-error
+	     (error
 	      (lambda (c)
 		(when (not errorp)
 		  (format *error-output* "Error: ~a ~a~%" file c)
@@ -1180,7 +1188,7 @@ Some useful functions or macros are:
 				      (/ (image-height image) 2))
 				  ))
 		 (our-zoom (or (and zoom (coerce zoom 'float))
-			       (min 1.0 ;; teporarily @@@
+			       (min 1.0 ;; temporarily @@@
 				    (if height
 					(float (/ height
 						  (image-height image)))
@@ -1198,8 +1206,7 @@ Some useful functions or macros are:
 			      view-width
 			      view-height
 			      #'print-mover
-			      #'set-pixel-half nil bg-color))
-	    ))))))
+			      #'set-pixel-half nil bg-color))))))))
 
 (defun show-image (inator)
   (with-slots (x y zoom message file-index file-list image subimage looping
