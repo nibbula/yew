@@ -395,16 +395,17 @@ try to figure it out."
 (defparameter *known-image-types* '(:jpeg :png :gif :tiff :xbm)
   "List of known image format tags.")
 
-(defun load-image-format (format-tag)
-  #+quicklisp (ql:quickload (s+ "image-" (string-downcase format-tag)))
-  #-quicklisp (asdf:load-system (s+ "image-" (string-downcase format-tag)))
-  )
+(defun load-image-format (format-tag &key quiet)
+  #+quicklisp (ql:quickload (s+ "image-" (string-downcase format-tag))
+			    :silent quiet)
+  #-quicklisp (asdf:load-system (s+ "image-" (string-downcase format-tag))
+				:verbose (not quiet)))
 
-(defun load-known-formats ()
+(defun load-known-formats (&key quiet)
   "Load all the image formats we know about. This is useful to make sure
 read-image knows about all the formats."
   (loop :for tag :in *known-image-types*
-     :do (load-image-format tag)))
+     :do (load-image-format tag :quiet quiet)))
 
 (defgeneric read-image-format (file format)
   (:documentation "Read an image file or stream with specific format."))
