@@ -1366,7 +1366,8 @@ Key arguments:
 	  (fix-scrolling nil)
 	  (event-loop *image-viewer*))
 	(tt-cursor-on)
-	(fix-scrolling t))
+	(fix-scrolling t)
+	(tt-finish-output))
       (inator-quit-flag *image-viewer*))))
 
 (register-image-inator 'image-inator 1)
