@@ -10,6 +10,10 @@
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Operations on images."
-    :depends-on (:image :lparallel)
+  :depends-on (:image
+	       ;; Some older versions of lparallel seem to assume :sb-cltl2 is
+	       ;; loaded or something.
+	       #+sbcl :sb-cltl2
+	       :lparallel)
     :components
     ((:file "image-ops")))
