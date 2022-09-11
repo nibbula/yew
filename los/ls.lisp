@@ -504,7 +504,7 @@ by nos:read-directory."))
       (get-styled-file-name item)))
 
 (defun check-file-item (item)
-  (when (not (typep item 'nos:path-designator))
+  (when (not (typep item '(or nos:path-designator file-item)))
     (error "Sorry. I don't know how to list a ~s: ~s." (type-of item) item)))
 
 (defun is-dir (x)
