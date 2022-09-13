@@ -1489,14 +1489,13 @@ point in time (a.k.a. revision hash).")
 	  table (make-table-from
 		 items :type 'history-table
 		 :columns
-		 ;; (make-history-columns
-		  `((:name "Hash")
-		    (:name "Email" :width ,*email-small-width*
-		     :format ,#'email-small-formatter)
-		    ;; (:name "Date" :format ,(table-cell-type-formatter
-		    ;; 			   'number #'date-cell-formatter))
-		    (:name "Date" :format ,#'raw-date-cell-formatter)
-		    (:name "Message" :format ,#'message-top-line-filter))))
+		 `((:name "Hash")
+		   (:name "Email" :width ,*email-small-width*
+		    :format ,#'email-small-formatter)
+		   ;; (:name "Date" :format ,(table-cell-type-formatter
+		   ;; 			   'number #'date-cell-formatter))
+		   (:name "Date" :format ,#'raw-date-cell-formatter)
+		   (:name "Message" :format ,#'message-top-line-filter))))
     (when (>= point item-count)
       (setf point (1- item-count)))
     (when (>= top point)
@@ -1504,8 +1503,7 @@ point in time (a.k.a. revision hash).")
     ;; We have to call this to make sure the columns are set up, before we
     ;; hide one.
     (table-output-sizes renderer table)
-    (set-column-hidden-state puca "Hash" t)
-    ))
+    (set-column-hidden-state puca "Hash" t)))
 
 (defun diff-history-command (p)
   "Compare this change against the previous version."
