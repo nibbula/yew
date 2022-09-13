@@ -58,6 +58,9 @@ Also we really need the MOP for stuff.")
       omap-into
       oevery
       oany
+      osome
+      onotevery
+      onotany
       ocopy
       ofill
       osubseq
@@ -967,13 +970,66 @@ If COLLECTIONS are SEQUENCEs, the elements are applied in the sequence order.")
 (defmethod omap-into ((mutable-collection container) function &rest collections)
   (apply #'omap-into (container-data mutable-collection) function collections))
 
-(defgeneric oevery (function &rest collections)
-  (:documentation
-"Return true if FUNCTION returns true for every element of COLLECTIONS."))
+;; I think there's not really any reason why oevery, etc. have to be generic.
+;; @@@ Yes, I know these don't do the multi-dimensional iteration thing.
 
-(defgeneric oany (function &rest collections)
-  (:documentation
-"Return true if FUNCTION returns true for any element of COLLECTIONS."))
+(defun oevery (function &rest collections)
+  "Return true if FUNCTION returns true for every element of COLLECTIONS."
+  (omapn (lambda (c)
+	   (omapn
+	    (lambda (e)
+	      (unless (funcall function e)
+		(return-from oevery nil))) c))
+	 collections)
+  t)
+
+(defun oany (function &rest collections)
+  "Return true if FUNCTION returns true for any element of COLLECTIONS."
+  (omapn (lambda (c)
+	   (omapn
+	    (lambda (e)
+	      (when (funcall function e)
+		(return-from oany t))) c))
+	 collections)
+  nil)
+
+;; (defalias 'osome 'oany)
+(setf (fdefinition 'osome) (fdefinition 'oany)
+      (documentation 'osome 'function) (documentation 'oany 'function))
+
+(defun onotevery (function &rest collections)
+  "Return true if FUNCTION returns false for all elements of COLLECTIONS."
+  (omapn (lambda (c)
+	   (omapn
+	     (lambda (e)
+	       (unless (funcall function e)
+		 (return-from onotevery t))) c))
+	 collections)
+  nil)
+
+(defun onotany (function &rest collections)
+  "Return true if FUNCTION returns false for all elements of COLLECTIONS."
+  (omapn (lambda (c)
+	   (omapn
+	    (lambda (e)
+	      (when (funcall function e)
+		(return-from onotany nil))) c))
+	 collections)
+  t)
+
+#|
+(defun test-quantifying-predicates-1 ()
+  (let ((v '((nil nil nil nil)
+	     (nil nil   t nil)
+	     (  t   t   t   t)
+	     (  t   t nil   t))))
+    (loop :for f :in '(every some notevery notany) :do
+      (loop :for x :in v :do
+        (when (not (equal (funcall f #'identity x)
+			  (funcall (intern (concatenate 'string "O" (string f)))
+				   #'identity x)))
+	  (error "Fail ~s ~s" f x))))))
+|#
 
 ;; Sequence-like functions
 
