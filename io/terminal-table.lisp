@@ -117,6 +117,7 @@
 ;;     (call-next-method)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Box tables
 
 (defclass terminal-box-table-renderer (text-box-table-renderer)
   ((box-color
