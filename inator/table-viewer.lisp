@@ -952,6 +952,9 @@ at which it's found or NIL if it's not found."
     (with-slots (columns) renderer
       (when (not column)
 	(setf column (table-point-col point)))
+      (when (not column)
+	;; We still don't know the column, so just retrun.
+	(return-from hide-column nil))
       (set-column-hidden-state o column t)
 
       ;; Don't hide the last column.
