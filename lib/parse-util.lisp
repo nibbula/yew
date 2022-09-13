@@ -14,13 +14,13 @@ The source is sequence of elements. In the common case of parsing a string, the
 sequence is a string and the elements are characters.
 
 Quantifiers macros are:
-   (optional ...)      If the body doesn't evaluate to true, restore the point.
-   (must-be ...)       The body must evaluate true.
    (sequence-of ...)   Every form of the body must be true.
-   (one-or-more ...)   Do the body once and until it is false.
-   (zero-or-more ...)  Do the body, until it returns false. Always true.
    (one-of ...)        Return after the first optional expression of the body
                        is true.
+   (optional ...)      If the body doesn't evaluate to true, restore the point.
+   (zero-or-more ...)  Do the body, until it returns false. Always true.
+   (one-or-more ...)   Do the body once and until it is false.
+   (must-be ...)       The body must evaluate true.
 
 Result macros:
    (note (x) ...)      Push ‘x’ onto the results if the ‘body’ is true.
