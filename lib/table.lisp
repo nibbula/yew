@@ -48,6 +48,7 @@
 ;; (declaim (optimize (speed 0) (safety 3) (debug 3)
 ;; 		   (space 0) (compilation-speed 0)))
 
+#|
 (defstruct column
   "Description of a table column.
   name   - A printable name.
@@ -65,6 +66,42 @@ strings should be alble to be prepended with ~* to ignore the width argument."
   (width 0)
   (format nil)
   (align nil))
+|#
+
+(defclass column ()
+  ((name :initarg :name :accessor column-name :initform nil
+    :documentation "A printable name.")
+   (type :initarg :type :accessor column-type :initform t
+    :documentation "A Lisp type.")
+   (width :initarg :width :accessor column-width :initform 0
+    :documentation "An integer specifying the desired display width.")
+   (format :initarg :format :accessor column-format :initform nil
+    :documentation "A format string for `format', or a format function.
+Table cell formmating functions should accept ‘cell’ and ‘width’, and should be
+able accept ‘width’ as NIL, to indicate no width limitation. Formmating strings
+should be alble to be prepended with \"~*\" to ignore the width argument.
+See print-table:table-format-cell.")
+   (align :initarg :align :accessor column-align :initform nil
+    :documentation
+    "An alignment such as :left or :right. If NIL, it means the printer can make
+the decision. Format can override this."))
+  (:documentation "A description of a table column."))
+
+(defun make-column (&rest initargs)
+  "Make a column instance."
+  (apply #'make-instance 'column initargs))
+
+(defun column-p (object)
+  "True if ‘object’ is a column."
+  (typep object 'column))
+
+(defun copy-column (object)
+  "Return a shallow copy of ‘object’ as a column."
+  (make-column :name (column-name object)
+	       :type (column-type object)
+	       :width (column-width object)
+	       :format (column-format object)
+	       :align (column-align object)))
 
 (defclass table ()
   ((columns :initarg :columns
@@ -527,7 +564,8 @@ of one element lists, so we can make a 1 column table."
 	 (tt (make-instance (or type 'mem-table) :data data))
 	 (first-obj (first data)))
     (cond
-      (columns (setf (table-columns tt) (make-columns columns)))
+      (columns
+       (setf (table-columns tt) (make-columns columns)))
       (column-names
        ;; @@@ When there's less column-names than potential columns in object,
        ;; we should make the missing column names.
