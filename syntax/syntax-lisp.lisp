@@ -58,19 +58,24 @@
 ;;
 ;; It would be nice to be adaptable to syntax modifications of the current
 ;; image, but first I'd like to just get standard syntax working.
-
+;;
 ;; You might think that I would just take this from SBCL or some other
 ;; liberally liscensed implementation, but the reader code in whole
 ;; implementations tend to have many quirks related to bootstraping. They also
-;; tend to use many of thier own implementation dependent functions. I would
+;; tend to use many of their own implementation dependent functions. I would
 ;; like this to be portable to any implementation and without bootstrapping
 ;; quriks. Also we have different goals.
-
-;; Another annoying thing about about the reader, is it's not possible to
-;; write one in purely portable Common Lisp, because there isn't a specified
-;; way to construct structures portably. This is a subtle detail which seems
-;; like it probably could be fairly easily be fixed by an new version of the
-;; specification adding a structure creation function.
+;;
+;; Another annoying thing about about the reader, is writing one in purely
+;; portable Common Lisp is likely to have problems, because there isn't a
+;; specified way to construct structures portably, except for invoking the
+;; structure reader. Using the underlying implementation's structure reading
+;; function can be slow and troublesome.
+;; 
+;; This is a subtle detail which seems like it probably could be fairly easily
+;; be fixed by an new version of the specification adding a structure creation
+;; function. Fortunately most implementations can allocate-instance of a struct
+;; class.
 
 (deftype char-syntax ()
   '(member
