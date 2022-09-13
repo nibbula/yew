@@ -641,7 +641,8 @@ If every object in a column:
        (number (safe-read-from-string from))
        (string from)
        (symbol (symbolize from))
-       (t
+       ((t) from) ;; don't complain
+       (otherwise
 	(warn "Don't know how to convert from a string to a ~a~%" to)
 	from)))
     (number
@@ -649,7 +650,8 @@ If every object in a column:
        (number from)
        (string (princ-to-string from))
        (symbol (symbolize (princ-to-string from)))
-       (t
+       ((t) from) ;; dont' complain
+       (otherwise
 	(warn "Don't know how to convert from a number to a ~a~%" to)
 	from)))
     (null
@@ -658,6 +660,7 @@ If every object in a column:
        (symbol nil)
        (string "")
        ;; (number 0) I don't think we want to do this.
+       ((t) from) ;; don't complain
        (otherwise
 	(warn "Don't know how to convert from a NIL to a ~a~%" to))))
     (symbol
@@ -665,10 +668,18 @@ If every object in a column:
        (number (safe-read-from-string (string from)))
        (string (string from))
        (symbol from)
-       (t
+       ((t) from) ;; don't complain
+       (otherwise
 	(warn "Don't know how to convert from a NIL to a ~a~%" to))))
     (t
-     (warn "Don't know how to convert from a ~s to a ~a~%" (type-of from) to)
+     (case to
+       ((t) from) ;; Don't complain
+       (otherwise
+	(when (and (not (equal from to))
+		   (not (equal (type-of from) to)))
+	  (warn "Don't know how to convert from a ~s to a ~a~%"
+		(type-of from) to))
+	from))
      from))))
 
 (defun set-column-type-guesses (table guess)
