@@ -610,7 +610,7 @@ know."
 	 (*error-output* new-term)
 	 (*query-io* new-term)
 	 ;; (*trace-output* new-term)
-	 (*debug-io* *trace-output*) ;; @@@
+	 ;; (*debug-io* *trace-output*) ;; @@@
 	 (*terminal-io* new-term)
 	 (deblarg::*dont-use-a-new-term* t)
 	 (terminal:*default-terminal-type* :x11))
@@ -2237,7 +2237,7 @@ handler cases."
 		  (setf result (char-upcase chr)))
 		(when (logtest state +control-mask+)
 		  (setf result
-			(if (char-util:control-char-p (char-util:ctrl chr))
+			(if (char-util:has-control-equivalent chr)
 			    (char-util:ctrl chr)
 			    ;; For control combos which aren't traditional
 			    ;; control character, do a prefixed symbol.
