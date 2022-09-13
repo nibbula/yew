@@ -490,51 +490,54 @@ inclusive limit, otherwise it's an exclusive limit."))
       result)))
 
 #|
+(defmacro do-elements ((elements sequence) &body body)
+  `(typecase sequence
+     (list)
+     (t
+
 (defgeneric select-from (table columns &key where)
   (:documentation ""))
 
-(defun col-expr-form (col-expr col-names)
-  (let ((intern
-  `(lambda (,@)
-     let 
-  
+;; More complicated features should probably be done elsewhere and by macros.
+(defmethod select-from ((table mem-table) columns &key where order-by limit)
+  (flet ((col-num (col &optional (n 0))
+	   (if (null col) n (column-ref table col n))))
+    (let ((cols (if (eq columns t)
+		    (loop :for i :from 0 :below (olength (table-columns table))
+			  :collect i)
+		    (mapcar #'col-num columns)))
+	  (ncols (length cols))
+	  (rows nil) result)
+      (omapn
+       (lambda (row)
+	 (let ((new-row (make-array ncols)))
+	   (push
+	    (
+	    (omap (lambda (col)
+		    (oelt row col))
+		  cols)
+	    rows)
+       (container-data table))
 
-(defmethod select-from ((table mem-table) columns
-			&key where order-by limit)
-  (flet ((col-num (row &optional (n 0))
-	   (etypecase row
-	     (null 0)
-	     (integer row)
-	     (symbol (+ n (table-column-number
-			   (string row) table :test #'equalp)))
-	     (string (+ n (table-column-number row table :test #'equalp))))))
-    (let* ((cols
-	     (loop for (col-num end-col 1))
 	   (result
 	     (make-instance
 	      'mem-table
 	      :columns
-	      (if end-col
-		  (osubseq (table-columns table) start end)
-		  (osubseq (table-columns table) start))
+	      (if (eq columns t)
+		  (copy-seq (table-columns table))
+		  (loop :for c :in cols
+			:collect
+			(copy-structure (oelt (table-columns table) c))))
 	      :data
-	      (omap
-	       (lambda (row)
-		 (if end-col
-		     (osubseq row start end)
-		     (osubseq row start)))
-	       (if end-row
-		   (osubseq table start-row end-row)
-		   (osubseq table start-row))))))
       result)))
 |#
 
 (defun make-columns (columns-list)
   (loop :for c :in columns-list
-     :collect
-       (if (column-p c)
-	   c
-	   (apply #'make-column c))))
+	:collect
+	   (if (column-p c)
+	       c
+	       (apply #'make-column c))))
 
 (defun possibly-convert-from-alist (thing)
   "If THING is a list, and the first element looks like an alist, try to convert
