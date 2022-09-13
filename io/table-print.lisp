@@ -208,32 +208,32 @@ function."
 (defmethod table-output-column-titles (renderer table titles &key sizes)
   "Output all the column titles."
   (if sizes
-    (loop :with width :and justification :and size
-       :for title :in titles
-       :and i = 0 :then (1+ i)
-       :and col :in (table-columns table)
-       :do
-       (setf size (elt sizes i))
-       (assert (not (consp size)) () "Size shouldn't be a list anymore.")
-       ;; (setf width (if (listp size) (car size) size)
-       ;; 	     justification (if (listp size)
-       ;; 			       (cadr size)
-       ;; 			       (table-output-column-type-justification
-       ;; 				renderer table (column-type col))))
-       (setf width size
-	     justification (or (column-align col)
-			       (table-output-column-type-justification
-				renderer table (column-type col))))
-       (table-output-column-title renderer table title width justification i))
-    (loop
-       :for title :in titles
-       :and col :in (table-columns table)
-       :and i = 0 :then (1+ i)
-       :do
-       (table-output-column-title renderer table title
-				  (column-width col)
-				  (table-output-column-type-justification
-				   renderer table (column-type col)) i))))
+      (loop :with width :and justification :and size
+        :for title :in titles
+	:and i = 0 :then (1+ i)
+        :and col :in (table-columns table)
+        :do
+        (setf size (elt sizes i))
+        (assert (not (consp size)) () "Size shouldn't be a list anymore.")
+        ;; (setf width (if (listp size) (car size) size)
+        ;; 	     justification (if (listp size)
+        ;; 			       (cadr size)
+        ;; 			       (table-output-column-type-justification
+        ;; 				renderer table (column-type col))))
+        (setf width size
+	      justification (or (column-align col)
+				(table-output-column-type-justification
+				 renderer table (column-type col))))
+	(table-output-column-title renderer table title width justification i))
+      (loop
+	:for title :in titles
+	:and col :in (table-columns table)
+	:and i = 0 :then (1+ i)
+	:do
+	(table-output-column-title renderer table title
+				   (column-width col)
+				   (table-output-column-type-justification
+				    renderer table (column-type col)) i))))
 
 (defmethod table-output-cell-display-width (renderer table cell column
 					    &key (use-given-format t))
