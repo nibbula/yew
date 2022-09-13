@@ -19,6 +19,7 @@
 	:inator :terminal :terminal-inator :fui :options :fatchar :fatchar-io
 	:table :table-print :collections :table-viewer :ochar :style
 	#+use-re :re #-use-re :ppcre)
+  (:import-from :table-viewer #:renderer)
   (:export
    ;; Main entry point
    #:puca
@@ -1383,16 +1384,13 @@ point in time (a.k.a. revision hash).")
   (or (osearch string (history-message item) :test #'ochar-equal)
       (osearch string (history-email item) :test #'ochar-equal)))
 
-(defclass puca-history (puca-app)
+(defclass puca-history (puca-app table-viewer)
   ((files
     :initarg :files :accessor puca-history-files :initform nil
     :documentation "Files to show history for or NIL for all files.")
-   (table
-    :initarg :table :accessor puca-history-table :initform nil
-    :documentation "The items in a table for displaying.")
-   (renderer
-    :initarg :renderer :accessor puca-history-renderer
-    :documentation "The table renderer."))
+   (long
+    :initarg :long :accessor puca-history-long :initform nil :type boolean
+    :documentation "True to show a longer item."))
   (:default-initargs
    :renderer (make-instance 'history-table-renderer)
     :table nil)
@@ -1474,29 +1472,40 @@ point in time (a.k.a. revision hash).")
 					:initial-element #\space))
       string))
 
+(defvar *email-small-width* 5
+  "Very small width of email column.")
+
+(defun email-small-formatter (cell width)
+  (declare (ignore width))
+  (pad-to (osubseq cell 0 (min (olength cell) *email-small-width*))
+	  *email-small-width*))
+
 (defmethod get-list ((puca puca-history) &key no-message)
   "Get the history list from the backend and parse them."
   (declare (ignore no-message))
-  (with-slots (items item-count (point inator::point) top table) puca
+  (with-slots (items item-count (point inator::point) top table renderer) puca
     (setf items (get-history (puca-backend puca) (puca-history-files puca))
 	  item-count (length items)
 	  table (make-table-from
 		 items :type 'history-table
 		 :columns
-		 `((:name "Hash" :width 0 :format "~*") ;; ???
-		   (:name "Email" :width 5
-			  :format ,(lambda (c w)
-				     (declare (ignore w))
-				     (pad-to (osubseq c 0 (min (olength c) 5))
-					     5)))
-		   ;; (:name "Date" :format ,(table-cell-type-formatter
-		   ;; 			   'number #'date-cell-formatter))
-		   (:name "Date" :format ,#'raw-date-cell-formatter)
-		   (:name "Message" :format ,#'message-top-line-filter))))
+		 ;; (make-history-columns
+		  `((:name "Hash")
+		    (:name "Email" :width ,*email-small-width*
+		     :format ,#'email-small-formatter)
+		    ;; (:name "Date" :format ,(table-cell-type-formatter
+		    ;; 			   'number #'date-cell-formatter))
+		    (:name "Date" :format ,#'raw-date-cell-formatter)
+		    (:name "Message" :format ,#'message-top-line-filter))))
     (when (>= point item-count)
       (setf point (1- item-count)))
     (when (>= top point)
-      (setf top (max 0 (- point 10))))))
+      (setf top (max 0 (- point 10))))
+    ;; We have to call this to make sure the columns are set up, before we
+    ;; hide one.
+    (table-output-sizes renderer table)
+    (set-column-hidden-state puca "Hash" t)
+    ))
 
 (defun diff-history-command (p)
   "Compare this change against the previous version."
@@ -1583,6 +1592,24 @@ point in time (a.k.a. revision hash).")
 ;; 	  ,(span-to-fat-string `((:green "Message:")))
 ;; 	  ,(span-to-fat-string `((:cyan ,(history-message item)))))))))
 
+(defun history-toggle-long (p)
+  "Toggle displaying more information."
+  (with-slots (table long) p
+    (setf long (not long))
+    (set-column-hidden-state p "Hash" (not long))
+    ;; (setf (oelt (table-columns table) (table-column-number "Email" table))
+    (let ((email-col (table-column-number "Email" table)))
+      (cond
+	(long
+	 (setf (column-width (oelt (table-columns table) email-col)) 0)
+	 (table-set-column-format table "Email" nil)
+	 (table-viewer-recalculate-sizes p))
+	(t
+	 (setf (column-width (oelt (table-columns table) email-col))
+	       *email-small-width*)
+	 (table-set-column-format table "Email" #'email-small-formatter)
+	 (table-viewer-recalculate-sizes p))))))
+
 (defkeymap *puca-history-keymap* ()
   `((#\q		. quit)
     (#\Q		. quit)
@@ -1616,6 +1643,7 @@ point in time (a.k.a. revision hash).")
     (#\d	        . diff-history-command)
     (#\return	        . diff-history-command)
     (#\D	        . diff-history-head-command)
+    (#\l		. history-toggle-long)
     ))
 
 (defun history-all-command (p)
@@ -1631,8 +1659,7 @@ point in time (a.k.a. revision hash).")
 			 :keymap (list *puca-history-keymap*
 				       *default-inator-keymap*)
 			 :backend (puca-backend p)
-			 :debug (puca-debug p)
-			 )
+			 :debug (puca-debug p))
       (let ((table-viewer::*table-viewer* *puca*))
 	(event-loop *puca*)))
     (inator:redraw p) ;; @@@ workaround: we should fix the real bug
