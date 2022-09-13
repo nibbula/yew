@@ -328,6 +328,7 @@ If COLLECTIONS are SEQUENCEs, the elements are applied in the sequence order."
 		   collections)
   mutable-collection)
 
+#|
 (defmethod oevery (function &rest collections)
   "Return true if FUNCTION returns true for every element of COLLECTIONS."
   (catch 'done
@@ -351,6 +352,7 @@ If COLLECTIONS are SEQUENCEs, the elements are applied in the sequence order."
 	 (when (not (dl-next i))
 	   (throw 'done nil))))
     nil))
+|#
 
 (defmethod ocopy ((collection dl-list))
   "Return new collection with the same elements as COLLECTION."
