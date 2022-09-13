@@ -40,15 +40,23 @@
 
 (defun manpath-list ()
   (let ((p (manpath)))
-    (or (and p (split-sequence #\: p))
-	(lish::expand-braces
-	 (second
-	  (split-sequence
-	   '(#\space #\tab)
-	   (oitem 0 (grep:grep "^_default" "/etc/man.conf" :collect t :quiet t))
-	   :bag t)))
-	#-windows
-	(warn "Can't figure out the where the manuals are."))))
+    (or
+     ;; First try a manpath from the the environment or the manpath command.
+     (and p (split-sequence #\: p))
+     ;; Try to read it from /etc/man.conf
+     (and (nos:file-exists "/etc/man.conf")
+	  (lish::expand-braces
+	   (second
+	    (split-sequence
+	     '(#\space #\tab)
+	     (oitem 0 (grep:grep "^_default" "/etc/man.conf"
+				 :collect t :quiet t))
+	     :bag t))))
+     ;; Fallback to a reasonable? default
+     '("/usr/share/man" "/usr/local/man")
+     ;; #-windows ;; Don't bother warning on windows.
+     ;; (warn "Can't figure out the where the manuals are.")
+     )))
 
 (defun get-manual-sections ()
   "Approximate and flawed method for finding manual sections."
