@@ -422,6 +422,7 @@ at POS. Returns the new position after moving."
   `(setf ,var (delete ,func ,var)))
 
 (defun run-hooks (var &rest args)
+  "Apply ‘args’ to the hooks in ‘var’."
   (loop :for f :in var
      :do (apply f args)))
 
@@ -654,13 +655,13 @@ If STREAM is nil, return a string of the output."
   "Return a list of pairs of character positions and columns, in reverse order
 of character position, which should be the end of the displayed lines in the
 buffer.
-  BUFFER          The string to compute endings for.
-  START-COLUMN    The column number of the first character in BUFFER.
-  END-COLUMN      The number columns in the view, after which it wraps.
-  SPOTS           An alist of character indexes to set the line and column of.
-  COLUMN-SPOTS    An alist of line and column pairs to set the character
+  buffer          The string to compute endings for.
+  start-column    The column number of the first character in BUFFER.
+  end-column      The number columns in the view, after which it wraps.
+  spots           An alist of character indexes to set the line and column of.
+  column-spots    An alist of line and column pairs to set the character
                   indexes of.
-  AUTOWRAP-DELAY  True if the intended output device has autowrap delay."
+  autowrap-delay  True if the intended output device has autowrap delay."
   (let (endings
 	(col start-column)		; Start after the prompt
 	(char-width 0)
