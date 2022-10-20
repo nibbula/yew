@@ -1055,10 +1055,12 @@ an +OSC+ is read."
 	 (cond
 	   ((= (aref data 0) #x3f)	; '?'
 	    (dbug "report window foreground ~s~%"
-		  (color-to-xcolor (terminal-window-foreground tty)))
+		  (color-to-xcolor
+		   (lookup-color (terminal-window-foreground tty))))
 	    (pushback stream
 		      (s+ +osc+ 10 #\;
-			  (color-to-xcolor (terminal-window-foreground tty))
+			  (color-to-xcolor
+			   (lookup-color(terminal-window-foreground tty)))
 			  (code-char 7))))
 	   (t
 	    (dbug "set window foreground ~s~%"
@@ -1069,10 +1071,12 @@ an +OSC+ is read."
 	 (cond
 	   ((= (aref data 0) #x3f)	; '?'
 	    (dbug "report window foreground ~s~%"
-		  (color-to-xcolor (terminal-window-background tty)))
+		  (color-to-xcolor
+		   (lookup-color (terminal-window-background tty))))
 	    (pushback stream
 		      (s+ +osc+ 10 #\;
-			  (color-to-xcolor (terminal-window-background tty))
+			  (color-to-xcolor
+			   (lookup-color (terminal-window-background tty)))
 			  (code-char 7))))
 	   (t
 	    (dbug "set window foreground ~s~%"
