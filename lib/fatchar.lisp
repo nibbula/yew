@@ -704,24 +704,27 @@ the environemnt has <arg> and <arg>-P for all those keywords."
   (apply #'oreplace-subseq-as 'fat-string
 	 target replacement sequence (list :count count)))
 
-(defun make-fatchar-string-of-length (length &key initial-element)
+(defun make-fatchar-string-of-length (length &key initial-element fill-pointer)
   "Return a FATCHAR-STRING of LENGTH. If INITIAL-ELEMENT is supplied, copy that
 for the initial contents. Note that this is different than if you supplied
 initial-element to make-array, or if you don't supply initial-element."
   (let ((result (make-array (list length)
 			    :element-type 'fatchar
-			    :initial-element (make-fatchar))))
+			    :initial-element (make-fatchar)
+			    :fill-pointer fill-pointer)))
     (when initial-element
       (loop :for i :from 0 :below length
 	 :do (setf (aref result i) (copy-fatchar initial-element))))
     result))
 
-(defun make-fatchar-string (thing)
+(defun make-fatchar-string (thing &key fill-pointer)
   "Make a string of fatchars from THING, which can be a string or a character."
   (let (result)
     (flet ((from-string (string)
 	     (let ((graphemes (char-util:graphemes string)))
-	       (setf result (make-fatchar-string-of-length (length graphemes)))
+	       (setf result (make-fatchar-string-of-length
+			     (length graphemes)
+			     :fill-pointer fill-pointer))
 	       (loop :for g :in graphemes
 		     :for i :from 0
 		     :do (setf (aref result i)
@@ -732,13 +735,14 @@ initial-element to make-array, or if you don't supply initial-element."
 	 (from-string thing))
 	(fatchar
 	 (setf result (make-fatchar-string-of-length
-		       1 :initial-element (copy-fatchar thing))))
+		       1 :initial-element (copy-fatchar thing)
+		       :fill-pointer fill-pointer)))
 	(character
 	 (setf result (make-fatchar-string-of-length
-		       1 :initial-element (make-fatchar :c thing))))
-	;; We could princ-to-string for other stuff, but it's probably better
-	;; if the caller does it explicitly.
-	)
+		       1 :initial-element (make-fatchar :c thing)
+		       :fill-pointer fill-pointer))))
+      ;; We could princ-to-string for other stuff, but it's probably better
+      ;; if the caller does it explicitly.
       result)))
 
 (defun copy-fatchar-string (fatchar-string)
