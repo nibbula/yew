@@ -4,9 +4,9 @@
 
 (defpackage :view-image
   (:documentation "Image viewer")
-  (:use :cl :dlib :dtime :keymap :char-util :terminal :terminal-ansi
-	:terminal-crunch :inator :terminal-inator :magic :grout :image
-	:image-ops :dcolor)
+  (:use :cl :dlib :collections :dtime :keymap :char-util :terminal
+   :terminal-ansi :terminal-crunch :inator :terminal-inator :magic :grout
+   :image :image-ops :dcolor)
   (:export
    #:view-image
    #:!view-image
@@ -66,6 +66,12 @@
     :initarg :increment :accessor image-inator-increment
     :initform 20 :type fixnum
     :documentation "Unit for operations.")
+   (file-name
+    :initarg :file-name :accessor image-inator-file-name :initform nil
+    :documentation "The file name, if we know it.")
+   (file-format
+    :initarg :file-format :accessor image-inator-file-format :initform nil
+    :documentation "The file image format, if we know it.")
    (file-list
     :initarg :file-list :accessor image-inator-file-list
     :initform nil :type list
@@ -112,8 +118,7 @@
    (bg-color
     :initarg :bg-color :accessor image-inator-bg-color
     :initform (lookup-color :black)
-    :documentation "Background color of the window.")
-   )
+    :documentation "Background color of the window."))
   (:default-initargs
    :keymap	`(,*image-viewer-keymap* ,*default-inator-keymap*))
   (:documentation "An image viewer."))
@@ -412,32 +417,36 @@
 (defun perserverant-read-image (file)
   "Try to read an image, but try to load image format stragglers after
 the first time it fails to identify the image."
-  (or (catch 'pequod
-	(handler-case
-	    (progn
-	      (read-image file))
-	  (non-image-file (c)
-	    (declare (ignore c))
-	    (throw 'pequod nil))))
-      (progn
-	(load-known-formats :quiet t)
-	(read-image file))))
+  (let (image format)
+    (unless (catch 'pequod
+	      (handler-case
+		  (multiple-value-setq (image format) (read-image file))
+		(non-image-file (c)
+		  (declare (ignore c))
+		  (throw 'pequod nil))))
+      (load-known-formats :quiet t)
+      (multiple-value-setq (image format) (read-image file)))
+    (values image format)))
 
 (defun reload-file (o)
-  (with-slots (image) o
+  (with-slots (image file-format) o
     (let ((file-name (image-name image))
-	  img)
+	  image-in format-in)
       (with-image-error-handling (file-name)
-	(setf img (perserverant-read-image file-name)))
+	(setf (values image-in format-in) (perserverant-read-image file-name)))
       (clear-image o)
-      (setf image img)
+      (setf image image-in
+	    file-format format-in)
       (invalidate-cache o)
       ;; (reset-image o)
       )))
 
 (defmethod next-file ((o image-inator))
-  (with-slots (file-list file-index image) o
-    (let (img (first-time t) (was-first-time nil))
+  (with-slots (file-list file-index image file-name file-format) o
+    (let ((image-in nil)
+	  (format-in nil)
+	  (first-time t)
+	  (was-first-time nil))
       (flet ((next ()
 	       (cond
 		 ((and (not image) first-time)
@@ -449,32 +458,36 @@ the first time it fails to identify the image."
 		  (incf file-index))
 		 (t
 		  (return-from next-file nil)))))
-	(loop :with file-name
-	   :while (not img) :do
+	(loop
+	   :while (not image-in) :do
 	   (next)
 	   (setf file-name (nth file-index file-list))
 	   (with-image-error-handling (file-name)
-	     (setf img (perserverant-read-image file-name))))
+	     (setf (values image-in format-in)
+		   (perserverant-read-image file-name))))
 	(clear-image o)
-	(setf image img)
+	(setf image image-in
+	      file-format format-in)
 	(when (not was-first-time)
 	  (reset-image o))))))
 
 (defmethod previous-file ((o image-inator))
-  (with-slots (file-list file-index image) o
+  (with-slots (file-list file-index image file-name file-format) o
     (flet ((prev ()
 	     (if (> file-index 0)
 		 (decf file-index)
 		 (return-from previous-file nil))))
-      (let (img)
-	(loop :with file-name
-	   :while (not img) :do
+      (let (image-in format-in)
+	(loop
+	   :while (not image-in) :do
 	   (prev)
 	   (setf file-name (nth file-index file-list))
 	   (with-image-error-handling (file-name)
-	     (setf img (perserverant-read-image file-name))))
+	     (setf (values image-in format-in)
+		   (perserverant-read-image file-name))))
 	(clear-image o)
-	(setf image img)
+	(setf image image-in
+	      file-format format-in)
 	(reset-image o)))))
 
 (defun next-sub-image (o)
@@ -668,28 +681,96 @@ Some useful functions or macros are:
 
 (defun open-file (o)
   "Open a file."
-  (with-slots (image) o
+  (with-slots (image file-name file-format) o
     (tt-move-to 0 0)
     (tt-erase-to-eol)
     (tt-cursor-on)
     (tt-finish-output)
-    (let ((file-name (rl:read-filename :prompt "Open file: "))
-	img)
+    (setf file-name (rl:read-filename :prompt "Open file: "))
+    (let ((image-in nil)
+	  (format-in nil))
       (with-image-error-handling (file-name)
-	(setf img (perserverant-read-image (glob:expand-tilde file-name)))
+	(setf (values image-in format-in)
+	      (perserverant-read-image (glob:expand-tilde file-name)))
 	(clear-image o)
-	(setf image img)
+	(setf image image-in
+	      file-format format-in)
 	(reset-image o)
 	;; (invalidate-cache o)
 	;; (redraw o)
 	)
       (tt-cursor-off))))
 
+(defun save-file (o)
+  (with-slots (image file-name file-format) o
+    (cond
+      (file-name
+       (write-image image file-name file-format)
+       (message o "~a saved." file-name))
+      (t
+       (save-file-as o)))))
+
+(defun save-file-as (o)
+  (with-slots (image file-name file-format) o
+    (prog* ((file-name (prompt o "Save as: ")))
+       (when (nos:file-exists file-name)
+	 (unless (fui:popup-y-or-n-p
+		  (format nil "File ~a exists. Overwrite? " file-name))
+	   (return)))
+       ;; @@@ We should check that the file extension matches the file-format and
+       ;; confirm if it doesn't.
+       (write-image image file-name file-format)
+       (message o "~a saved."))))
+
 (defun toggle-use-serial-map (o)
   "Toggle the value of use-serial-map."
   (with-slots (use-serial-map) o
     (setf use-serial-map (not use-serial-map))
     (message "Serial mapping is ~:[OFF~;ON~]" use-serial-map)))
+
+(defun image-info-table (o)
+  "Return a table with information about the current image."
+  (with-slots (image x y zoom subimage file-name file-format file-index
+	       file-list) o
+    (let ((si (oelt (image-subimages image) subimage)))
+      (table:make-table-from
+       `(("File Name" ,file-name)
+	 ("Format" ,file-format)
+	 ("Width" ,(image-width image))
+	 ("Height" ,(image-height image))
+	 ("X" ,x)
+	 ("Y" ,y)
+	 ("Zoom" ,zoom)
+	 ("Sub Image #" ,subimage)
+	 ("Sub Image Count"  ,(length (image-subimages image)))
+	 ("Sub Image X" ,(image::sub-image-x si))
+	 ("Sub Image Y" ,(image::sub-image-y si))
+	 ("Sub Image Width" ,(image::sub-image-width si))
+	 ("Sub Image Height" ,(image::sub-image-height si))
+	 ("Sub Image Delay" ,(image::sub-image-delay si))
+	 ("Sub Image Disposal" ,(image::sub-image-disposal si))
+	 ("Sub Image Transparent" ,(image::sub-image-transparent si))
+	 ("File #", file-index)
+	 ("Files Count", (length file-list)))
+       :column-names
+       '("Property" "Value")))))
+
+(defun show-image-info (o)
+  (fui:display-text
+   "Image Info"
+   (osplit #\newline
+	   (fatchar:make-fat-string
+	    :string
+	    (fatchar:process-ansi-colors
+	     (fatchar:make-fatchar-string
+	      (with-terminal-output-to-string () ;; :ansi
+		(table-print:print-table
+		 (image-info-table o)
+		 :renderer (make-instance
+			    'terminal-table:terminal-table-renderer)
+		 :stream *terminal*)))))
+	   :omit-empty t)
+   :justify nil))
 
 (set-keymap *image-viewer-keymap*
   `((#\escape		  . *image-viewer-escape-keymap*)
@@ -749,6 +830,7 @@ Some useful functions or macros are:
     (,(meta-char #\a)     . pixel-expr-loop)
     (:F11		  . pixel-expr-loop)
     (,(meta-char #\m)     . toggle-mode-line)
+    (#\i		  . show-image-info)
     (#\?		  . help)
     (,(ctrl #\@)	  . set-mark)
     (,(ctrl #\X)	  . *ctlx-keymap*)
@@ -759,6 +841,8 @@ Some useful functions or macros are:
 (defkeymap *ctlx-keymap* ()
   `((,(ctrl #\C)	. quit)
     (,(ctrl #\F)	. open-file)
+    (,(ctrl #\W)	. save-file-as)
+    (,(ctrl #\S)	. save-file)
     (,(ctrl #\P)	. toggle-use-serial-map)))
 
 (defmethod await-event ((o image-inator))
@@ -1302,7 +1386,7 @@ Key arguments:
   USE-FULL    - True to use full block characters in the character based viewer."
   (with-terminal ()
     (let* ((inator-type (or type (pick-image-inator)))
-	   image *image-viewer*)
+	   image format *image-viewer*)
       (when (not inator-type)
 	(error "Can't find a usable image viewer."))
       (etypecase image-designator
@@ -1318,13 +1402,15 @@ Key arguments:
 	 ;; (reset-image *image-viewer*)
 	 )
 	(stream
-	 (setf *image-viewer*
-		(make-instance inator-type
-			       :image (perserverant-read-image image-designator)
-			       :file-list file-list
-			       :own-window own-window
-			       :debug debug
-			       :use-half-block (not use-full)))
+	 (setf (values image format) (perserverant-read-image image-designator)
+	       *image-viewer*
+	       (make-instance inator-type
+			      :image image
+			      :file-list file-list
+			      :file-format format
+			      :own-window own-window
+			      :debug debug
+			      :use-half-block (not use-full)))
 	 ;; (clear-image *image-viewer*)
 	 ;; (reset-image *image-viewer*)
 	 )
@@ -1338,13 +1424,13 @@ Key arguments:
 			      :debug debug
 			      :use-half-block (not use-full))))
 	((array (unsigned-byte 8) *) ;; presumably encoded
+	 (flexi-streams:with-input-from-sequence
+	     (str image-designator)
+	   (setf (values image format) (perserverant-read-image str)))
 	 (setf *image-viewer*
 	       (make-instance inator-type
-			      :image
-			      ;; (perserverant-read-image image-designator)
-			      (flexi-streams:with-input-from-sequence
-				  (str image-designator)
-				(perserverant-read-image str))
+			      :image image
+			      :file-format format
 			      :file-list file-list
 			      :own-window own-window
 			      :debug debug
