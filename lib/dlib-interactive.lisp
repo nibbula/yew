@@ -653,8 +653,13 @@ that wraps an ANSI terminal."
 ;;   (declare (ignore c ct))
 ;;   (safe-set-bracketed-paste nil))
 
-(defun bracketed-paste-on  () (safe-set-bracketed-paste t))
-(defun bracketed-paste-off () (safe-set-bracketed-paste nil))
+(defun bracketed-paste-on (&optional editor)
+  (declare (ignore editor))
+  (safe-set-bracketed-paste t))
+
+(defun bracketed-paste-off (&optional editor)
+  (declare (ignore editor))
+  (safe-set-bracketed-paste nil))
 
 (defun setup-bracketed-paste ()
   (add-hook rl:*entry-hook* 'bracketed-paste-on)
