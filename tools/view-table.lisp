@@ -47,7 +47,7 @@ if THING or lish:*input* NIL."
 
     (view-table table :long-titles long-titles)))
 
-(defun view-table-thing (thing &key long-titles guess-types)
+(defun view-table-thing (thing &key long-titles (guess-types t))
   "View the THING as a table."
   (with-coerced-table (table thing)
     (when guess-types
@@ -56,7 +56,7 @@ if THING or lish:*input* NIL."
     (view-table table :long-titles long-titles)))
 
 (defmethod view ((thing table))
-  (view-table thing))
+  (view-table-thing thing :guess-types t))
 
 (lish:defcommand view-table
   ((long-titles boolean :short-arg #\l :default nil
