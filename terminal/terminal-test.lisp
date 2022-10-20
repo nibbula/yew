@@ -1137,6 +1137,21 @@ drawing, which will get overwritten."
   (draw-rgb-colors)
   (prompt-next :message nil :redraw-func #'draw-rgb-colors))
 
+(defun test-random-colors ()
+  (blurp ()
+    (loop
+      :with i = 0
+      :while (and (or (not (tt-listen-for 0))
+		      (not (equalp #\q (tt-get-key))))
+		  (< i 100000))
+      :do
+      (tt-move-to (random (tt-height)) (random (tt-width)))
+      (tt-write-span `(:bg :color
+                           #(:rgb8 ,(random 255) ,(random 255) ,(random 255))
+                           #\space))
+      (center "Press Q to quit." 1)
+      (incf i))))
+
 (defun test-mouse ()
   (tt-home)
   (tt-clear)
@@ -1295,6 +1310,7 @@ drawing, which will get overwritten."
      ("Wide characters"               . test-wide-characters)
      ("Pallet colors"                 . test-pallet-colors)
      ("RGB 24-bit colors"             . test-rgb-colors)
+     ("Random Colors"                 . test-random-colors)
      ("Mouse events"                  . test-mouse)
      ("Input and Keys"                . test-input)
      ("Autowrap"		      . test-autowrap)
