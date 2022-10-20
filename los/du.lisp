@@ -70,12 +70,21 @@
     :initarg :show-all :accessor show-all :initform t :type boolean
     :documentation "True to include files in the tree.")
    (show-progress
-    :initarg :show-progress :accessor show-progress :initform t
+    :initarg :show-progress :accessor show-progress :initform nil
     :type boolean
     :documentation "True to show proress while collecting data.")
    (exclude
     :initarg :exclude :accessor exclude :initform '() :type list
     :documentation "Paths to exclude.")
+   (one-file-system
+    :initarg :one-file-system :accessor one-file-system
+    :initform nil :type boolean
+    :documentation
+    "True to skip traversing into directories on different file systems than
+the starting one.")
+   (starting-device
+    :initarg :starting-device :accessor starting-device :initform nil
+    :documentation "The device we started on.")
    (reload
     :initarg :reload :accessor reload :initform nil :type boolean
     :documentation "True to reload.")
@@ -279,20 +288,25 @@ use ‘*default-ouput-file*’."
        :while n)
     (apply #'nos:path-append path)))
 
+(defun get-path-device (path)
+  #-unix nil
+  ;; @@@ This is bad. We shouldn't have to do 2 ‘stat’ calls.
+  ;; Figure out a way to do it cleanly.
+  ;; I feel like we need a metadata object that can have
+  ;; whatever most specific things the system provides, but
+  ;; also have any attribute missing, rather than the least
+  ;; common denominator of nos:file-info.
+  #+unix (uos:file-status-device (uos:stat path)))
+
 (defmethod initialize-instance
     :after ((o du-dir-node) &rest initargs &key &allow-other-keys)
   "Initialize a du-dir-node."
   (declare (ignore initargs))
   (with-slots (name parent size) o
-    (with-slots (show-all exclude show-progress) *du*
-      (let* (path
-	     (full-name (get-path o))
-	     (dirs (handler-case
-		       (read-directory :dir full-name :full t)
-		     (opsys-error (c)
-		       (format t "~a: ~a~%" full-name c)
-		       nil)))
-	     info)
+    (with-slots (show-all exclude one-file-system starting-device show-progress)
+	*du*
+      (let* ((full-name (get-path o))
+	     dirs path info device)
 	;;(format t "full-name = ~s~%" full-name)
 	;;(read-line)
 	(labels ((get-info (path)
@@ -301,8 +315,32 @@ use ‘*default-ouput-file*’."
 			     (handler-case
 				 (get-file-info path :follow-links nil)
 			       (opsys-error (c)
-				 (princ c) (terpri)
-				 nil))))))
+				 (if show-progress
+				     (progn
+				       (tt-move-to-col 0)
+				       (tt-erase-to-eol)
+				       (tt-format "~a~%" c))
+				     (progn
+				       (princ c) (terpri)))
+				 nil)))))
+		 (get-device (path)
+		   (or device (setf device (get-path-device path))))
+		 (get-dirs (path)
+		   (setf dirs (handler-case
+				  (read-directory :dir path :full t)
+				(opsys-error (c)
+				  (if show-progress
+				      (progn
+					(tt-move-to-col 0)
+					(tt-erase-to-eol)
+					(tt-format "~a: ~a~%" path c))
+				      (format t "~a: ~a~%" path c))
+				  nil)))))
+	  (when (and one-file-system (not starting-device))
+	    (setf starting-device (get-device full-name)))
+	  (when (or (not one-file-system)
+		    (equal starting-device (get-device full-name)))
+	    (get-dirs full-name))
 	  (when dirs
 	    (loop :with new :and type
 	       :for f :in dirs :do
@@ -332,9 +370,13 @@ use ‘*default-ouput-file*’."
 			      (node-branches o))))))
 		 ((and (eq type :directory)
 		       (not (equal (dir-entry-name f) ".."))
-		       (or (not exclude)
-			   (not (equal path exclude))))
-		  ;;(format t "--> ~a ~a~%" path exclude)
+		       (or (null exclude)
+			   (not (position (path-to-absolute path)
+					  exclude :test #'equal)))
+		       (or (not one-file-system)
+			   (equal starting-device (get-device path))))
+		  ;; (format t "--> ~s ~s~%" (path-to-absolute path) exclude)
+		  ;; (force-output)
 		  (setf new (make-instance
 			     'du-dir-node
 			     :name (to-small-string (dir-entry-name f))
@@ -349,8 +391,8 @@ use ‘*default-ouput-file*’."
 			      full-name
 			      :to (1- (terminal-window-columns *terminal*))))
 	    (tt-erase-to-eol)
-	    ;;(tt-finish-output)
-	    ;;(tt-get-char)
+	    (tt-finish-output)
+	    ;; (tt-get-char)
 	    ))))))
 
 (defmethod display-node ((node du-node) level)
@@ -479,7 +521,7 @@ use ‘*default-ouput-file*’."
 		      (setf end new)
 		      (when (null list)
 			(setf list new)))))
-	       :dir dir :recursive t ::errorp nil)
+	       :dir dir :recursive t :errorp nil)
 	      list))))
     ;; (setf (data-container-data data)
     ;; 	  (sort ;; @@@ Would it be faster to build a sorted tree?
@@ -572,12 +614,14 @@ use ‘*default-ouput-file*’."
 
 (defun view-file (o)
   "View the file with “view”."
+  (tt-finish-output)
   (terminal-end *terminal*)
   (handler-case
       (view (get-path (tree-viewer::current o)))
     (simple-error (c)
       (message o "Error: ~a" c)))
-  (terminal-start *terminal*)
+  ;; (terminal-start *terminal*)
+  (terminal-reinitialize *terminal*)
   (tt-clear)
   (tt-finish-output))
 
@@ -612,13 +656,13 @@ use ‘*default-ouput-file*’."
       (setf reload t))))
 
 (defun du (&key (directories '(".")) #|follow-links tree |#
-	     (show-progress t) (all t) resume file exclude as-list
-	     non-human-size)
+	     (show-progress nil) (all t) resume file exclude as-list
+	     non-human-size one-file-system)
   "Show disk usage.
  DIRECTORIES    - A list of directories to start from, which defaults to the
                   current directory.
  TREE           - A previously constructed tree to use.
- SHOW-PROGRESS  - True to show the progress while gathering data. Defaults to T.
+ SHOW-PROGRESS  - True to show the progress while gathering data.
  ALL            - True to show sizes for all files. Otherwise it just shows
                   directory totals. This can take much more memory.
  RESUME         - True to resume from the last time it was run.
@@ -631,11 +675,17 @@ use ‘*default-ouput-file*’."
 	  (make-instance 'du-app
 	   :show-progress show-progress
 	   :show-all all
-	   :exclude exclude
+	   :exclude (mapcar #'path-to-absolute
+			    (if (or (null exclude) (listp exclude))
+				exclude
+				(list exclude)))
+	   :one-file-system one-file-system
 	   :data (make-instance (if as-list 'table-container 'tree-container))
 	   :directories directories
 	   :size-format (if non-human-size :bytes :human))))
-    ;;(format t "*exclude* = ~s~%" *exclude*)
+    ;; (format t "exclude = ~s~%" (exclude *du*))
+    ;; (format t "show-progress = ~s~%" (show-progress *du*))
+    ;; (force-output)
     (with-slots (data viewer show-progress reload) *du*
       (cond
 	(resume
@@ -683,12 +733,15 @@ use ‘*default-ouput-file*’."
 
 #+lish
 (lish:defcommand du
-  ((show-progress boolean :short-arg #\p :default t
+  ((show-progress boolean :short-arg #\p :default nil
     :help "True to show progress while gathering data.")
    (all boolean :short-arg #\a :default t
     :help "True to include files as well as directories in the output.")
-   (exclude pathname :short-arg #\x #| :repeating t |#
-    :help "Exclude the sub-tree starting at this directory.")
+   (exclude case-preserving-object :short-arg #\e #| :repeating t |#
+    :help "Exclude the sub-tree starting at these directories. Can be a
+directory or a list of directories.")
+   (one-file-system boolean :short-arg #\x
+    :help "Don't count directories on different file systems.")
    (resume boolean :short-arg #\r
     :help "True to resume viewing the last tree.")
    (file pathname :short-arg #\f
@@ -702,6 +755,12 @@ use ‘*default-ouput-file*’."
   "Show disk usage."
   (when (not directories)
     (setf (getf keys :directories) '(".")))
+  (typecase exclude
+    (null)
+    (symbol
+     (setf (getf keys :exclude) (string exclude)))
+    (list
+     (setf (getf keys :exclude) (mapcar #'string exclude))))
   (setf lish:*output* (apply #'du keys)))
 
 ;; EOF
