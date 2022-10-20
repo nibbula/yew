@@ -63,7 +63,10 @@ modern xterm style functionality.")
     (:double-underline . 24)))		; same as not underline
 
 (defparameter *colors*
-  #(:black :red :green :yellow :blue :magenta :cyan :white nil :default))
+  #(:black :red :green :yellow :blue :magenta :cyan :white nil :default)
+  "ANSI colors in numeric order for escape sequences, with the addtion of NIL,
+which means no change, and :default, which means whatever is the terminal's
+default.")
 
 (defparameter *key-tag*
   '((#\A . :up) 			; Arrow keys
