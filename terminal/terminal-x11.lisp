@@ -1487,7 +1487,8 @@ to the grid. It must be on a single line and have no motion characters."
      :do
      (when (and
 	    (eq (pixel-format-class        f) (visual-info-class        v))
-	    (=  (pixel-format-bits-per-rgb f) (visual-info-bits-per-rgb v))
+	    ;; (=  (pixel-format-bits-per-rgb f) (visual-info-bits-per-rgb v))
+	    (>= (visual-info-bits-per-rgb v) (pixel-format-bits-per-rgb f))
 	    (=  (pixel-format-red-mask     f) (visual-info-red-mask     v))
 	    (=  (pixel-format-green-mask   f) (visual-info-green-mask   v))
 	    (=  (pixel-format-blue-mask    f) (visual-info-blue-mask    v)))
