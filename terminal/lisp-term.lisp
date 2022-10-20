@@ -92,6 +92,28 @@ string arguments."
 		:do (foreign-free (mem-aref argv :pointer i))))))
     child-pid))
 
+;; @@@ consider merging with one terminal-x11 and putting in terminal-utils
+(defun start-in-terminal (new-term func)
+  (let* ((*terminal* new-term)
+	 (*standard-output* new-term)
+	 (*standard-input* new-term)
+	 (*error-output* new-term)
+	 (*query-io* new-term)
+	 ;; (*trace-output* new-term)
+	 ;; (*debug-io* *trace-output*) ;; @@@
+	 (*terminal-io* new-term)
+	 ;;(deblarg::*dont-use-a-new-term* t)
+	 ;; (terminal:*default-terminal-type* :x11)
+	 )
+    (funcall func)))
+
+(defun call-program (fd device program)
+  (let ((inner (make-instance 'terminal-ansi:terminal-ansi
+			      :file-descriptor fd
+			      :device-name device)))
+    (with-new-terminal (:crunch *terminal* :wrapped-terminal inner)
+      (start-in-terminal *terminal* program))))
+
 (defun push-it (stream bytes)
   "The terminal pushback callback."
   (declare (ignore stream))
@@ -253,11 +275,23 @@ string arguments."
 	;;(break)
 
 	(dbug "before run~%")
-	(let ((all-args (lish::shell-words-to-list
-			 (lish::shell-expr-words
-			  (lish:shell-read program)))))
-	  (setf pid (run-the-program slave (car all-args) (cdr all-args))
-		(term-pid *term*) pid))
+	(typecase program
+	  (string
+	   ;; Break it into words with the shell and run it as an executable.
+	   (let ((all-args (lish::shell-words-to-list
+			    (lish::shell-expr-words
+			     (lish:shell-read program)))))
+	     (setf pid (run-the-program slave (car all-args) (cdr all-args))
+		   (term-pid *term*) pid)))
+	  (symbol
+	   (unless (fboundp program)
+	     (error "Program symbol ~s isn't bound to function." program))
+	   (call-program slave (uos:ttyname slave) program))
+	  (function
+	   (call-program slave (uos:ttyname slave) program))
+	  (t
+	   (error "I don't know how to run a ‘program’ of type ~s."
+		  (type-of program))))
 	(dbug "after run~%")
 
 	(with-foreign-object (status-ptr :int 1)
