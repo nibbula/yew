@@ -31,7 +31,14 @@
 (defun play-it (file)
   (loop :for p :in *audio-players* :do
     (when (nos:command-pathname (player-command p))
-      (apply #'!= `(,(player-command p) ,(player-args p) ,file))
+      ;; (apply #'!= `(,(player-command p) ,(player-args p) ,file))
+      (unless (unix-truthy (apply #'!= `(,(player-command p) ,(player-args p)
+					 ,file)))
+	;; Or maybe we should just signal an error?
+	(format t "~&It seems like the player got an error. Sorry.~%~
+		   [Press Enter to continue]~%")
+	(force-output)
+	(read-line))
       (return-from play-it nil)))
   (error "I'm very sorry, but I can't find a player. Check *audio-players*."))
 
