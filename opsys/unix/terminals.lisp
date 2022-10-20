@@ -1819,7 +1819,7 @@ terminal. "
   )
 |#
 
-;; @@@ linux only?
+#+linux ;; @@@ linux only?
 (defconstant +TIOCGPTPEER+ (_IO #\T #x41)
   "“Safely” enslave the slave.")
 
@@ -1835,16 +1835,26 @@ from the foreign ‘termios’ struct and the foreign ‘winsize’ struct."
 	(syscall (grantpt master))
 	(syscall (unlockpt master))
 
-	;; is TIOCGPTPEER linux only?
-	;; (setf slave (posix-ioctl master +TIOCGPTPEER+ flags)
-	(setf slave (foreign-funcall "ioctl" :int master :int +TIOCGPTPEER+
-				     :int flags :int)
-	      name (ptsname master))
-	(when (eql slave -1)
-	  (setf slave (syscall (posix-open name flags 0))))
+	(setf name (ptsname master))
+
+	;; @@@ is TIOCGPTPEER linux only?
+	#+linux
+	(progn
+	  ;; (setf slave (posix-ioctl master +TIOCGPTPEER+ flags)
+	  (setf slave (foreign-funcall "ioctl" :int master :int +TIOCGPTPEER+
+					       :int flags :int))
+	  (when (eql slave -1)
+	    (setf slave (syscall (posix-open name flags 0)))))
+	#-linux
+	(setf slave (syscall (posix-open name flags 0)))
+
 	(when termios
 	  (tcsetattr slave +TCSAFLUSH+ termios))
 	(when winsize
+	  #+darwin ;; apparently +TIOCSWINSZ+ is bigger than an int
+	  (foreign-funcall "ioctl" :int slave :unsigned-long +TIOCSWINSZ+
+			   :pointer winsize :int)
+	  #-darwin
 	  (posix-ioctl slave +TIOCSWINSZ+ winsize)))
       (unless (and master slave name)
 	(when (and master (and master (plusp master)))
