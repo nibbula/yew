@@ -313,49 +313,36 @@
   "Read a line from the terminal, with line editing and completion.
 Return the string read and the line-editor instance created.
 Keyword arguments: 
-  EOF-ERROR-P (T)                 
-    True to signal an error on end of file.
-  EOF-VALUE
-    Value to return on end of file. 
-  QUIT-VALUE
-    Value to return if the user quit.
-  PROMPT (*default-prompt*)
-    String to prompt with.
-  OUTPUT-PROMPT-FUNC
-    Function to print out a prompt. Called with the LINE-EDITOR instance and a
-    prompt string.
-  RIGHT-PROMPT
-    String to output on the right side of the input line.
-  COMPLETION-FUNC (#'complete-symbol)
-    Completion function to use. See the completion package for details.
-  STRING
-    A string to set as the initial contents of the buffer.
-  INPUT-CALLBACK
-    A function to call on input. Called with the editor object and the input.
-  OUTPUT-CALLBACK
-    A function to call after the display is updated, but before input.
-    Called with the editor object.
-  EDITOR
-    LINE-EDITOR instance to use.
-  LOCAL-KEYMAP
-    A LOCAL-KEYMAP to use. For when you want to add your own customized key
-    bindings.
-  KEYMAP
-    A KEYMAP to use. If you want to completely replace all the key bindings
-    by your own. This defaults to a list of (LOCAL-KEYMAP *NORMAL-KEYMAP*).
-  TERMINAL
-    An already started terminal to use.
-  TERMINAL-NAME (*terminal-name*)
-    Name of a terminal device to use. If NIL 
-  ACCEPT-DOES-NEWLINE (t)
-    True if accept-line outputs a newline.
-  PARTIAL-LINE-INDICATOR
-    A character to output if starting on a partial line.
-  RE-EDIT
-    True to re-edit the previous line as if accept was a newline.
-  HISORY-CONTEXT
-    Symbol or string which defines the context for keeping history.
-"			    ; There must be a better way to format docstrings.
+  eof-error-p          True to signal an error on end of file. [t]
+  eof-value            Value to return on end of file. 
+  quit-value           Value to return if the user quit.
+  prompt                String to prompt with. [*default-prompt*]
+  output-prompt-func   Function to print out a prompt. Called with the
+                       ‘line-editor’ instance and a prompt string.
+  right-prompt         String to output on the right side of the input line.
+  completion-func      Completion function to use. See the completion package
+                       for details. [#'complete-symbol]
+  string               A string to set as the initial contents of the buffer.
+  input-callback       A function to call on input. Called with the editor
+                       object and the input.
+  output-callback      A function to call after the display is updated, but
+                       before input. Called with the editor object.
+  editor               ‘line-editor’ instance to use.
+  local-keymap         A ‘local-keymap’ to use. For when you want to add your
+                       own customized key bindings.
+  keymap               A ‘keymap’ to use. If you want to completely replace all
+                       the key bindings by your own. This defaults to a list of
+                       [(local-keymap *normal-keymap*)].
+  terminal             An already started terminal to use.
+  terminal-name        Name of a terminal device to use. [*terminal-name*]
+  accept-does-newline  True if accept-line outputs a newline. [t]
+  partial-line-indicator
+                       A character to output if starting on a partial line.
+  re-edit              True to re-edit the previous line as if accept was a
+                       newline.
+  hisory-context       Symbol or string which defines the context for keeping
+                       history.
+" ; There must be a better way to format docstrings.
   (declare (ignore recursive-p))
   (history-init history-context)
 
@@ -426,7 +413,7 @@ Keyword arguments:
        ;; (history-add nil)		; @@@@@@@ This is bad.
        ;; (history-next)
 
-       (run-hooks *entry-hook*)
+       (run-hooks *entry-hook* e)
 
        ;; Set the prompt
        (setf (prompt-string e) prompt
@@ -522,7 +509,7 @@ Keyword arguments:
 			  (set-completion-count e 0))
 			(when exit-flag (setf result quit-value))
 			;; @@@ perhaps this should be done by a hook?
-			(run-hooks *post-command-hook*)
+			(run-hooks *post-command-hook* e)
 			(when (not quit-flag)
 			  (highlight-matching-parentheses e))))
 		  (setf last-command command)
@@ -547,7 +534,7 @@ Keyword arguments:
 	      ;; (write-char #\newline)
 	      )
 	    (tt-finish-output)
-	    (run-hooks *exit-hook*)
+	    (run-hooks *exit-hook* e)
 	    (terminal-end terminal terminal-state)
 	    ;; Make sure the NIL history item is gone.
 	    (history-line-close)))
