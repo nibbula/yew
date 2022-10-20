@@ -476,8 +476,8 @@ Otherwise the region is deactivated every command loop.")
   ;; Make a default line sized buffer if one wasn't given.
   (when (or (not (slot-boundp e 'buf)) (not (slot-value e 'buf)))
     (setf (slot-value e 'buf)
-	  (make-stretchy-vector *initial-line-size* :element-type 'fatchar)
-	  (slot-value e 'buf-str) (make-fat-string :string (slot-value e 'buf))))
+	  (make-stretchy-vector *initial-line-size* :element-type 'fatchar)))
+  (setf (slot-value e 'buf-str) (make-fat-string :string (slot-value e 'buf)))
 
   ;; Set the current dynamic var.
   (setf *line-editor* e))
