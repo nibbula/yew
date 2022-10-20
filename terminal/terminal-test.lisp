@@ -310,7 +310,7 @@
           (tt-write-char #\space)
           (tt-set-rendition (make-fatchar :attrs (push a attrs) :fg fg))
           (tt-format "~a" (attr-name a)))
-        (loop :with a
+        (loop #| :with a |#
           :while (pop attrs) :do
           (tt-write-char #\space)
           (tt-set-rendition (make-fatchar :attrs attrs :fg fg))
@@ -1436,7 +1436,8 @@ same as the current and NO-NEW is true."
 	  :do
 	     (asdf:load-system :terminal-test)
 	  :while (test-scrolling-region)))
-      (format t "~%All done.~%"))))
+      ;; (format t "~%All done.~%")
+      )))
 
 #+lish
 (lish:defcommand terminal-test
