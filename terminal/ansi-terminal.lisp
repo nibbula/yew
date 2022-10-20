@@ -1674,7 +1674,7 @@ do
 ansi-stream. ‘thing’ is a byte that was read."
   (let ((*stream* stream))
     (with-slots ((tty terminal) state control-type left-charset right-charset
-		 charsets data 8-bit-controls) stream
+		 charsets data 8-bit-controls device-command last-char) stream
     ;; (format *debug-io* "state ~s ~x ~a~%" state thing
     ;; 	    (char-name (code-char thing)))
     (dbug "state ~s #x~x ~a~%" state thing
@@ -1929,7 +1929,7 @@ ansi-stream. ‘thing’ is a byte that was read."
 			  (subseq seq (or start 0)))))
       (list
        (loop
-	 :with i = 0 :and l = seq :and c
+	 :with i = 0 :and l = seq #|:and c |#
 	 :while (and l (< i end))
 	 :do
 	    ;; (when (and (>= i start)
