@@ -644,7 +644,7 @@ know."
     ;; (format t "~s~%" args)
     (setf new-term (apply #'make-instance 'terminal-x11 args))
     (when (not function)
-      (setf function (_ (symbol-call :lish :lish))))
+      (setf function (_ (symbol-call :lish :lish :terminal _))))
     (when use-crunch
       (setf #| x-term new-term |#
 	    new-term
