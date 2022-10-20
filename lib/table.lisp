@@ -645,6 +645,22 @@ of one element lists, so we can make a 1 column table."
 	    (table-add-column tt c))))
     tt))
 
+;; @@@ Is there any downside to this? You can always make a more specific
+;; method, if you have a more interesting table object.
+
+(defmethod make-table-from ((object standard-object)
+			    &key (column-names '("Slot" "Value")) columns type)
+  "Make a table from an structure."
+  (when (or (> (length column-names) 2) (> (length columns) 2))
+    (error "Standard objects can only have 2 column names."))
+  (let ((tt (make-instance (or type 'mem-table) :data object)))
+    (cond
+      (columns (setf (table-columns tt) (make-columns columns)))
+      (column-names
+       (loop :for c :in column-names :do
+	    (table-add-column tt c))))
+    tt))
+
 ;; We have two kinds of generic table joins, since the specialized method of
 ;; joining a sequence of tables is very likely more efficient than performing a
 ;; series of joins of two tables, but the latter allows us to do joins on
