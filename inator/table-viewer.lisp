@@ -20,6 +20,7 @@
    #:set-column-hidden-state
    #:view-cell
    #:current-cell
+   #:cell-box
    #:view-table
    ))
 (in-package :table-viewer)
@@ -393,6 +394,19 @@ This can be quicker for large tables.")
 	(tt-move-to (+ y (1+ output-y)) x))
       (incf output-y))))
 
+(defvar *cell-box-recording* nil
+  "Cell box coordinates to record.")
+
+(defun record-cell-box (row col x y width height)
+  "Record the box for cell at ‘row’ and ‘col’, if it's asked to be recorded."
+  (when *cell-box-recording*
+    (dbugf :qq "cell-box [~s ~s] [~s ~s ~s ~s] ~s~%" row col x y width height
+	   *cell-box-recording*)
+    (let ((cell (assoc (cons row col) *cell-box-recording* :test #'equal)))
+      (when cell
+	(dbugf :qq "FOUND IT ~s~%" cell)
+	(setf (cdr cell) `((,x ,y ,width ,height)))))))
+
 (defmethod table-output-cell ((renderer viewer-table-renderer)
 			      table cell width justification row column)
   (declare (ignore width justification))
@@ -413,6 +427,8 @@ This can be quicker for large tables.")
 				   row column
 				   (column-format
 				    (oelt (table-columns table) column)))))
+	;; @@@ Bogusly pretending the height is 1
+	(record-cell-box row column output-x output-y clipped-width 1)
 	(if hilite
 	    (progn
 	      ;; Save the cursor y position
@@ -542,6 +558,19 @@ This can be quicker for large tables.")
 	 (incf output-y)
 	 (incf row-num))
        sub-table))))
+
+(defgeneric cell-box (table-viewer row col)
+  (:documentation
+   "Return the coordinates and size of the cell at ‘row’ and ‘col’ in
+‘table-viewer’, as the values ‘x’ ‘y’ ‘width’ ‘height’."))
+
+(defmethod cell-box ((o table-viewer) row col)
+  (with-slots (table renderer long-titles) o
+    (let ((*cell-box-recording* `(((,row . ,col) ()))))
+      (with-terminal-output-to-string (:null)
+	(tt-home)
+	(output-table table renderer *terminal* :long-titles long-titles))
+      (values-list (cadar *cell-box-recording*)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Inator methods
@@ -987,6 +1016,12 @@ at which it's found or NIL if it's not found."
   ;;   (rl:
   (declare (ignore o))
   )
+
+(defmethod cell-at (o position)
+  (with-slots (table) o
+    (oaref table
+	   (table-point-row position)
+	   (table-point-col position))))
 
 (defgeneric current-cell (viewer)
   (:documentation "Return the value in the current cell of VIEWER."))
