@@ -636,7 +636,18 @@
    #:getch
    #:with-nonblocking-io
    #:terminal-read-timeout
+
+   ;; Pseudo terminals
+   #:grantpt
+   #:unlockpt
+   #:posix-openpt
+   #:ptsname-r
+   #:ptsname
+   #:getpt
    #:openpty
+   #:open-pseudo-terminal
+   #:login-tty
+   #:forkpty
 
    ;; old fashioned tty ioctls
    #:winsize
@@ -647,6 +658,7 @@
    #:+TIOCSTI+
    #:+TIOCGWINSZ+
    #:+TIOCSWINSZ+
+   #:+TIOCGPTPEER+
 
    ;; Portable interafce
    #:file-handle-terminal-p

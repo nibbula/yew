@@ -1763,9 +1763,12 @@ FLAGS is an bit-wise or of:
   "Open a pseudo-terminal master and return the file descriptor."
   (syscall (posix-openpt (logior +O_RDWR+ +O_NOCTTY+))))
 
-;; These do the whole rigamarole for you:
-;; @@@ but do they really require -lutil ?
+;; These do the whole rigamarole for you, but we shouldn't use it because it can
+;; require -lutil.
+;;
+;; So we have to roll our own openpty and forkpty.
 
+#|
 (defcfun ("openpty" real-openpty) :int
   (master (:pointer :int))
   (slave (:pointer :int))
@@ -1773,7 +1776,6 @@ FLAGS is an bit-wise or of:
   (termios-pointer (:pointer (:struct termios)))
   (winsize-pointer (:pointer (:struct winsize))))
 
-#|
 (defun openpty ()
   "Create a pseudo-terminal with theand return the master and slave"
   (let ((master (syscall (getpt))))
@@ -1781,7 +1783,6 @@ FLAGS is an bit-wise or of:
     (syscall (unlockpt master))
     ;; @@@@@
   ))
-|#
 
 (defun open-pseudo-terminal (&key terminal-mode window-size)
   "Open a pseudo-terminal an return the master and slave file descriptors.
@@ -1803,7 +1804,6 @@ the ‘window-size’ struct."
     (values (mem-ref master :int)
 	    (mem-ref slave :int))))
 
-#-cmucl
 (defcfun ("forkpty" real-forkpty) :int
   "Create a process and establish the slave pseudo-terminal as it's controlling
 terminal."
@@ -1812,19 +1812,70 @@ terminal."
   (termios-pointer (:pointer (:struct termios)))
   (winsize-pointer (:pointer (:struct winsize))))
 
-#-cmucl
 (defun forkpty (&key termios winsize)
   "Create a process and establish the slave pseudo-terminal as it's controlling
 terminal. "
   (declare (ignore termios winsize))
   )
+|#
 
-;; @@@ or is this the thing that requires -lutil ?
-;; (defcfun ("login_tty" login-tty) :int
-;;   "Prepare a for a login on the terminal FD. Creates a new session, making FD be
-;; the controlling terminal, setting it to be the input, output, and error, and
-;; then closes it."
-;;   (fd :int))
+;; @@@ linux only?
+(defconstant +TIOCGPTPEER+ (_IO #\T #x41)
+  "“Safely” enslave the slave.")
+
+(defun openpty (&key termios winsize)
+  "Open a pseudo-terminal an return three values: the master and slave file
+descriptors, and the terminal device name. If given, set the new slave terminal
+from the foreign ‘termios’ struct and the foreign ‘winsize’ struct."
+  (let ((flags (logior +O_RDWR+ +O_NOCTTY+))
+	master slave name)
+    (unwind-protect
+      (progn
+	(setf master (getpt))
+	(syscall (grantpt master))
+	(syscall (unlockpt master))
+
+	;; is TIOCGPTPEER linux only?
+	;; (setf slave (posix-ioctl master +TIOCGPTPEER+ flags)
+	(setf slave (foreign-funcall "ioctl" :int master :int +TIOCGPTPEER+
+				     :int flags :int)
+	      name (ptsname master))
+	(when (eql slave -1)
+	  (setf slave (syscall (posix-open name flags 0))))
+	(when termios
+	  (tcsetattr slave +TCSAFLUSH+ termios))
+	(when winsize
+	  (posix-ioctl slave +TIOCSWINSZ+ winsize)))
+      (unless (and master slave name)
+	(when (and master (and master (plusp master)))
+	  (posix-close master))
+	(when (and slave (plusp slave))
+	  (posix-close slave))))
+    (values master slave name)))
+
+(defun open-pseudo-terminal (&key terminal-mode window-size)
+  "Open a pseudo-terminal an return the master and slave file descriptors.
+If given, set the new slave terminal from the ‘terminal-mode’ struct and
+the ‘window-size’ struct."
+  (with-foreign-objects ((c-winsize '(:struct winsize))
+			 (c-termios '(:struct termios)))
+    (when window-size
+      (window-size-to-foreign window-size c-winsize))
+
+    (when terminal-mode
+      (convert-terminal-mode terminal-mode c-termios))
+
+    (openpty :termios (when terminal-mode c-termios)
+	     :winsize (when window-size c-winsize))))
+
+;; @@@ This might also require -lutil, so make our own.
+#|
+(defcfun ("login_tty" login-tty) :int
+  "Prepare a for a login on the terminal FD. Creates a new session, making FD be
+the controlling terminal, setting it to be the input, output, and error, and
+then closes it."
+  (fd :int))
+|#
 
 (defun login-tty (fd)
   "Prepare for a login on the terminal FD. Creates a new session, making FD be
@@ -1839,5 +1890,24 @@ then closes it."
     (map 'nil #'try-to-dup-to '(0 1 2))
     (when (not (member fd '(0 1 2)))
       (posix-close fd))))
+
+(defun forkpty (&key termios winsize)
+  "Create a process and establish the slave pseudo-terminal as it's controlling
+terminal. "
+  (let (master slave name pid)
+    (multiple-value-setq (master slave name)
+      (openpty :termios termios :winsize winsize))
+    (setf pid (fork)) ;; @@@ or should we just call posix-fork ?
+    (case pid
+      (-1 ;; error
+       (posix-close master)
+       (posix-close slave))
+      (0 ;; child
+       (posix-close master)
+       (when (= -1 (login-tty slave))
+	 (_exit 1))) ;; this is really so stupid
+      (otherwise
+       (posix-close slave)))
+    (values master name)))
 
 ;; End
