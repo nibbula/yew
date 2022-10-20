@@ -122,6 +122,7 @@
    #:with-terminal-output-to-string
    #:with-style
    #:with-immediate
+   #:without-immediate
    )
   (:documentation
    "The TERMINAL package provides a generic interface to terminals.
@@ -1026,7 +1027,8 @@ a string and return the string."
   (with-names (stream terminal-state result)
     `(with-output-to-string (,stream)
        (when (not (find-terminal-class-for-type ,type))
-	 (error "Provide a type or set *DEFAULT-TERMINAL-TYPE*."))
+	 (error "I couldn't find a terminal type ~s. Provide a type or set ~
+                 *DEFAULT-TERMINAL-TYPE*." ,type))
        (let* ((*terminal* (make-terminal-stream
 			  ,stream
 			  (find-terminal-class-for-type ,type)
@@ -1101,6 +1103,20 @@ afterwards."
 		(setf (terminal-input-mode ,ztty) :char))
 	      ,@body)
 	 (when (not (eq ,mode :char))
+	   (setf (terminal-input-mode ,ztty) ,mode))))))
+
+(defmacro without-immediate ((&optional tty) &body body)
+  "Evaluate BODY with the terminal input mode set to :LINE, and restore it
+afterwards."
+  (with-names (mode ztty)
+    `(let* ((,ztty (or ,tty *terminal*))
+	    (,mode (terminal-input-mode ,ztty)))
+       (unwind-protect
+	    (progn
+	      (when (not (eq ,mode :line))
+		(setf (terminal-input-mode ,ztty) :line))
+	      ,@body)
+	 (when (not (eq ,mode :line))
 	   (setf (terminal-input-mode ,ztty) ,mode))))))
 
 ;; EOF
