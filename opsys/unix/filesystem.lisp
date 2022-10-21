@@ -3211,7 +3211,8 @@ objects should be stored."
   (f_fstypename	 :char :count #.+MFSNAMELEN+)
   (f_mntonname   :char :count #.+MNAMELEN+)
   (f_mntfromname :char :count #.+MNAMELEN+)
-  (f_mntfromspec :char :count #.+MNAMELEN+))
+  (f_mntfromspec :char :count #.+MNAMELEN+)
+  (__align       :char :count 160)) ;; from the mount_info union
 
 #+(or freebsd openbsd)
 (defstruct statfs
@@ -3286,6 +3287,7 @@ objects should be stored."
 		     :asyncreads  f_asyncreads
 		     :namemax     f_namemax
 		     :owner       f_owner
+		     :ctime       #+openbsd f_ctime #-openbsd nil
 		     :fsid	  #+(or freebsd openbsd)
 		                  (vector (mem-aref f_fsid :int32 0)
 					  (mem-aref f_fsid :int32 1))
