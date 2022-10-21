@@ -1746,13 +1746,14 @@ FLAGS is an bit-wise or of:
   +O_NOCTTY+  Don't make this the session's controlling terminal."
   (flags :int))
 
-#-freebsd
+#-(or freebsd openbsd)
 (defcfun ("ptsname_r" ptsname-r) :int
   "Return the name of the pseduo-terminal slave corresponding to the master FD."
   (fd :int) (buf :string) (buflen size-t))
 
-;; We really don't even need to provide the losing C ptsname.
-#-freebsd
+;; If we have ptsname_r then we really don't even need to provide the losing
+;; C ptsname.
+#-(or freebsd openbsd)
 (defun ptsname (fd)
   "Return the name of the slave pseduo-terminal device for the master FD."
   (with-foreign-object (buf :char (get-path-max))
@@ -1760,7 +1761,7 @@ FLAGS is an bit-wise or of:
     (foreign-string-to-lisp buf)))
 
 ;; FreeBSD only has ptsname not ptsname_r
-#+freebsd
+#+(or freebsd openbsd)
 (defcfun ptsname :string
   "Return the name of the slave pseduo-terminal device for the master FD."
   (fd :int))
@@ -1858,10 +1859,11 @@ from the foreign ‘termios’ struct and the foreign ‘winsize’ struct."
 	(when termios
 	  (tcsetattr slave +TCSAFLUSH+ termios))
 	(when winsize
-	  #+(or darwin freebsd) ;; apparently +TIOCSWINSZ+ is bigger than an int
+	  #+(or darwin freebsd openbsd)
+	  ;; apparently +TIOCSWINSZ+ is bigger than an int
 	  (foreign-funcall "ioctl" :int slave :unsigned-long +TIOCSWINSZ+
 			   :pointer winsize :int)
-	  #-(or darwin freebsd)
+	  #-(or darwin freebsd openbsd)
 	  (posix-ioctl slave +TIOCSWINSZ+ winsize)))
       (unless (and master slave name)
 	(when (and master (and master (plusp master)))
