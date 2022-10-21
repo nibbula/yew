@@ -95,6 +95,7 @@
     (#\M			. mark-region)
     (#\u			. unmark-item)
     (#\U			. unmark-region)
+    (#\V			. view-raw-command)
     (,(ctrl #\L)		. refresh)
     (#\x			. execute)
     (,(char-util:meta-char #\x)	. shell-command)
@@ -187,7 +188,7 @@
       (let ((row (oelt table (table-point-row table-viewer::current-position))))
 	(setf (mark-cell row) value)))))
 
-(defmethod view-cell ((o directory-editor))
+(defun view-thing (o &key raw)
   (with-slots (directory last) o
     (with-simple-restart (continue "Continue with the directory editor.")
       (handler-bind
@@ -217,9 +218,14 @@
 	     (redraw o))
 	    (t
 	     ;; Otherwise, make a new one.
-	     (view:view full)
+	     (if raw
+		 (view:view-raw full)
+		 (view:view full))
 	     (tt-clear)
 	     (redraw o))))))))
+
+(defmethod view-cell ((o directory-editor))
+  (view-thing o))
 
 (defun quit-all (o)
   "Quit all recursive directory editors."
@@ -578,6 +584,9 @@ or ‘to’ exists."
     (tt-format "~&[Press Enter]")
     (tt-get-key))
   (refresh o))
+
+(defun view-raw-command (o)
+  (view-thing o :raw t))
 
 (defun update-items (o)
   (with-accessors ((directory dired-directory)
