@@ -21,14 +21,14 @@
   (pw_passwd	:string)
   (pw_uid	uid-t)
   (pw_gid	gid-t)
-  #+darwin (pw_change time-t)
-  #+darwin (pw_class  :string)
+  #+(or darwin openbsd) (pw_change time-t)
+  #+(or darwin openbsd) (pw_class  :string)
   #+sunos (pw_age :string)
   #+sunos (pw_comment :string)
   (pw_gecos	:string)
   (pw_dir	:string)
   (pw_shell	:string)
-  #+darwin (pw_expire time-t)
+  #+(or darwin openbsd) (pw_expire time-t)
   )
 
 (defstruct passwd
@@ -55,28 +55,28 @@ Return nil for foreign null pointer."
 			    pw_passwd
 			    pw_uid
 			    pw_gid
-			    #+darwin pw_change
-			    #+darwin pw_class
+			    #+(or darwin openbsd) pw_change
+			    #+(or darwin openbsd) pw_class
 			    #+sunos pw_age
 			    #+sunos pw_comment
 			    pw_gecos
 			    pw_dir
 			    pw_shell
-			    #+darwin pw_expire
+			    #+(or darwin openbsd) pw_expire
 			    ) pw (:struct foreign-passwd))
 	(make-passwd
 	 :name pw_name
 	 :passwd pw_passwd
 	 :uid pw_uid
 	 :gid pw_gid
-	 #+darwin :pw-change #+darwin pw_change
-	 #+darwin :pw-class #+darwin pw_class
+	 #+(or darwin openbsd) :pw-change #+(or darwin openbsd) pw_change
+	 #+(or darwin openbsd) :pw-class #+(or darwin openbsd) pw_class
 	 #+sunos :pw-age #+sunos pw_age
 	 #+sunos :pw-comment #+sunos pw_comment
 	 :gecos pw_gecos
 	 :dir pw_dir
 	 :shell pw_shell
-	 #+darwin :pw-expire #+darwin pw_expire
+	 #+(or darwin openbsd) :pw-expire #+(or darwin openbsd) pw_expire
 	 ))))
 
 (defun convert-user (pw)
@@ -88,14 +88,14 @@ Return nil for foreign null pointer."
 			    pw_passwd
 			    pw_uid
 			    pw_gid
-			    #+darwin pw_change
-			    #+darwin pw_class
+			    #+(or darwin openbsd) pw_change
+			    #+(or darwin openbsd) pw_class
 			    #+sunos pw_age
 			    #+sunos pw_comment
 			    pw_gecos
 			    pw_dir
 			    pw_shell
-			    #+darwin pw_expire
+			    #+(or darwin openbsd) pw_expire
 			    ) pw (:struct foreign-passwd))
 	(make-user-info
 	 :name pw_name
@@ -646,7 +646,7 @@ name, not the contents. Return NIL if we don't have a guess."
 
 ;; This is usually done only when you "log in", like with the window system or
 ;; like in the ssh deamon. See getlogin.
-#+darwin (defcfun setlogin :int (name :string))
+#+(or darwin openbsd) (defcfun setlogin :int (name :string))
 
 (defun users-logged-in ()
   "Return a list of names of logged in users."
