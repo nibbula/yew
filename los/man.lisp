@@ -263,7 +263,8 @@ Return a list of (<entry> <section>), or just ENTRY if something goes wrong."
 	 stream)
     #-(or linux freebsd openbsd) (declare (ignorable cols))
 
-    (when (and table-entry (listp table-entry) (> (length table-entry) 1))
+    (when (and table-entry (listp table-entry) (> (length table-entry) 1)
+	       (not section))
       (when (consp (setf entry (ask-which entry table-entry)))
 	(psetf entry (first entry)
 	       section (second entry))))
