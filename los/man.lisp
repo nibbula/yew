@@ -252,7 +252,7 @@ Return a list of (<entry> <section>), or just ENTRY if something goes wrong."
   (when (and *input* (not entry))
     (setf entry *input*))
 
-  (let* ((base (s+ *prog* " " #-netbsd "-P cat "))
+  (let* ((base (s+ *prog* " " #-(or netbsd openbsd) "-P cat "))
 	 (cmd (make-array (list (length base))
 			  :element-type 'character
 			  :adjustable t
@@ -261,7 +261,7 @@ Return a list of (<entry> <section>), or just ENTRY if something goes wrong."
 	 (table-entry (when (and entry (not apropos))
 			(gethash entry *man-entries-table*)))
 	 stream)
-    #-(or linux freebsd) (declare (ignorable cols))
+    #-(or linux freebsd openbsd) (declare (ignorable cols))
 
     (when (and table-entry (listp table-entry) (> (length table-entry) 1))
       (when (consp (setf entry (ask-which entry table-entry)))
@@ -281,6 +281,7 @@ Return a list of (<entry> <section>), or just ENTRY if something goes wrong."
       ;;#+linux (princ "-Tutf8 " str) ; force fancy text
       (when apropos (format str "-k ~a " apropos))
       (when all     (format str "-a "))
+      #+openbsd (format str "-O width=~a " cols)
       (when section (format str "~a " section))
       (when path    (format str "-M ~a " path)))
     (unwind-protect
@@ -299,7 +300,7 @@ Return a list of (<entry> <section>), or just ENTRY if something goes wrong."
    :help "True to view the output in the pager.")
    (crap manual-entry :help "Name of the manual entry."))
   "Very crap"
-  (let* (#+(or linux freebsd)
+  (let* (#+(or linux freebsd openbsd)
 	   (cols (princ-to-string (with-grout () (grout-width))))
 	 stream)
     ;;(setf (nos:environment-variable "COLUMNS") cols)
@@ -307,9 +308,11 @@ Return a list of (<entry> <section>), or just ENTRY if something goes wrong."
     (unwind-protect
 	 (if (or (out-pipe-p) (not use-pager))
 	     ;; (! "/usr/bin/man -P cat " (or crap ""))
-	     (pipe (s+ *prog* " " (or crap "")) "cat")
+	     (pipe (s+ *prog* " " #+openbsd (s+ "-O width=" cols " ") (or crap "")) "cat")
 	     (progn
-	       (setf stream (!! *prog* " -P cat " (or crap "")))
+	       (setf stream (!! *prog* #-openbsd " -P cat "
+				       #+openbsd (s+ " -O width=" cols " ")
+				(or crap "")))
 	       (pager:pager stream)))
       (when stream
 	(close stream)))))
