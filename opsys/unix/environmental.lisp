@@ -219,7 +219,10 @@ NIL, unset the VAR, using unsetenv."
 ;; to determine configuration, such as kernel version, etc.
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  #-linux (config-feature :os-t-has-sysctl))
+  #-linux
+  (progn
+    (config-feature :os-t-has-sysctl)
+    #-openbsd (configure-feature :os-t-sysctl-fancy)))
 
 #+os-t-has-sysctl
 (defcfun ("sysctl" real-sysctl)
@@ -227,12 +230,12 @@ NIL, unset the VAR, using unsetenv."
 	 (oldp :pointer) (oldlenp :pointer)
 	 (newp :pointer) (newlen size-t))
 
-#+os-t-has-sysctl
+#+os-t-sysctl-fancy
 (defcfun ("sysctlbyname" real-sysctlbyname) :int (name :string)
 	 (oldp :pointer) (oldlenp :pointer)
 	 (newp :pointer) (newlen size-t))
 
-#+os-t-has-sysctl
+#+os-t-sysctl-fancy
 (defcfun "sysctlnametomib" :int (name :string) (mibp :pointer)
 	 (sizep :pointer))
 
@@ -373,7 +376,7 @@ NIL, unset the VAR, using unsetenv."
   (t_armshr :int32)   ;; active shared real memory
   (t_free   :int32))  ;; free memory pages
 
-#+os-t-has-sysctl
+#+os-t-sysctl-fancy
 (defun sysctl-name-to-mib (name)
   "Return a vector of integers which is the numeric MIB for sysctl NAME."
   (let (result (initial-size 10) result-size)
@@ -411,14 +414,14 @@ NIL, unset the VAR, using unsetenv."
 	 (convert-from-foreign oldp type))))))
 
 #|
-#+os-t-has-sysctl
+#+os-t-sysctl-fancy
 (defun sysctl-names (&optional prefix)
   (sysctl-name-to-mib "sysctl")
   (if prefix
       (sysctl-by-number (vector 0 1 "
 |#
 
-#+os-t-has-sysctl
+#+os-t-sysctl-fancy
 (defun sysctl (name type)
   (with-foreign-object (oldlenp 'size-t 1)
     (syscall
@@ -436,6 +439,236 @@ NIL, unset the VAR, using unsetenv."
 	 (cffi:mem-ref oldp type))
 	(t
 	 (convert-from-foreign oldp type))))))
+
+#+(and os-t-has-sysctl (not os-t-sysctl-fancy))
+(progn
+  (defconstant +sysctl-type+
+    (:node :int :string :quad :struct)
+    "Types of sysctl data.")
+
+  (defstruct sysctl-node
+    name
+    number
+    type
+    description
+    children)
+
+  (defparameter *sysctl-tree*
+    '(("kern"        1  :node "kernel section"
+       ("ostype"                1 :string "system type")
+       ("osrelease"             2 :string "system release")
+       ("osrevision"            3 :int    "system revision")
+       ("version"               4 :string "kernel version")
+       ("maxvnodes"             5 :int    "maximum vnodes")
+       ("maxproc"               6 :int    "maximum processes")
+       ("maxfiles"              7 :int    "maximum open files")
+       ("argmax"                8 :int    "maximum arguments to exec")
+       ("securelevel"           9 :int    "system security level")
+       ("hostname"             10 :string "hostname")
+       ("hostid"               11 :int    "host identifier")
+       ("clockrate"            12 :struct "struct clockinfo")
+       ("profiling"            16 :node   "kernel profiling info")
+       ("posix1version"        17 :int    "POSIX.1 version")
+       ("ngroups"              18 :int    "# of supplemental group ids")
+       ("job_control"          19 :int    "is job control available")
+       ("saved_ids"            20 :int    "saved set-user/group-ID")
+       ("boottime"             21 :struct "time kernel was booted")
+       ("domainname"           22 :string "(YP) domainname")
+       ("maxpartitions"        23 :int    "number of partitions/disk")
+       ("rawpartition"         24 :int    "raw partition number")
+       ("maxthread"            25 :int    "max threads")
+       ("nthreads"             26 :int    "number of threads")
+       ("osversion"            27 :string "kernel build version")
+       ("somaxconn"            28 :int    "listen queue maximum")
+       ("sominconn"            29 :int    "half-open controllable param")
+       ("nosuidcoredump"       32 :int    "no setuid coredumps ever")
+       ("fsync"                33 :int    "file synchronization support")
+       ("sysvmsg"              34 :int    "SysV message queue support")
+       ("sysvsem"              35 :int    "SysV semaphore support")
+       ("sysvshm"              36 :int    "SysV shared memory support")
+       ("msgbufsize"           38 :int    "size of message buffer")
+       ("malloc"               39 :node   "malloc statistics")
+       ("cp_time"              40 :struct "array cp_time")
+       ("nchstats"             41 :struct "vfs cache statistics")
+       ("forkstat"             42 :struct "fork statistics")
+       ("tty"                  44 :node   "tty information")
+       ("ccpu"                 45 :int    "ccpu")
+       ("fscale"               46 :int    "fscale")
+       ("nprocs"               47 :int    "number of processes")
+       ("msgbuf"               48 :struct "message buffer, KERN_MSGBUFSIZE")
+       ("pool"                 49 :struct "pool information")
+       ("stackgaprandom"       50 :int    "stackgap_random")
+       ("sysvipc_info"         51 :struct "SysV sem/shm/msg info"
+	(("msg_info"   1 :struct "msginfo and msqid_ds")
+         ("sem_info"   2 :struct "seminfo and semid_ds")
+         ("shm_info"   3 :struct "shminfo and shmid_ds")))
+       ("allowkmem"            52 :int    "allowkmem")
+       ("witnesswatch"         53 :int    "witnesswatch")
+       ("splassert"            54 :int    "splassert")
+       ("proc_args"            55 :node   "proc args and env"
+	(("argv"      1 :string "array of strings")
+         ("nargv"     2 :int    "number of arguments")
+         ("env"       3 :string "array of strings")
+         ("nenv"      4 :int    "number of env vars")))
+       ("nfiles"               56 :int    "number of open files")
+       ("ttycount"             57 :int    "number of tty devices")
+       ("numvnodes"            58 :int    "number of vnodes in use")
+       ("mbstat"               59 :struct "mbuf statistics")
+       ("witness"              60 :node   "witness"
+	(("watch"     1 :int "operating node")
+	 ("locktrace" 2 :int "stack trace saving mode")))
+       ("seminfo"              61 :struct "SysV struct seminfo")
+       ("shminfo"              62 :struct "SysV struct shminfo")
+       ("intrcnt"              63 :node   "interrupt counters"
+	(("nintrcnt"	1 :int "# intrcnt")
+	 ("intrcnt"	2 :node "intrcnt")
+	 ("intrname"	3 :node "names")
+	 ("vector"	4 :node "interrupt vector #")))
+       ("watchdog"             64 :node   "watchdog"
+	(("period"	1 :int "watchdog period")
+	 ("auto"	2 :int "automatic tickle")))
+       ("allowdt"              65 :int    "allowdt")
+       ("proc"                 66 :struct "process entries"
+	(("all"          0 :struct "everything but kernel threads")
+	 ("pid"          1 :struct "by process id")
+	 ("pgrp"         2 :struct "by process group id")
+	 ("session"      3 :struct "by session of pid")
+	 ("tty"          4 :struct "by controlling tty")
+	 ("uid"          5 :struct "by effective uid")
+	 ("ruid"         6 :struct "by real uid")
+	 ("kthread"      7 :struct "also return kernel threads")))
+       ("maxclusters"          67 :int    "number of mclusters")
+       ("evcount"              68 :node   "event counters")
+       ("timecounter"          69 :node   "timecounter"
+	(("tick"		1 :int "number of revolutions")
+	 ("timestepwarnings"	2 :int "log a warning when time changes")
+	 ("hardware"		3 :string "tick hardware used")
+	 ("choice"		4 :string "tick hardware used")))
+       ("maxlocksperuid"       70 :int    "locks per uid")
+       ("cp_time2"             71 :struct "array cp_time2")
+       ("bufcachepercent"      72 :int    "buffer cache % of physmem")
+       ("file"                 73 :struct "file entries"
+	(("byfile"	1 :struct "files by ?")
+	 ("bypid"	2 :struct "files by pid")
+	 ("byuid"	3 :struct "files by uid")))
+       ("wxabort"              74 :int    "w^x sigabrt & core")
+       ("consdev"              75 :struct "dev_t console terminal device")
+       ("netlivelocks"         76 :int    "number of network livelocks")
+       ("pool_debug"           77 :int    "enable pool_debug")
+       ("proc_cwd"             78 :node   "proc cwd")
+       ("proc_nobroadcastkill" 79 :node   "proc no broadcast kill")
+       ("proc_vmmap"           80 :node   "proc vmmap")
+       ("global_ptrace"        81 :int    "allow ptrace globally")
+       ("consbufsize"          82 :int    "console message buffer size")
+       ("consbuf"              83 :struct "console message buffer")
+       ("audio"                84 :struct "audio properties"
+	(("record" 1 :int "")))
+       ("cpustats"             85 :struct "cpu statistics")
+       ("pfstatus"             86 :struct "pf status and stats")
+       ("timeout_stats"        87 :struct "timeout status and stats")
+       ("utc_offset"           88 :int    "adjust RTC time to UTC")
+       ("video"                89 :struct "video properties"
+	(("record" 1 :int ""))))
+      ("vm"          2  :node "")
+      ("fs"          3  :node "filesystems"
+       (("posix"	1 :node "POSIX flags"
+	 (("setuid"	1 :int
+			"always clear SGID/SUID bit when owner change")))))
+      ("net"         4  :node "")
+      ("debug"       5  :node ""
+       (("name"		0 :string "variable name")
+	("value"	1 :int "variable value")))
+      ("hw"          6  :node "hardware"
+       (("machine"               1 :string "machine class")
+        ("model"                 2 :string "specific machine model")
+        ("ncpu"                  3 :int "number of configured cpus")
+        ("byteorder"             4 :int "machine byte order")
+        ("physmem"               5 :int "total memory")
+        ("usermem"               6 :int "non-kernel memory")
+        ("pagesize"              7 :int "software page size")
+        ("disknames"             8 :strings "disk drive names")
+        ("diskstats"             9 :struct "diskstats[]")
+        ("diskcount"            10 :int "number of disks")
+        ("sensors"              11 :node "hardware monitors")
+        ("cpuspeed"             12 :int "get CPU frequency")
+        ("setperf"              13 :int "set CPU performance %")
+        ("vendor"               14 :string "vendor name")
+        ("product"              15 :string "product name")
+        ("version"              16 :string "hardware version")
+        ("serialno"             17 :string "hardware serial number")
+        ("uuid"                 18 :string "universal unique id")
+        ("physmem64"            19 :quad "total memory")
+        ("usermem64"            20 :quad "non-kernel memory")
+        ("ncpufound"            21 :int "number of cpus found")
+        ("allowpowerdown"       22 ::int "allow power button shutdown")
+        ("perfpolicy"           23 :string "set performance policy")
+        ("smt"                  24 :int "enable SMT/HT/CMT")
+        ("ncpuonline"           25 :int "number of cpus being used")
+        ("power"                26 :int "machine has wall-power")))
+      ("machdep"     7  :node "")
+      ("dob"         9  :node ""
+       (("radix"		1 :int "")
+	("max_width"		2 :int "")
+	("max_line"		3 :int "")
+	("tab_stop_width"	4 :int "")
+	("panic"		5 :int "")
+	("console"		6 :int "")
+	("log"			7 :int "")
+	("trigger"		8 :int "")
+	("profile"		9 :int "")))
+      ("vfs"         10 :node ""
+       (("generic"	0 :struct "VFS generic info")
+	("maxtypenum"	1 :int "maximum type number")
+	("conf"		2 :node "struct vfsconf as next arg")
+	("bcachestat"   3 :struct "buffer cache statistics given as next arg")
+	("ffs"		4 :node "fast file system"
+	 (("clusterread"        1  :int "cluster reading enabled")
+	  ("clusterwrite"       2  :int "cluster writing enabled")
+	  ("reallocblks"        3  :int "block reallocation enabled")
+	  ("asyncfree"          4  :int "asynchronous block freeing enabled")
+	  ("max_softdeps"       5  :int "maximum structs before slowdown")
+	  ("sd_tickdelay"       6  :int "ticks to pause during slowdown")
+	  ("sd_worklist_push"   7  :int "# of worklist cleanups")
+	  ("sd_blk_limit_push"  8  :int "# of times block limit neared")
+	  ("sd_ino_limit_push"  9  :int "# of times inode limit neared")
+	  ("sd_blk_limit_hit"   10 :int "# of times block slowdown imposed")
+	  ("sd_ino_limit_hit"   11 :int "# of times inode slowdown imposed")
+	  ("sd_sync_limit_hit"  12 :int "# of synchronous slowdowns imposed")
+	  ("sd_indir_blk_ptrs"  13 :int
+	   "bufs redirtied as indir ptrs not written")
+	  ("sd_inode_bitmap"    14 :int
+	   "bufs redirtied as inode bitmap not written")
+	  ("sd_direct_blk_ptrs" 15 :int
+	   "bufs redirtied as direct ptrs not written")
+	  ("sd_dir_entry"       16 :int
+	   "bufs redirtied as dir entry cannot write")
+	  ("dirhash_dirsize"    17 :int "min directory size, in bytes")
+	  ("dirhash_maxmem"     18 :int "max kvm to use, in bytes")
+	  ("dirhash_mem"        19 :int "current mem usage, in bytes")))))
+	))
+
+  (defun sysctl-name-to-mib (name)
+    )
+
+  (defun sysctl (name type)
+    (let* ((mib (sysctl-name-to-mib name))
+	   (len (length mib)))
+      (with-foreign-objects ((oldlenp 'size-t 1)
+			     (foreign-mib :int len))
+	(syscall
+	 (real-sysctl foreign-mib len oldlenp (cffi:null-pointer) 0))
+    (with-foreign-object (oldp :unsigned-char (mem-ref oldlenp 'size-t))
+      (syscall (real-sysctl name oldp oldlenp (cffi:null-pointer) 0))
+      (case type
+	(:string
+	 (convert-from-foreign oldp type))
+	((:short :unsigned-short :int :unsigned :unsigned-int
+	  :long :unsigned-long :int8 :uint8 :int16 :uint16 :int32 :uint32
+	  :int64 :uint64)
+;	 (cffi:mem-ref (convert-from-foreign oldp type) type))))))
+	 (cffi:mem-ref oldp type))
+	(t
+	 (convert-from-foreign oldp type))))))))
 
 ;; @@@ should do a (defsetf sysctl ...) so we can nicely setf it.
 
@@ -1105,6 +1338,139 @@ constants. The return value varies base on the keyword."
     #(+SC-TRACE-USER-EVENT-MAX+         130)
     #(+SC-PASS-MAX+                     131)
     #(+SC-PHYS-PAGES+                   200)
+    ))
+
+#+openbsd
+(define-to-list *sysconf-names*
+  #(#(+SC-ARG-MAX+                       1)
+    #(+SC-CHILD-MAX+                     2)
+    #(+SC-CLK-TCK+                       3)
+    #(+SC-NGROUPS-MAX+                   4)
+    #(+SC-OPEN-MAX+                      5)
+    #(+SC-JOB-CONTROL+                   6)
+    #(+SC-SAVED-IDS+                     7)
+    #(+SC-VERSION+                       8)
+    #(+SC-BC-BASE-MAX+                   9)
+    #(+SC-BC-DIM-MAX+                   10)
+    #(+SC-BC-SCALE-MAX+                 11)
+    #(+SC-BC-STRING-MAX+                12)
+    #(+SC-COLL-WEIGHTS-MAX+             13)
+    #(+SC-EXPR-NEST-MAX+                14)
+    #(+SC-LINE-MAX+                     15)
+    #(+SC-RE-DUP-MAX+                   16)
+    #(+SC-2-VERSION+                    17)
+    #(+SC-2-C-BIND+                     18)
+    #(+SC-2-C-DEV+                      19)
+    #(+SC-2-CHAR-TERM+                  20)
+    #(+SC-2-FORT-DEV+                   21)
+    #(+SC-2-FORT-RUN+                   22)
+    #(+SC-2-LOCALEDEF+                  23)
+    #(+SC-2-SW-DEV+                     24)
+    #(+SC-2-UPE+                        25)
+    #(+SC-STREAM-MAX+                   26)
+    #(+SC-TZNAME-MAX+                   27)
+    #(+SC-PAGESIZE+                     28)
+    #(+SC-FSYNC+                        29)
+    #(+SC-XOPEN-SHM+                    30)
+    #(+SC-SEM-NSEMS-MAX+                31)
+    #(+SC-SEM-VALUE-MAX+                32)
+    #(+SC-HOST-NAME-MAX+                33)
+    #(+SC-MONOTONIC-CLOCK+              34)
+    #(+SC-2-PBS+                        35)
+    #(+SC-2-PBS-ACCOUNTING+             36)
+    #(+SC-2-PBS-CHECKPOINT+             37)
+    #(+SC-2-PBS-LOCATE+                 38)
+    #(+SC-2-PBS-MESSAGE+                39)
+    #(+SC-2-PBS-TRACK+                  40)
+    #(+SC-ADVISORY-INFO+                41)
+    #(+SC-AIO-LISTIO-MAX+               42)
+    #(+SC-AIO-MAX+                      43)
+    #(+SC-AIO-PRIO-DELTA-MAX+           44)
+    #(+SC-ASYNCHRONOUS-IO+              45)
+    #(+SC-ATEXIT-MAX+                   46)
+    #(+SC-BARRIERS+                     47)
+    #(+SC-CLOCK-SELECTION+              48)
+    #(+SC-CPUTIME+                      49)
+    #(+SC-DELAYTIMER-MAX+               50)
+    #(+SC-IOV-MAX+                      51)
+    #(+SC-IPV6+                         52)
+    #(+SC-MAPPED-FILES+                 53)
+    #(+SC-MEMLOCK+                      54)
+    #(+SC-MEMLOCK-RANGE+                55)
+    #(+SC-MEMORY-PROTECTION+            56)
+    #(+SC-MESSAGE-PASSING+              57)
+    #(+SC-MQ-OPEN-MAX+                  58)
+    #(+SC-MQ-PRIO-MAX+                  59)
+    #(+SC-PRIORITIZED-IO+               60)
+    #(+SC-PRIORITY-SCHEDULING+          61)
+    #(+SC-RAW-SOCKETS+                  62)
+    #(+SC-READER-WRITER-LOCKS+          63)
+    #(+SC-REALTIME-SIGNALS+             64)
+    #(+SC-REGEXP+                       65)
+    #(+SC-RTSIG-MAX+                    66)
+    #(+SC-SEMAPHORES+                   67)
+    #(+SC-SHARED-MEMORY-OBJECTS+        68)
+    #(+SC-SHELL+                        69)
+    #(+SC-SIGQUEUE-MAX+                 70)
+    #(+SC-SPAWN+                        71)
+    #(+SC-SPIN-LOCKS+                   72)
+    #(+SC-SPORADIC-SERVER+              73)
+    #(+SC-SS-REPL-MAX+                  74)
+    #(+SC-SYNCHRONIZED-IO+              75)
+    #(+SC-SYMLOOP-MAX+                  76)
+    #(+SC-THREAD-ATTR-STACKADDR+        77)
+    #(+SC-THREAD-ATTR-STACKSIZE+        78)
+    #(+SC-THREAD-CPUTIME+               79)
+    #(+SC-THREAD-DESTRUCTOR-ITERATIONS+ 80)
+    #(+SC-THREAD-KEYS-MAX+              81)
+    #(+SC-THREAD-PRIO-INHERIT+          82)
+    #(+SC-THREAD-PRIO-PROTECT+          83)
+    #(+SC-THREAD-PRIORITY-SCHEDULING+   84)
+    #(+SC-THREAD-PROCESS-SHARED+        85)
+    #(+SC-THREAD-ROBUST-PRIO-INHERIT+   86)
+    #(+SC-THREAD-ROBUST-PRIO-PROTECT+   87)
+    #(+SC-THREAD-SPORADIC-SERVER+       88)
+    #(+SC-THREAD-STACK-MIN+             89)
+    #(+SC-THREAD-THREADS-MAX+           90)
+    #(+SC-THREADS+                      91)
+    #(+SC-TIMEOUTS+                     92)
+    #(+SC-TIMER-MAX+                    93)
+    #(+SC-TIMERS+                       94)
+    #(+SC-TRACE+                        95)
+    #(+SC-TRACE-EVENT-FILTER+           96)
+    #(+SC-TRACE-EVENT-NAME-MAX+         97)
+    #(+SC-TRACE-INHERIT+                98)
+    #(+SC-TRACE-LOG+                    99)
+    #(+SC-GETGR-R-SIZE-MAX+             100)
+    #(+SC-GETPW-R-SIZE-MAX+             101)
+    #(+SC-LOGIN-NAME-MAX+               102)
+    #(+SC-THREAD-SAFE-FUNCTIONS+        103)
+    #(+SC-TRACE-NAME-MAX+               104)
+    #(+SC-TRACE-SYS-MAX+                105)
+    #(+SC-TRACE-USER-EVENT-MAX+         106)
+    #(+SC-TTY-NAME-MAX+                 107)
+    #(+SC-TYPED-MEMORY-OBJECTS+         108)
+    #(+SC-V6-ILP32-OFF32+               109)
+    #(+SC-V6-ILP32-OFFBIG+              110)
+    #(+SC-V6-LP64-OFF64+                111)
+    #(+SC-V6-LPBIG-OFFBIG+              112)
+    #(+SC-V7-ILP32-OFF32+               113)
+    #(+SC-V7-ILP32-OFFBIG+              114)
+    #(+SC-V7-LP64-OFF64+                115)
+    #(+SC-V7-LPBIG-OFFBIG+              116)
+    #(+SC-XOPEN-CRYPT+                  117)
+    #(+SC-XOPEN-ENH-I18N+               118)
+    #(+SC-XOPEN-LEGACY+                 119)
+    #(+SC-XOPEN-REALTIME+               120)
+    #(+SC-XOPEN-REALTIME-THREADS+       121)
+    #(+SC-XOPEN-STREAMS+                122)
+    #(+SC-XOPEN-UNIX+                   123)
+    #(+SC-XOPEN-UUCP+                   124)
+    #(+SC-XOPEN-VERSION+                125)
+    #(+SC-PHYS-PAGES+                   500)
+    #(+SC-AVPHYS-PAGES+                 501)
+    #(+SC-NPROCESSORS-CONF+             502)
+    #(+SC-NPROCESSORS-ONLN+             503)
     ))
 
 (setf *sysconf-names* (nreverse *sysconf-names*))

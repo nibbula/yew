@@ -360,9 +360,9 @@ struct in ‘ws-lisp’."
   "simulate terminal input")
 
 (defconstant +TIOCCONS+
-  #+darwin (_IOW #\t 98 :int)
+  #+(or darwin openbsd) (_IOW #\t 98 :int)
   #+linux #x541D
-  #-(or darwin linux) 0
+  #-(or darwin openbsd linux) 0
   "Become the virtual console.")
 
 (defconstant +TIOCGWINSZ+
@@ -384,9 +384,9 @@ struct in ‘ws-lisp’."
   "set window size")
 
 (defconstant +TIOCSCTTY+
-  #+(or netbsd darwin) (_IO #\t 97)
+  #+(or netbsd darwin openbsd) (_IO #\t 97)
   #+linux #x540e
-  #-(or netbsd darwin linux) 0
+  #-(or netbsd darwin openbsd linux) 0
   "become controlling tty")
 
 (defconstant +TIOCNOTTY+
