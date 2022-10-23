@@ -444,12 +444,12 @@ NIL or left unspecified to block all blockable signals."
 (defsetf signal-mask set-signal-mask
   "Set the signal mask, which should be a list of signal numbers.")
 
-(defun describe-signals ()
+(defun describe-signals (&key stream)
   "List the POSIX signals that are known to the operating system."
-  (format t "#  SIG~11tDescription~42tDisposition~%~
+  (format stream "#  SIG~11tDescription~42tDisposition~%~
              -- ---~11t-----------~42t-----------~%")
   (loop :for i :from 1 :below *signal-count*
-        :do (format t "~2a ~:@(~7a~) ~30a ~a~%"
+        :do (format stream "~2a ~:@(~7a~) ~30a ~a~%"
 		   i (signal-name i) (signal-description i)
 		   (if (not (find i `(,+SIGKILL+ ,+SIGSTOP+)))
 		       (let ((act (signal-action i)))
