@@ -442,8 +442,8 @@ NIL, unset the VAR, using unsetenv."
 
 #+(and os-t-has-sysctl (not os-t-sysctl-fancy))
 (progn
-  (defconstant +sysctl-type+
-    (:node :int :string :quad :struct)
+  (define-constant +sysctl-type+
+    '(:node :int :string :quad :struct)
     "Types of sysctl data.")
 
   (defstruct sysctl-node
