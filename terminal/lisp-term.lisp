@@ -32,23 +32,38 @@
   "Use the file descriptor ‘fd’ as the processes controlling terminal and the
 standard input, output, and error. Also put the process in it's own session.
 Finally close the original ‘fd’."
-  (let ((pid (uos:getpid)))
-    (declare (ignore pid))
-    (uos:setsid)
-    (posix-ioctl fd uos::+TIOCSCTTY+ (null-pointer))
-    ;; @@@ what if it fails?
-    (flet ((d2 (std-fd)
-	     (loop :while (and (= -1 (posix-dup2 fd std-fd))
-			       (= uos:*errno* +EBUSY+)))))
-      (d2 0)
-      (d2 1)
-      (d2 2))
-    (when (> fd 2)
-      (posix-close fd)))) ;; @@@ check for fail?
+  (flet ((report (m)
+	   (let ((s (format nil "error ~s ~s~%" m uos:*errno*)))
+             (posix-write 1 s (length s)))))
+    (let ((pid (uos:getpid))
+	  (sid (uos:setsid)))
+      (when (eql -1 sid)
+	(setf sid (getsid pid)))
+      (when (eql -1 (posix-ioctl fd uos::+TIOCSCTTY+ (null-pointer)))
+	(report "TIOSCTTY"))
+
+      ;; #+(or freebsd openbsd)
+      ;; (progn
+      ;; 	(when (eql -1 (setpgid 0 0))
+      ;; 	  (report "setpgid"))
+      ;; 	(msg "setpgid")
+      ;; 	(when (eql -1 (tcsetpgrp fd pid))
+      ;; 	  (report "tcsetpgrp")))
+      ;; 	(msg "tcsetpgrp")
+
+      ;; @@@ what if it fails?
+      (flet ((d2 (std-fd)
+	       (loop :while (and (= -1 (posix-dup2 fd std-fd))
+				 (= uos:*errno* +EBUSY+)))))
+	(d2 0)
+	(d2 1)
+	(d2 2))
+      (when (> fd 2)
+	(posix-close fd))))) ;; @@@ check for fail?
 
 (defun close-other-fds (fd)
   "Close every (or at least some) file descriptors that aren't stdio and ‘fd’."
-  (loop :for i :from 1024 :downto 3 ;; @@@ Of course this isn't really
+  (loop :for i :from 1024 :downto 3 :by 1 ;; @@@ Of course this isn't really
     :when (/= i fd)
     :do (posix-close i)))
 
@@ -58,7 +73,9 @@ string arguments."
   (let* ((cmd-and-args (cons program args))
 	 (argc (length cmd-and-args))
 	 child-pid)
-    (with-foreign-object (argv :pointer (1+ argc))
+    (with-foreign-objects ((argv :pointer (1+ argc))
+			   #| (msg-str :string 80) |#)
+      ;; (setf *msg-str* msg-str)
       (with-foreign-string (path program)
 	(unwind-protect
 	  (progn
@@ -74,7 +91,9 @@ string arguments."
 	    (setf child-pid (fork))
 	    (when (= child-pid 0)
 	      ;; in the child
+	      ;; (msg (s+ "FOOOB" #\newline))
 	      (close-other-fds fd)
+	      ;; (msg (s+ "BAAR" #\newline))
 	      (use-the-fd fd)
 	      (when (= (uos::execvp path argv) -1)
 		(write-string "Exec of ")
@@ -211,10 +230,10 @@ string arguments."
 		     (uos:posix-write master input-buffer (length s)))))))
 	     ((characterp key)
 	      (case key
-		(#\etx
-		 ;; wrong?
-		 (dbug " --- ^C ---~%")
-		 (uos:kill (- pid) uos:+SIGINT+))
+		;; (#\etx
+		;;  ;; wrong?
+		;;  (dbug " --- ^C ---~%")
+		;;  (uos:kill (- pid) uos:+SIGINT+))
 		(t
 		 (setf (cffi:mem-ref input-buffer :unsigned-char)
 		       (char-code key))
