@@ -1834,11 +1834,12 @@ i.e. the terminal is 'line buffered'."
 
 (defmethod terminal-scroll-down ((tty terminal-x11) n)
   (when (> n 0)
-    (with-slots ((y cursor-row) (height cell-height)) tty
+    (with-slots ((y cursor-row) (height terminal::window-rows)) tty
       (let ((start-y y))
-	(terminal-down tty n)
-	(when (> n (- height (1+ start-y)))
-	  (scroll tty (- n (- height (1+ start-y)))))))))
+	(with-cursor-movement (tty)
+	  (terminal-down tty n)
+	  (when (> n (- height (1+ start-y)))
+	    (scroll tty (- n (- height (1+ start-y))))))))))
 
 (defmethod terminal-scroll-up ((tty terminal-x11) n)
   (when (> n 0)
