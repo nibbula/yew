@@ -30,12 +30,23 @@
 
 (declaim #.`(optimize ,.(getf terminal-config::*config* :optimization-settings)))
 
+;; @@@ This needs improvement. see xtools.lisp
+;; but worse, clx can't even take accept such things
 (defun get-display-from-environment ()
   "Return the display host and the the display number from the environment."
-  (let ((display (nos:environment-variable "DISPLAY")) s)
-    (and display
-	 (setf s (split-sequence #\: display))
-	 (values (first s) (parse-integer (second s))))))
+  (let ((display (nos:environment-variable "DISPLAY"))
+	s)
+    (when display
+      (setf s (split-sequence #\: display))
+      (unless (= (length s) 2)
+	(error "Sorry, I can't parse $DISPLAY: ~s" display))
+      (destructuring-bind (host number) s
+	(unless (setf number
+		      (or (ignore-errors (parse-integer number))
+			  (and (syntax-lisp:potential-number-p number)
+			       (safe-read-from-string number))))
+	  (error "Sorry, I can't parse the $DISPLAY number: ~s" display))
+	(values host (truncate number)))))) ;; useless
 
 (defun make-window-from (&key display id)
   #-clx-use-classes
