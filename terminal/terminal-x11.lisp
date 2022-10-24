@@ -807,13 +807,19 @@ is zero, but for inserting and deleting is the current line."
 
   (defmacro with-cursor-movement ((tty) &body body)
     "Wrap around something that moves the cursor to make the cursor be drawn."
-    (with-unique-names (our-state tty-val)
-      `(let ((,tty-val ,tty))
+    (with-unique-names (our-state saved-state tty-val)
+      `(let ((,tty-val ,tty) ,saved-state)
 	 (with-slots ((,our-state cursor-state)) ,tty-val
 	   (set-moved ,tty-val)
+	   (setf ,saved-state ,our-state)
 	   (when (eq ,our-state :visible)
 	     (draw-cursor ,tty-val :state :invisible))
-	   ,@body
+	   (unwind-protect
+		(progn
+		  (setf ,our-state :invisible)
+		  ,@body)
+	     (when (not (eq ,saved-state ,our-state))
+	       (setf ,our-state ,saved-state)))
 	   (when (eq ,our-state :visible)
 	     (draw-cursor ,tty-val)))))))
 
