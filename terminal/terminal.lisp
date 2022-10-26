@@ -612,7 +612,8 @@ generic function with *TERMINAL* as it's first arg, for API prettyness."
     `(progn
        (defgeneric ,tt-generic (tt ,@args) (:documentation ,doc-string)
 	 (:method (tt ,@args)
-	   (declare (ignore ,@(lambda-list-vars args :all-p t)))
+	   (declare (ignore ,@(lambda-list-vars args :all-p t))
+		    (ignorable tt))
 	   (when  *default-terminal-methods-error*
 	     (error "The terminal is missing a method."))))
        (defmacro ,tt-name (&whole ,whole-arg ,@args)
