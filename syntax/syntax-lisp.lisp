@@ -17,6 +17,7 @@
    #:read-token
    #:matching-paren-position
    #:format-lisp-comment
+   #:potential-number-p
    ))
 (in-package :syntax-lisp)
 
@@ -965,9 +966,145 @@ exponent      <- exponent-marker [sign] {digit}+
     (to-integer (first l) (second l))))
 
 (defrule numeric-token (or float ratio integer))
+|#
+
+;; @@@ This is anomalous and should probably be done differently.
+;; And it maybe it, or something else, should make the actual number while
+;; we're at it?
+(defun potential-number-p (string &key junk-allowed)
+  (let ((i 0) results)
+    (macrolet ((optional (&body body)
+		 "If BODY doesn't evaluate to true, restore the point."
+		 (with-unique-names (start result)
+		   `(let ((,start i) ,result)
+		      (declare (ignorable ,result))
+		      (when (not (setf ,result (progn ,@body)))
+			(setf i ,start))
+		      t)))
+	       (must-be (&body body)
+		 "BODY must evaluate true."
+		 (with-unique-names (start result)
+		   `(let ((,start i) ,result)
+		      (declare (ignorable ,result))
+		      (when (not (setf ,result (progn ,@body)))
+			(setf i ,start))
+		      ,result)))
+	       (sequence-of (&body body)
+		 "Every form of BODY must be true."
+		 (with-unique-names (start result)
+		   `(let ((,start i) ,result)
+		      (declare (ignorable ,result))
+		      (when (not (setf ,result (and ,@body)))
+			(setf i ,start))
+		      ,result)))
+	       (one-or-more (&body body)
+		 "Do the body, once and as many more times as it returns true."
+		 (with-unique-names (thunk)
+		   `(flet ((,thunk () ,@body))
+		      (and (,thunk)
+			   (or (loop :while (,thunk)) t))))) ;; @@@ remove or?
+	       (zero-or-more (&body body)
+		 "Do the body, until it returns false. Always true."
+		 (with-unique-names (thunk)
+		   `(flet ((,thunk () ,@body))
+		      (loop :while (,thunk))
+		      t)))
+	       (one-of (&body body)
+		 "Return after the first optional expression of BODY is true."
+		 `(or ,@(loop :for expr :in body
+			   :collect `(must-be ,expr))))
+	       (note ((x) &body body)
+		 (with-unique-names (r)
+		   `(let ((,r (progn ,@body)))
+		      (when ,r
+			(push ,x results))
+		      ,r))))
+      (labels (;; Utility functions
+	       (peek ()
+		 (when (< i (length string))
+		   (char string i)))
+	       (next-char ()
+		 (if (< i (length string))
+		     (prog1 (char string i)
+		       (incf i))
+		     (throw 'eof nil)))
+	       (char-in (c string)
+		 "True if C is in STRING."
+		 (find c string :test #'char=))
+
+	       ;; Pieces of numbers:
+	       (exponent-marker ()
+		 (and (peek)
+		      (char-in (char-downcase (peek)) "defls")
+		      (next-char)))
+	       (sign ()
+		 (and (peek) (char-in (peek) "+-")
+		      (next-char)))
+	       (digit () ;; al monsters
+		 "Succeed if positioned at a digit character in *READ-BASE*."
+		 (and (peek)
+		      (digit-char-p (peek) *read-base*)
+		      (next-char)))
+	       (decimal-digit ()
+		 (and (peek)
+		      (char-in (peek) "0123456789")
+		      (next-char)))
+	       (decimal-point ()
+		 (and (peek) (char= (peek) #\.)
+		      (next-char)))
+	       (exponent ()
+		 (sequence-of (exponent-marker)
+			      (optional (sign))
+			      (one-or-more (digit))))
+	       (slash ()
+		 (and (peek)
+		      (char= (peek) #\/)
+		      (next-char)))
+	       (@ratio ()
+		 (note (:ratio)
+		       (sequence-of (optional (sign))
+				    (one-or-more (digit))
+				    (slash)
+				    (one-or-more (digit)))))
+	       (@integer ()
+		 (note (:integer)
+		       (one-of (sequence-of (optional (sign))
+					    (one-or-more (decimal-digit))
+					    (decimal-point))
+			       (sequence-of (optional (sign))
+					    (one-or-more (digit))))))
+	       (@float ()
+		 (note (:float)
+		       (one-of (sequence-of (optional (sign))
+					    (zero-or-more (decimal-digit))
+					    (decimal-point)
+					    (one-or-more (decimal-digit))
+					    (optional (exponent)))
+			       (sequence-of (optional (sign))
+					    (one-or-more (decimal-digit))
+					    (optional
+					     (sequence-of
+					      (decimal-point)
+					      (zero-or-more (decimal-digit))))
+					    (exponent)))))
+	       (numeric-token ()
+		 (one-of (@ratio)
+			 (@float)
+			 (@integer))))
+	;; (and (catch 'eof
+	;;        (numeric-token))
+	;;      (and (not junk-allowed)
+	;; 	  (>= i (length string))
+	;; 	  ;; (error "Junk was found! Not allowed! Reported!")
+	;; 	  nil))))))
+	(values (and (catch 'eof (numeric-token))
+		     (and (not junk-allowed)
+			  (>= i (length string))))
+		results)))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+#|
 (defrule whitespace (+ #'t-whitespace)
   (:constant nil))
 

@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description
     "This handles CSV and other delimited text format files."
-    :depends-on (:dlib :collections :table)
+    :depends-on (:dlib :collections :table :syntax-lisp)
     :components
     ((:file "dtt")))

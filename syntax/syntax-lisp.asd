@@ -4,13 +4,13 @@
 
 (defsystem syntax-lisp
     :name               "syntax-lisp"
-    :description        "Lexer for Lisp"
+    :description        "Lexing for Lisp"
     :version            "0.1.0"
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description
-    "A lexer for Lisp, which is nearly the same as a lisp reader."
+    "An assortments of syntax functions for Lisp."
     :depends-on (:dlib :syntax
 		 #+use-re :re
 		 #-use-re :cl-ppcre
