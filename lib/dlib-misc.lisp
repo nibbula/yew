@@ -1692,7 +1692,7 @@ exist, it is created."
 			 (eof-confirms t))
   "A general confirmer using streams. ACTION is a description of the action
 you want to confirm. CONFIRMING-INPUT can be either a character or a string,
-whic defaults to #\y. If EOF-CONFIRMS is true (the default), then and end of
+which defaults to #\\y. If EOF-CONFIRMS is true (the default), then and end of
 file is accepted as confirmation."
   (assert (or (stringp confirming-input) (characterp confirming-input)))
   (format output "~%Do you really want to ~a? " action)
