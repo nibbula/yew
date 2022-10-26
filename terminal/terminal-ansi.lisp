@@ -2316,15 +2316,14 @@ links highlight differently?"
     (string
      (terminal-write-string stream seq :start start :end end))
     (list
-     (with-slots (output-stream) stream
-       (loop :with i = 0 :and l = seq
-	  :while (and l (< i end))
-	  :do
-	    (when (>= i start)
-	      (write-char (car l) output-stream)
-	      (update-column stream (car l)))
-	    (setf l (cdr l))
-	    (incf i))))))
+     (loop :with i = 0 :and l = seq
+	   :while (and l (< i end))
+	   :do
+	      (when (>= i start)
+		(write-char (car l) (terminal-output-stream stream))
+		(update-column stream (car l)))
+	      (setf l (cdr l))
+	      (incf i)))))
 
 ;; character output stream methods
 
@@ -2383,9 +2382,9 @@ links highlight differently?"
 ;; stream methods for terminal-ansi, which is also an input stream.
 
 (defmethod stream-clear-input ((stream terminal-ansi))
-  (with-slots (typeahead typeahead-pos output-stream) stream
+  (with-slots (typeahead) stream
     (setf typeahead nil)
-    (clear-input output-stream)))
+    (clear-input (terminal-output-stream stream))))
 
 (defmethod stream-read-sequence ((stream terminal-ansi) seq start end
 				 &key &allow-other-keys
@@ -2431,7 +2430,7 @@ links highlight differently?"
   ;; Most streams should define their own method since it will usually
   ;; be trivial and will always be more efficient than the default
   ;; method.
-  (with-slots (typeahead output-stream) stream
+  (with-slots (typeahead) stream
     (or typeahead
 	(terminal-listen-for stream 0))))
 
