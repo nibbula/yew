@@ -1016,6 +1016,7 @@ display-prefix to generate line strings, and then use display-node-line, to
 output them."))
 
 (defmethod display-node :before ((node node) level)
+  (declare (ignore level))
   (with-slots (current current-position bottom-node) *viewer*
     (when (eq node current)
       (setf current-position (terminal-get-cursor-position *terminal*)))
