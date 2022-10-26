@@ -561,9 +561,10 @@ result."
   (:documentation
    "Return a fat-string with ‘connector’ between every element of ‘sequence’."))
 
-(define-constant +join-by-doc+
-  "Return a fat-string with a ‘connector’ between every element of ‘sequence’.
-This is basically the reverse of ‘split-sequence’.")
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (define-constant +join-by-doc+
+    "Return a fat-string with a ‘connector’ between every element of ‘sequence’.
+This is basically the reverse of ‘split-sequence’."))
 
 (defmethod join-by-fat-string ((sequence list) connector &key &allow-other-keys)
   #.+join-by-doc+
