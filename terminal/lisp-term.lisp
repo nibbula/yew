@@ -42,15 +42,6 @@ Finally close the original ‘fd’."
       (when (eql -1 (posix-ioctl fd uos::+TIOCSCTTY+ (null-pointer)))
 	(report "TIOSCTTY"))
 
-      ;; #+(or freebsd openbsd)
-      ;; (progn
-      ;; 	(when (eql -1 (setpgid 0 0))
-      ;; 	  (report "setpgid"))
-      ;; 	(msg "setpgid")
-      ;; 	(when (eql -1 (tcsetpgrp fd pid))
-      ;; 	  (report "tcsetpgrp")))
-      ;; 	(msg "tcsetpgrp")
-
       ;; @@@ what if it fails?
       (flet ((d2 (std-fd)
 	       (loop :while (and (= -1 (posix-dup2 fd std-fd))
