@@ -301,14 +301,14 @@ calling FUNCTION on them. Equality is test by TEST, as usual."
 	   sequence)
     result))
 
-(defun group-by (result-type function sequence)
+(defun group-by (result-type function sequence &key test)
   "Return a RESULT-TYPE of the items of SEQUENCE, grouped by the results of
 calling FUNCTION on them. RESULT-TYPE can be :HASH or :ALIST. Equality is test
 by TEST, as usual. This is just wrapper around the group-by-hash and
 group-by-alist functions."
   (case (keywordify result-type)	; sorry, more junk keywords
-    (:hash (group-by-hash function sequence))
-    ((or :list :alist) (group-by-alist function sequence))))
+    (:hash (group-by-hash function sequence :test test))
+    ((or :list :alist) (group-by-alist function sequence :test test))))
 
 (defun frequencies (sequence &key (test #'eql) table func)
   "Return a hash table with the counts of occurrences the elements of ‘sequence’.
