@@ -13,7 +13,7 @@
 (defpackage :terminal-x11
   (:documentation "X11 window as a terminal.")
   (:use :cl :dlib :dlib-misc :terminal :trivial-gray-streams :dtime :xlib
-	:collections :terminal-grid :ochar :fatchar :stretchy :keysyms)
+	:collections #| :terminal-grid |# :ochar :fatchar :stretchy :keysyms)
   (:export
    #:terminal-x11
    ;; extensions:
@@ -168,13 +168,15 @@ limited only by availabile memory. It's probably a bad idea to set it to T.")
   "Add the LINES-TO-ADD to the scrollback for TTY."
   (with-slots (scrollback) tty
     (let (last)
-      (map nil (_ (setf last (or (position-if #'grid-char-c _ :from-end t)
+      (map nil (_ (setf last (or (position-if #'fatchar-c _ :from-end t)
 				 (length _)))
 		  (add-line scrollback
-			    (fat-string-to-span
-			     (grid-to-fat-string _ :null-as #\space
-						 :end last
-						 :keep-nulls t))))
+			    (fatchar-string-to-span
+			     (osubseq _ 0 last)
+			     ;; (grid-to-fat-string _ :null-as #\space
+			     ;; 			 :end last
+			     ;; 			 :keep-nulls t)
+			     )))
 	   lines-to-add))))
 
 (defun add-scrollback-blanks (tty n)
@@ -291,7 +293,8 @@ different from the current foreground color which in rendition.")
     :documentation "Format of pixels for this thing.")
    (lines
     :initarg :lines :accessor lines
-    #| :initform (make-array) |# :type (or null (vector grid-string))
+    ;; #| :initform (make-array) |# :type (or null (vector grid-string))
+    #| :initform (make-array) |# :type (or null (vector fatchar-string))
     :documentation "The character grid rows of the screen.")
    (scrollback
     :initarg :scrollback :accessor scrollback
@@ -360,6 +363,28 @@ corner."))
   )
   (:documentation "What we need to know about terminal device."))
 
+(defun scroll-top (tty)
+  "Return the row number of top of the scrolling region."
+  (with-slots (scrolling-region) tty
+    (if scrolling-region
+	(car scrolling-region)
+	0)))
+
+(defun scroll-bottom (tty)
+  "Return the row number of one past the bottom of the scrolling region."
+  (with-slots (scrolling-region) tty
+    (if scrolling-region
+	(1+ (cdr scrolling-region))
+	(terminal-window-rows tty))))
+
+(defun scroll-height (tty)
+  "Return the height of the scrolling region, which is the whole window if the
+scrolling region isn't set."
+  (with-slots (scrolling-region) tty
+    (if scrolling-region
+	(- (1- (scroll-bottom tty)) (scroll-top tty))
+	(terminal-window-rows tty))))
+
 (defmethod terminal-default-device-name ((type (eql 'terminal-x11)))
   "Return the default device name for a TERMINAL-X11."
   (get-display-from-environment))
@@ -404,17 +429,31 @@ the window size is an exact multiple of the cell size."
     (when output-buffer
       (setf (out-buf-moved output-buffer) t))))
 
+(defparameter *blank-char* (make-fatchar :c #\space))
+(defun blank-char ()
+  (copy-fatchar *blank-char*))
+
+(defun unset-char (c)
+  "Make a fatchar in the grid unset."
+  ;; @@@ or should we just (fatchar-init c) ??
+  (setf (fatchar-c     c)	+default-char+
+	(fatchar-fg    c)	nil
+	(fatchar-bg    c)	nil
+	(fatchar-line  c)	0
+	(fatchar-attrs c)	nil))
+
 (defun make-new-grid (tty)
   "Make the character grid arrays for TTY assuming that the rows and columns
 are already set."
   (with-slots (lines (window-rows terminal::window-rows)
 		     (window-columns terminal::window-columns)) tty
-    (setf lines (make-array window-rows :element-type 'grid-string))
+    ;; (setf lines (make-array window-rows :element-type 'grid-string))
+    (setf lines (make-array window-rows :element-type 'fatchar-string))
     (dotimes (i window-rows)
       (setf (aref lines i)
 	    (make-array window-columns
-			:element-type 'grid-char
-			:initial-element (make-grid-char))
+			:element-type 'fatchar
+			:initial-element (make-fatchar))
 	    ;; (aref index i) i
 	    )
       (dotimes (j window-columns)
@@ -423,14 +462,16 @@ are already set."
 (defun resize-grid (tty)
   (with-slots (lines (window-rows terminal::window-rows)
 		     (window-columns terminal::window-columns)) tty
+    ;; (format *trace-output* "resize-grid ~s ~s~%" window-rows window-columns)
     (flush-buffer tty)
     (let ((old-lines lines))
-      (setf lines (make-array window-rows :element-type 'grid-string))
+      ;; (setf lines (make-array window-rows :element-type 'grid-string))
+      (setf lines (make-array window-rows :element-type 'fatchar-string))
       (dotimes (i window-rows)
 	(setf (aref lines i)
 	      (make-array window-columns
-			  :element-type 'grid-char
-			  :initial-element (make-grid-char))
+			  :element-type 'fatchar
+			  :initial-element (make-fatchar))
 	      ;; (aref index i) i
 	      )
 	(dotimes (j window-columns)
@@ -442,14 +483,16 @@ are already set."
 	 (setf min-width (min (length (aref old-lines i))
 			      (length (aref lines i))))
 	 (setf (osubseq (aref lines i) 0 min-width)
-	       (osubseq (aref old-lines i) 0 min-width))))))
+	       (osubseq (aref old-lines i) 0 min-width)))
+      ;; @@@ need to add adjusting scrolling region to fit
+      )))
 
 (defun dump-grid (tty)
   (with-slots (lines (window-rows terminal::window-rows)
 		     (window-columns terminal::window-columns)) tty
     (loop :for y :from 0 :below (length lines) :do
        (loop :for x :from 0 :below (length (aref lines y)) :do
-	  (format *trace-output* "~a" (grid-char-c (aref (aref lines y) x))))
+	  (format *trace-output* "~a" (fatchar-c (aref (aref lines y) x))))
        (terpri *trace-output*))
     (terpri *trace-output*)
     (finish-output *trace-output*)))
@@ -554,15 +597,21 @@ are already set."
   (with-slots (cell-width cell-height
 	       (window-columns terminal::window-columns)
                (window-rows terminal::window-rows)) tty
-    (setf window-rows    (truncate height cell-height)
-	  window-columns (truncate width cell-width))))
+    ;; (setf window-rows    (truncate height cell-height)
+    ;; 	  window-columns (truncate width cell-width))
+    (setf window-rows    (ceiling height cell-height)
+	  window-columns (ceiling width cell-width))
+    ))
 
 (defmethod terminal-get-size ((tty terminal-x11))
   "Get the window size from the server and store it in tty."
-  (with-slots (window cell-wdith cell-height) tty
+  (with-slots (window cell-wdith cell-height
+	       (window-columns terminal::window-columns)
+               (window-rows terminal::window-rows)) tty
     (set-cell-size tty)
     (set-grid-size-from-pixel-size
-     tty (drawable-width window) (drawable-height window))))
+     tty (drawable-width window) (drawable-height window))
+    (values window-rows window-columns)))
 
 (defmethod terminal-get-cursor-position ((tty terminal-x11))
   "Get the row of the screen the cursor is on. Returns the two values ROW and
@@ -665,7 +714,12 @@ know."
     (unwind-protect
 	 (progn
 	   (terminal-start new-term)
-	   (start-in-terminal new-term function))
+	   (handler-bind
+	       ((error #'(lambda (c)
+			       (format t "make-xterm got ~s~%" c)
+			       (invoke-debugger c))))
+	     (format t "make-xterm returned ~s~%"
+		     (start-in-terminal new-term function))))
       (terminal-done new-term) ;; @@@@ Until no more bugs!
       )))
 
@@ -703,7 +757,7 @@ is zero, but for inserting and deleting is the current line."
        ;; Copy the retained lines up
        (setf (subseq array start (- height n))
 	     (subseq array (+ start n) height))
-       ;; (dbugf :crunch "scroll-copy ~d ~d -> 0 ~d~%" n height (- height n))
+       (dbugf :tx11 "scroll-copy ~d ~d -> 0 ~d~%" n height (- height n))
        ;; Move the new blank lines in place.
        (setf (subseq array (- height n)) new-blanks)
        ;; Blank out the newly blank lines
@@ -711,6 +765,7 @@ is zero, but for inserting and deleting is the current line."
     (t ;; minusp
      (let ((offset (abs n))
 	   (new-blanks (subseq array (+ height n))))
+       (dbugf :tx11 "scroll-copy ~s ~s ~s~%" n start height)
        ;; Copy the retained lines down
        ;;(setf (subseq array (1+ offset))
        (setf (subseq array (+ start offset))
@@ -723,65 +778,121 @@ is zero, but for inserting and deleting is the current line."
 ;; @@@ It would be best to batch scrolling too. e.g. turn successive scrolls 1
 ;; into a scroll n.
 
-(defun scroll (tty n &key (start 0))
+(defun scroll (tty n &key (start 0 start-supplied-p))
   "Scroll by N lines."
-  ;; (dbugf :crunch "(scroll ~s)~%" n)
+  (dbugf :tx11 "(scroll ~s)~%" n)
   (with-slots ((window-rows terminal::window-rows)
 	       (window-columns terminal::window-columns)
 	       lines cell-width cell-height window draw-gc) tty
     ;; (when (not (zerop n))
     ;;   (no-hints tty))
     ;; (if-dbugf (:crunch) (dump-screen tty))
-    (let ((abs-n (abs n)))
-      (if (< abs-n window-rows)
-	  (progn
-	    (when (plusp n)
-	      (add-scrollback tty (subseq lines 0 n)))
-	    (scroll-copy n window-rows lines #'line-blanker start)
-	    ;; (scroll-copy n window-rows index #'index-blanker)
-	    (cond
-	      ((plusp n)
-	       ;; move the bottom part up
-	       (copy-area window draw-gc
-			  0 (* cell-height (+ start n))
-			  (* window-columns cell-height)
-			  (* (- window-rows n) cell-height)
-			  window
-			  0 (* cell-height start))
-	       ;; clear the newly blank area
-	       (clear-area window
-			   :x 0
-			   :y (* (- window-rows n) cell-height)
-			   :width (* window-columns cell-height)
-			   :height (* n cell-height)))
-	      (t ;; minusp
-	       (copy-area window draw-gc 0 (* cell-height start)
-			  (* window-columns cell-height)
-			  (* (- window-rows abs-n) cell-height)
-			  window
-			  0 (* cell-height (+ abs-n start)))
-	       (clear-area window :x 0 :y (* start cell-height)
-			   :width (* window-columns cell-height)
-			   :height (* abs-n cell-height))
-	       )))
-	  (progn
-	    (add-scrollback tty lines)
-	    (add-scrollback-blanks tty (- abs-n window-rows))
-	    ;; Just erase everything
-	    (line-blanker lines)
-	    ;; (index-blanker index)
-	    (clear-area window :x 0 :y 0
+
+    (let ((top (scroll-top tty))
+	  (bottom (scroll-bottom tty))
+	  (rows (scroll-height tty))
+	  abs-n)
+
+      ;; Clip N to the scrolling region.
+      (setf n (if (plusp n)
+		  (min n (- bottom start))
+		  (max n (- (- start top))))
+	    abs-n (abs n))
+
+      (setf start (if start-supplied-p (clamp start top bottom) top))
+
+      (cond
+	((< abs-n rows)
+	 (when (and (zerop top) (plusp n))
+	   (add-scrollback tty (subseq lines top n)))
+	 (scroll-copy n rows lines #'line-blanker top)
+	 ;; (scroll-copy n window-rows index #'index-blanker)
+	 (cond
+	   ((plusp n)
+	    ;; move the bottom part up
+	    (copy-area window draw-gc
+		       0 (* cell-height (+ start n))
+		       (* window-columns cell-height)
+		       (* (- bottom n) cell-height)
+		       window
+		       0 (* cell-height start))
+	    ;; clear the newly blank area
+	    (clear-area window
+			:x 0
+			:y (* (- bottom n) cell-height)
 			:width (* window-columns cell-height)
-			:height (* window-rows cell-height)))))))
+			:height (* n cell-height)))
+	   (t ;; minusp
+	    (copy-area window draw-gc 0 (* cell-height start)
+		       (* window-columns cell-height)
+		       (* (- bottom abs-n) cell-height)
+		       window
+		       0 (* cell-height (+ abs-n start)))
+	    (clear-area window :x 0 :y (* start cell-height)
+			       :width (* window-columns cell-height)
+			       :height (* abs-n cell-height)))))
+	((zerop top)
+	 ;; Scroll the whole window/region.
+	 (add-scrollback tty lines)
+	 (add-scrollback-blanks tty (- abs-n window-rows))
+	 ;; Just erase everything
+	 (line-blanker lines)
+	 ;; (index-blanker index)
+	 (clear-area window :x 0 :y 0
+			    :width (* window-columns cell-height)
+			    :height (* window-rows cell-height)))
+	(t
+	 ;; clear the whole scrolling region
+	 (scroll-copy n rows lines #'line-blanker top)
+	 ;; .. index-blanker
+	 (clear-area window :x 0 :y (* top cell-height)
+			    :width (* window-columns cell-height)
+			    :height (* rows cell-height)))))))
 
 (defun char-char (c)
   "Return the Lisp character from whatever other type of thing."
   (etypecase c
-    (grid-char (grid-char-c c))
-    (fatchar (fatchar-c c))
+    ;; (grid-char (grid-char-c c))
+    (fatchar
+     (if (and (stringp (fatchar-c c))
+	      (= 1 (length (fatchar-c c))))
+	 (char (fatchar-c c) 0)
+	 (fatchar-c c)))
     (fatchar-string (if (= (length c) 1) (elt c 0) c))
     (string (if (= (length c) 1) (char c 0) c))
     (character c)))
+
+;; Should things like this be in ochar?
+;; Or should grid-char and fatchar be classes????
+(defgeneric any-char-c (c)
+  (:method ((c character)) c)
+  (:method ((c fatchar)) (fatchar-c c))
+  ;; (:method ((c grid-char)) (grid-char-c c))
+  )
+
+(defgeneric any-char-fg (c)
+  (:method ((c character)) nil)
+  (:method ((c fatchar)) (fatchar-fg c))
+  ;; (:method ((c grid-char)) (grid-char-fg c))
+  )
+
+(defgeneric any-char-bg (c)
+  (:method ((c character)) nil)
+  (:method ((c fatchar)) (fatchar-bg c))
+  ;; (:method ((c grid-char)) (grid-char-bg c))
+  )
+
+(defgeneric any-char-line (c)
+  (:method ((c character)) nil)
+  (:method ((c fatchar)) (fatchar-line c))
+  ;; (:method ((c grid-char)) (grid-char-line c))
+  )
+
+(defgeneric any-char-attrs (c)
+  (:method ((c character)) nil)
+  (:method ((c fatchar)) (fatchar-attrs c))
+  ;; (:method ((c grid-char)) (grid-char-attrs c))
+  )
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defmacro with-color ((tty fg bg) &body body)
@@ -900,6 +1011,7 @@ is zero, but for inserting and deleting is the current line."
 	       invisible crossed-out double-underline inverted dimmed
 	       ;; (use-font font)
 	       )
+	   (declare (ignorable blink italic))
 	   (loop :for a :in attrs :do
 	      (case a
 		(:bold             (setf bold t))
@@ -985,8 +1097,14 @@ is zero, but for inserting and deleting is the current line."
   (with-slots (rendition delay-scroll cursor-row cursor-column output-buffer
 	       (window-rows terminal::window-rows)
 	       (window-columns terminal::window-columns) lines) tty
-    (let (changed (last-char (and output-buffer
-				  (first (out-buf-string output-buffer)))))
+    (let* ((last-char (and output-buffer
+			   (first (out-buf-string output-buffer))))
+	   ;; (top (scroll-top tty))
+	   (bottom (scroll-bottom tty))
+	   (last-row (1- bottom))
+	   (last-col (1- window-columns))
+	   ;; (rows (scroll-height tty))
+	   (changed nil))
       (labels ((regularize (c)
 		 (etypecase c
 		   ((or fatchar character) c)
@@ -999,39 +1117,40 @@ is zero, but for inserting and deleting is the current line."
 		   ((or character string)
 		    (let* ((rc (regularize char))
 			   (new-gc
-			    (make-grid-char
+			    (make-fatchar
 			     :c rc
 			     :fg (fatchar-fg rendition)
 			     :bg (fatchar-bg rendition)
 			     :attrs (fatchar-attrs rendition)
 			     :line 0))) ;; unless it's a line char??
-		      (when (not (grid-char= gc new-gc))
-			(setf (grid-char-c gc) rc
-			      (grid-char-fg gc) (fatchar-fg rendition)
-			      (grid-char-bg gc) (fatchar-bg rendition)
-			      (grid-char-attrs gc) (fatchar-attrs rendition)
-			      (grid-char-line gc) 0
+		      (when (not (fatchar= gc new-gc))
+			(setf (fatchar-c gc) rc
+			      (fatchar-fg gc) (fatchar-fg rendition)
+			      (fatchar-bg gc) (fatchar-bg rendition)
+			      (fatchar-attrs gc) (fatchar-attrs rendition)
+			      (fatchar-line gc) 0
 			      changed t))))
 		   (fatchar
-		    (when (not (grid-char= gc char))
-		      (setf (grid-char-c gc)     (fatchar-c char)
-			    (grid-char-fg gc)    (or (fatchar-fg char)
-						     (fatchar-fg rendition))
-			    (grid-char-bg gc)    (or (fatchar-bg char)
-						     (fatchar-fg rendition))
-			    (grid-char-attrs gc) (intersection
-						  (fatchar-attrs char)
-						  (fatchar-fg rendition))
-			    (grid-char-line gc)  (fatchar-line char)
+		    (when (not (fatchar= gc char))
+                      (setf (fatchar-c gc) (fatchar-c char)
+                            (fatchar-fg gc) (or (fatchar-fg char)
+                                                (fatchar-fg rendition))
+                            (fatchar-bg gc) (or (fatchar-bg char)
+                                                (fatchar-fg rendition))
+                            (fatchar-attrs gc) (intersection
+                                                (fatchar-attrs char)
+                                                (fatchar-attrs rendition))
+                            (fatchar-line gc)  (fatchar-line char)
 			    changed t)))
-		   (grid-char
-		    (when (not (grid-char= gc char))
-		      (set-grid-char gc char) ;; @@@ merge rendition??
-		      (setf changed t)))))
+		   ;; (grid-char
+		   ;;  (when (not (grid-char= gc char))
+		   ;;    (set-grid-char gc char) ;; @@@ merge rendition??
+		   ;;    (setf changed t)))
+		   ))
 	       (push-buf (c)
 		 ;; (format t "push ~s~%" c)
 		 (if output-buffer
-		     (push (copy-grid-char c) (out-buf-string output-buffer))
+		     (push (copy-fatchar c) (out-buf-string output-buffer))
 		     (setf output-buffer
 			   (make-out-buf :row cursor-row :col cursor-column
 					 :string (list c)))))
@@ -1045,7 +1164,7 @@ is zero, but for inserting and deleting is the current line."
 		 (cond
 		   ((not output-buffer)
 		    (push-buf gc))
-		   ((and (grid-char-same-effects gc last-char) (not (moved)))
+		   ((and (same-effects gc last-char) (not (moved)))
 		    (push-buf gc))
 		   (t ; different effects than last or moved
 		    (when output-buffer
@@ -1065,8 +1184,8 @@ is zero, but for inserting and deleting is the current line."
 		 (when delay-scroll
 		   (setf delay-scroll nil)
 		   ;; Actually scroll when in the bottom right corner.
-		   (when (= cursor-row (1- window-rows))
-		     (if (= cursor-column (1- window-columns))
+		   (when (= cursor-row last-row)
+		     (if (= cursor-column last-col)
 			 (progn
 			   (dbugf :tx11 "Delayed scroll~%")
 			   (scroll-one-line))
@@ -1074,16 +1193,18 @@ is zero, but for inserting and deleting is the current line."
 			   (dbugf :tx11 "Delayed wrap~%")
 			   ;; (incf cursor-row) @@@ not really?
 			   (setf cursor-column 0 changed t)
-			   (set-moved tty))))))
+			   (set-moved tty)
+			   )
+			 ))))
 	       (next-line ()
-		 (if (< cursor-row (1- window-rows))
+		 (if (< cursor-row last-row)
 		     (progn
 		       (incf cursor-row)
 		       (setf cursor-column 0)
 		       (setf delay-scroll t)
 		       (set-moved tty))
 		     (when t #| (allow-scrolling tty) @@@ |#
-		       (if (= cursor-column (1- window-columns))
+		       (if (= cursor-column last-col)
 			   (progn
 			     ;; @@@ horrible
 			     ;;(dbugf :tx11 "Delaying scroll @ ~d ~d~%" x y)
@@ -1110,7 +1231,7 @@ is zero, but for inserting and deleting is the current line."
 		  (+ cursor-column
 		     (- (1+ (logior 7 cursor-column)) cursor-column))))
 	     ;; @@@ should tabs actually wrap?
-	     (setf cursor-column (min new-x (1- window-columns)))
+	     (setf cursor-column (min new-x last-col))
 	     (set-moved tty)))
 	  (t
 	   (delayed-scroll)
@@ -1125,8 +1246,8 @@ is zero, but for inserting and deleting is the current line."
 		 (progn
 		   (when (> len 1)
 		     ;; "Underchar removal"
-		     (unset-grid-char (aref (aref lines cursor-row)
-					    (1+ cursor-column))))
+		     (unset-char (aref (aref lines cursor-row)
+				       (1+ cursor-column))))
 		   (setf cursor-column new-x)
 		   (set-moved tty))
 		 (next-line)))
@@ -1138,41 +1259,56 @@ is zero, but for inserting and deleting is the current line."
   "Copy the STRING from START to END to the screen. Return true if we actually
 changed the screen contents."
   (with-slots (rendition) tty
-    (loop
-       :with changed :and gchar
-       ;; :and str = (if (or (and start (not (zerop start))) end)
-       ;; 		      (if end
-       ;; 			  (displaced-subseq string (or start 0) end)
-       ;; 			  (displaced-subseq string start))
-       ;; 		      string)
-       ;; :with len = (or end (length string))
-       ;; :while (< i len)
-       :for c :in (char-util:graphemes
-		   (cond ;; @@@ What's better? this or splicing?
-		     ((and start end) (osubseq string start end))
-		     (start (osubseq string start))
-		     (end (osubseq string 0 end))
-		     (t string)))
-       :do
-       ;; Make sure the color is set properly in the upgraded char
-       (setf gchar (grapheme-to-grid-char c))
-       (when (typep c '(or string character))
-	 (setf (grid-char-fg gchar) (fatchar-fg rendition)
-	       (grid-char-bg gchar) (fatchar-bg rendition)
-	       (grid-char-attrs gchar) (fatchar-attrs rendition)))
+    (let (changed) ;; @@@ I don't think this is used by any caller
+    (typecase string
+      (string
+       (loop
+	 :with gchar = (make-fatchar)
+	 ;; :and str = (if (or (and start (not (zerop start))) end)
+	 ;; 		      (if end
+	 ;; 			  (displaced-subseq string (or start 0) end)
+	 ;; 			  (displaced-subseq string start))
+	 ;; 		      string)
+	 ;; :with len = (or end (length string))
+	 ;; :while (< i len)
+	 :for c :in (char-util:graphemes
+		     (cond ;; @@@ What's better? this or splicing?
+		       ((and start end) (osubseq string start end))
+		       (start (osubseq string start))
+		       (end (osubseq string 0 end))
+		       (t string)))
+	 :do
+	 ;; Make sure the color is set properly in the upgraded char
+	 ;; (setf gchar (grapheme-to-grid-char c))
+	 ;; (when (typep c '(or string character))
+	 ;; 	 (setf (grid-char-fg gchar) (fatchar-fg rendition)
+	 ;; 	       (grid-char-bg gchar) (fatchar-bg rendition)
+	 ;; 	       (grid-char-attrs gchar) (fatchar-attrs rendition)))
+	    (setf (fatchar-c gchar) (fatchar::copy-grapheme c)
+		  (fatchar-fg gchar) (fatchar-fg rendition)
+		  (fatchar-bg gchar) (fatchar-bg rendition)
+		  (fatchar-attrs gchar) (fatchar-attrs rendition))
+
+	    (with-cursor-movement (tty)
+	      (when (copy-char-to-grid tty gchar)
+		(setf changed t)))
+	    ;;(incf i)
+	 :finally
+	    (return changed)))
+      (fat-string
        (with-cursor-movement (tty)
-	 (when (copy-char-to-grid tty gchar)
-	   (setf changed t)))
-       ;;(incf i)
-       :finally
-       (return changed))))
+	 (omap (_ (when (copy-char-to-grid tty _)
+		    (setf changed t))) string)
+         changed))))))
 
 (defun copy-text-to-grid (tty text)
   (etypecase text
-    ((or character fatchar grid-char)
+    ((or character fatchar #|grid-char |#)
      (with-cursor-movement (tty)
        (copy-char-to-grid tty text)))
-    ((or string fat-string) (copy-string-to-grid tty text))))
+    ((or string fat-string)
+     (with-cursor-movement (tty)
+       (copy-string-to-grid tty text)))))
 
 #|
 (defun update-column-for-char (tty char)
@@ -1359,6 +1495,7 @@ i.e. the terminal is 'line buffered'."
   (copy-text-to-grid tty unit)
   )
 
+#|
 (defun %draw-fat-string (tty str &key start end x y)
   "Draw a fat string STR on TTY from START to END at X Y, without copying it
 to the grid. It must be on a single line and have no motion characters."
@@ -1403,6 +1540,37 @@ to the grid. It must be on a single line and have no motion characters."
 	   ;; (format t "draw-fat-string ~s ~s~%" substr (olength substr))
 	   (render-unit-string tty substr :row y :col (+ x unit-start))))
       had-newline)))
+|#
+
+(defun %draw-fat-string (tty str &key (start 0) (end (olength str)) x y)
+  "Draw a fat string STR on TTY from START to END at X Y, without copying it
+to the grid. It must be on a single line and have no motion characters."
+  (let* ((ix x)
+	 (i start)
+	 (sub (make-stretchy-vector 10 :element-type 'fatchar))
+	 (last nil)
+	 (fs (make-fat-string :string sub)))
+    ;; (format *dbug-output* "Rus [~s ~s] ~s~%" x y
+    ;; 	    (make-fat-string :string str))
+    (loop
+      :while (< i end)
+      :do
+      (when (and last (not (same-effects (oelt str i) last)))
+	(render-unit-string tty sub :row y :col ix)
+	;; (format *dbug-output* "rUs [~s ~s] ~s~%" ix y
+	;; 	(make-fat-string :string sub))
+	;; (incf ix (char-util:display-length sub))
+	(incf ix (char-util:display-length fs))
+	(stretchy-truncate sub))
+      (stretchy-append sub (oelt str i))
+      (setf last (oelt str i))
+      (incf i))
+    (when (not (zerop (length sub)))
+      (render-unit-string tty sub :row y :col ix)
+      ;; (format *dbug-output* "ruS [~s ~s] ~s~%" ix y
+      ;; 	      (make-fat-string :string sub))
+      ))
+  (finish-output *dbug-output*))
 
 ;; (defun %write-fat-string (tty str start end)
 ;;   (%draw-fat-string tty str :start start :end end :copy t))
@@ -1491,7 +1659,7 @@ to the grid. It must be on a single line and have no motion characters."
       :blue-mask  #x0000ff)
      ,(make-pixel-format
        :name :RGB565
-       :class :true-color		; correct ?
+       :class :true-color		; incorrect ?
        :red-mask   #xf800
        :green-mask #x07e0
        :blue-mask  #x001f))
@@ -1564,7 +1732,9 @@ to the grid. It must be on a single line and have no motion characters."
   (with-slots (lines) tty
     (loop :for y :from start-y :to end-y :do
        (loop :for x :from start-x :to end-x :do
-	  (unset-grid-char (aref (aref lines y) x))))))
+	  ;; (unset-grid-char (aref (aref lines y) x))
+	  (unset-char (aref (aref lines y) x))
+	  ))))
 
 (defun clear-text (tty start-x start-y end-x end-y &key erase)
   "Clear an area of the window, with coordinates in character cells."
@@ -1594,7 +1764,8 @@ to the grid. It must be on a single line and have no motion characters."
 			 (1+ (ceiling height cell-height))
 			 window-rows))
 	   (y 0)
-	  actual-end str output-start)
+	  ;; (output-start 0)
+	  actual-end str)
       (setf c-start-x (max 0 c-start-x)
 	    c-start-y (max 0 c-start-y))
       (dbugf :tx11 "redraw-area ~s ~s ~s ~s~%"
@@ -1604,6 +1775,7 @@ to the grid. It must be on a single line and have no motion characters."
 		      (or width window-width) (or height window-height)
 		      t)
       (when (not (zerop top))
+	(dbugf :tx11 "redrawing scrollback, top = ~s~%" top)
 	(loop
 	   ;; :for y = 0 :then (1+ y)
 	   :for i :from top :downto (max 0 (- top window-rows))
@@ -1611,7 +1783,7 @@ to the grid. It must be on a single line and have no motion characters."
 	   (setf str (span-to-fat-string (oelt scrollback (- c-height i)))
 		 actual-end
 		 (clamp (+ c-start-x c-width) 0 (min (olength str)
-						     (1- window-columns))))
+						     window-columns)))
 	   (dbugf :tx11 "bowser y ~s i ~s [~s ~s] str ~s~%"
 		  y i c-start-x actual-end str)
 	   (%draw-fat-string tty str
@@ -1622,24 +1794,49 @@ to the grid. It must be on a single line and have no motion characters."
       (loop
 	 ;; :for y :from (max 0 c-start-y)
 	 ;; :to (clamp (+ c-start-y c-height) 0 (1- window-rows))
-	 :while (< y (clamp (+ c-start-y c-height) 0 (1- window-rows)))
+	 :while (<= y (clamp (+ c-start-y c-height) 0 (1- window-rows)))
 	 :do
 	 (setf actual-end
 	       (clamp (+ c-start-x c-width) 0 (min (length (aref lines y))
-						   (1- window-columns)))
-	       (values str output-start) (grid-to-fat-string
-					  (aref lines y)
-					  :start c-start-x
-					  :end actual-end
-					  :null-as #\space))
-	 ;; (format t "str ~s ~s output-start ~s~%"
-	 ;;         (olength str) str output-start)
+						    window-columns))
+	       ;; (values str output-start) (grid-to-fat-string
+	       ;; 				  (aref lines y)
+	       ;; 				  :start c-start-x
+	       ;; 				  :end actual-end
+	       ;; 				  :keep-nulls nil
+	       ;; 				  ;; :null-as #\space
+	       ;; 				  )
+	       ;; str (osubseq (aref lines y) c-start-x actual-end)
+	       str (aref lines y)
+	       )
 	 (when (and (plusp (- actual-end c-start-x))
 		    (not (zerop (olength str))))
+	   ;; (dbugf :tx11 "redraw line [~s ~s] ~s - ~s ~s ~s~%"
+	   ;; 	  output-start y c-start-x actual-end
+	   ;; 	  (olength str)
+	   ;; 	  str
+	   ;; 	  ;; (aref lines y)
+	   ;; 	  )
 	   (%draw-fat-string
-	    tty str :start c-start-x :end actual-end
-	    :x (+ c-start-x output-start) :y y))
+	    tty str :start c-start-x
+		    :end actual-end
+	            ;; :x output-start
+		    :x c-start-x
+		    :y y))
 	 (incf y)))))
+
+(defun test-redraw ()
+  (with-immediate ()
+    (tt-clear)
+    (tt-home)
+    (loop :for y :from 0 :below (tt-height) :do
+      (loop :with i = 0
+        :for x :from 0 :below (tt-width) :do
+        (tt-write-char (digit-char i))
+        (incf i)
+        (when (> i 9) (setf i 0)))
+      (tt-move-to-col 0))
+    (tt-get-key)))
 
 (defun scrollback-backward (tty n)
   "Move the top of the terminal view backward N lines in the scrollback history."
@@ -1705,6 +1902,7 @@ i.e. the terminal is 'line buffered'."
 				&key start end)
   "Output a string to the terminal, followed by a newline."
   (%write-string tty str start end)
+  (dbugf :tx11 "---> heckin newline~%")
   (%write-text tty #\newline)
   (when (line-buffered-p tty)
     (terminal-finish-output tty)))
@@ -1753,26 +1951,37 @@ i.e. the terminal is 'line buffered'."
     (terminal-write-char tty #\newline)
     t))
 
+(defun move-to (tty row col &key in-region)
+  "Move to ‘row’ and ‘col’. If either are NIL, don't change that one.
+If ‘in-region’ is true, constrain to the scrolling region."
+  (when (or row col)
+    (with-slots ((window-rows terminal::window-rows)
+		 (window-columns terminal::window-columns)
+		 delay-scroll) tty
+      ;; (assert (<= 0 row (1- window-rows)))
+      ;; (assert (<= 0 col (1- window-columns)))
+      (with-cursor-movement (tty)
+	(when row
+	  (setf (cursor-row tty)
+		(if in-region
+		    (clamp row (scroll-top tty) (1- (scroll-bottom tty)))
+		    (clamp row 0 (1- window-rows)))))
+	(when col
+	  (setf (cursor-column tty) (clamp col 0 (1- window-columns)))))
+      ;; Moving has to forget about scrolling.
+      (setf delay-scroll nil))))
+
 (defmethod terminal-move-to ((tty terminal-x11) row col)
-  (with-slots ((window-rows terminal::window-rows)
-	       (window-columns terminal::window-columns)) tty
-    ;; (assert (<= 0 row (1- window-rows)))
-    ;; (assert (<= 0 col (1- window-columns)))
-    (with-cursor-movement (tty)
-      (setf (cursor-row tty) (clamp row 0 (1- window-rows))
-	    (cursor-column tty) (clamp col 0 (1- window-columns))))))
+  (move-to tty row col))
 
 (defmethod terminal-move-to-col ((tty terminal-x11) col)
-  (with-cursor-movement (tty)
-    (setf (cursor-column tty) col)))
+  (move-to tty nil col))
 
 (defmethod terminal-move-to-row ((tty terminal-x11) row)
-  (with-cursor-movement (tty)
-    (setf (cursor-row tty) row)))
+  (move-to tty row nil))
 
 (defmethod terminal-beginning-of-line ((tty terminal-x11))
-  (with-cursor-movement (tty)
-    (setf (cursor-column tty) 0)))
+  (move-to tty nil 0))
 
 (defmethod terminal-delete-char ((tty terminal-x11) &optional (n 1))
   (with-slots (lines cursor-row cursor-column) tty
@@ -1782,9 +1991,10 @@ i.e. the terminal is 'line buffered'."
       (setf (osubseq line cursor-column (- line-len (+ n 2)))
 	    (osubseq line (+ cursor-column 1 n) (1- line-len)))
       (%draw-fat-string
-       tty (grid-to-fat-string
-	    (osubseq line cursor-column (- line-len (+ n 2)))
-	    :null-as #\space :keep-nulls t)
+       ;; tty (grid-to-fat-string
+       ;; 	    (osubseq line cursor-column (- line-len (+ n 2)))
+       ;; 	    :null-as #\space :keep-nulls t)
+       tty (osubseq line cursor-column (- line-len (+ n 2)))
        :x cursor-column :y cursor-row)
       (clear-text tty cursor-column cursor-row
 		      (- line-len n 1) cursor-row))))
@@ -1797,9 +2007,10 @@ i.e. the terminal is 'line buffered'."
       (setf (osubseq line (+ cursor-column n) (- line-len 1))
 	    (osubseq line cursor-column (- line-len (+ n 2))))
       (%draw-fat-string
-       tty (grid-to-fat-string
-	    (osubseq line (+ cursor-column n) (- line-len 1))
-	    :null-as #\space :keep-nulls t)
+       ;; tty (grid-to-fat-string
+       ;; 	    (osubseq line (+ cursor-column n) (- line-len 1))
+       ;;           :null-as #\space :keep-nulls t)
+       tty (osubseq line (+ cursor-column n) (- line-len 1))
        :x cursor-column :y cursor-row)
       (clear-text tty cursor-column cursor-row
 		      (+ cursor-column n) cursor-row))))
@@ -1811,31 +2022,26 @@ i.e. the terminal is 'line buffered'."
   (scroll tty (- n) :start (cursor-row tty)))
 
 (defmethod terminal-backward ((tty terminal-x11) &optional (n 1))
-  (with-slots (cursor-column (window-columns terminal::window-columns)) tty
-    (with-cursor-movement (tty)
-      (setf cursor-column
-	    (clamp (- cursor-column n) 0 (1- window-columns))))))
+  (with-slots (cursor-column) tty
+    (move-to tty nil (- cursor-column n) :in-region t)))
 
 (defmethod terminal-forward ((tty terminal-x11) &optional (n 1))
-  (with-slots (cursor-column (window-columns terminal::window-columns)) tty
-    (with-cursor-movement (tty)
-      (setf cursor-column
-	    (clamp (+ cursor-column n) 0 (1- window-columns))))))
+  (with-slots (cursor-column) tty
+    (move-to tty nil (+ cursor-column n) :in-region t)))
 
 (defmethod terminal-up ((tty terminal-x11) &optional (n 1))
-  (with-slots (cursor-row (window-rows terminal::window-rows)) tty
-    (with-cursor-movement (tty)
-      (setf cursor-row (clamp (- cursor-row n) 0 (1- window-rows))))))
+  (with-slots (cursor-row) tty
+    (move-to tty (- cursor-row n) nil :in-region t)))
 
 (defmethod terminal-down ((tty terminal-x11) &optional (n 1))
-  (with-slots (cursor-row (window-rows terminal::window-rows)) tty
-    (with-cursor-movement (tty)
-      (setf cursor-row (clamp (+ cursor-row n) 0 (1- window-rows))))))
+  (with-slots (cursor-row) tty
+    (move-to tty (+ cursor-row n) nil :in-region t)))
 
 (defmethod terminal-scroll-down ((tty terminal-x11) n)
   (when (> n 0)
     (with-slots ((y cursor-row) (height terminal::window-rows)) tty
-      (let ((start-y y))
+      (let ((start-y y)
+	    (height (scroll-height tty)))
 	(with-cursor-movement (tty)
 	  (terminal-down tty n)
 	  (when (> n (- height (1+ start-y)))
@@ -1844,9 +2050,10 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-scroll-up ((tty terminal-x11) n)
   (when (> n 0)
     (with-slots ((y cursor-row)) tty
-      (let ((start-y y))
+      (let ((start-y y)
+	    (top (scroll-top tty)))
 	(terminal-up tty n)
-	(when (> n start-y)
+	(when (> n (- top start-y))
 	  (scroll tty (- (- n start-y))))))))
 
 (defmethod terminal-scroll-screen-up ((tty terminal-x11)
@@ -1892,7 +2099,7 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-erase-below ((tty terminal-x11))
   (with-slots (cursor-column cursor-row 
                (window-columns terminal::window-columns)
-               (window-rows terminal::window-rows)) tty
+	       (window-rows terminal::window-rows)) tty
     (flush-buffer tty)
     (terminal-erase-to-eol tty)
     (clear-text tty 0 (1+ cursor-row)
@@ -1909,9 +2116,7 @@ i.e. the terminal is 'line buffered'."
     (draw-cursor tty)))
 
 (defmethod terminal-home ((tty terminal-x11))
-  (with-cursor-movement (tty)
-    (setf (cursor-column tty) 0
-	  (cursor-row tty) 0)))
+  (move-to tty 0 0))
 
 (defmethod terminal-cursor-off ((tty terminal-x11))
   (setf (cursor-state tty) :invisible)
@@ -2012,12 +2217,26 @@ i.e. the terminal is 'line buffered'."
 (defmethod terminal-set-scrolling-region ((tty terminal-x11)
 					  &optional start end)
   (with-slots (scrolling-region) tty
-    (if (and (not start) (not end))
-	(setf scrolling-region nil)
-	(if (or (< start 0) (> end (terminal-window-rows tty)))
-	    (cerror "Just try it anyway."
-		    "The scrolling region doesn't fit in the screen.")
-	    (setf scrolling-region (cons start end))))))
+    (let ((region (or scrolling-region (cons 0 (terminal-window-rows tty)))))
+      (cond
+	((and (not start) (not end))
+	 ;; No scrolling region.
+	 (setf region nil))
+	(t
+	 (when (not (null start))
+	   (check-type start integer)
+	   (when (< start 0)
+	     (cerror "Just try it anyway."
+		     "The scrolling region start doesn't fit in the screen."))
+	   (setf (car region) start))
+	 (when (not (null end))
+	   (check-type end integer)
+	   (when (>= end (terminal-window-rows tty))
+	     (cerror "Just try it anyway."
+		     "The scrolling region end doesn't fit in the screen."))
+	   (setf (cdr region) end))))
+      (setf scrolling-region region))
+    (dbugf :tx11 "scrolling region ~s~%" scrolling-region)))
 
 (defmethod terminal-set-attributes ((tty terminal-x11) attributes)
   "Set the attributes given in the list. If NIL turn off all attributes.
@@ -2088,7 +2307,8 @@ handler cases."
 	(:exposure
 	 (event-slots (slots x y width height xlib:window #|count|#)
 	   (when (eq xlib:window our-window)
-	     ;; (format t "exposure ~s ~s ~s ~s~%" x y width height)
+	     (format *trace-output* "exposure ~s ~s ~s ~s~%" x y width height)
+	     (force-output *trace-output*)
 	     (redraw-area tty x y width height)
 	     (display-finish-output display)
 	     ;; (dump-grid tty)
@@ -2099,14 +2319,17 @@ handler cases."
 	   (when (eq xlib:window our-window)
 	     (when (or (/= xlib::width window-width)
 		       (/= xlib::height window-height))
-	       (setf window-width xlib::width window-height xlib::height)
+	       (setf window-width xlib::width
+		     window-height xlib::height)
 	       (set-grid-size-from-pixel-size tty window-width window-height)
-	       (format *trace-output*
-		       "resize to ~s ~s~%" window-width window-height)
-	       (finish-output *trace-output*)
+	       ;; (format *trace-output*
+	       ;; 	       "resize to ~s ~s~%" window-width window-height)
+	       ;; (finish-output *trace-output*)
+	       (clampf (cursor-row tty) 0 (1- (terminal-window-rows tty)))
+	       (clampf (cursor-column tty) 0 (1- (terminal-window-columns tty)))
 	       (resize-grid tty)
 	       ;;(clear-area win :x x :y y :width w :height h)
-	       ;;(display-finish-output display)
+	       (display-finish-output display)
 	       (when (find :resize (terminal-events-enabled tty))
 		 (setf result :resize
 		       *input-available* t))))
@@ -2445,17 +2668,13 @@ handler cases."
 	(cursor-rendition tty) (make-fatchar
 				;; Maybe faster then :inverse ?
 				:fg (background tty) :bg (foreground tty))
-	;; (cursor-row tty) 0
-	;; (cursor-column tty) 0
 	(saved-cursor-position tty) nil
 	(cursor-state tty) :visible
 	(scrolling-region tty) nil
 	(input-mode tty) :char
 	(delay-scroll tty) nil
 	(output-buffer tty) nil)
-  (with-cursor-movement (tty)
-    (setf (cursor-row tty) 0
-	  (cursor-column tty) 0))
+  (move-to tty 0 0)
   (terminal-finish-output tty))
 
 (defmethod terminal-save-cursor ((tty terminal-x11))
@@ -2465,11 +2684,9 @@ handler cases."
 
 (defmethod terminal-restore-cursor ((tty terminal-x11))
   "Restore the cursor position, from the last saved postion."
-  (with-slots (saved-cursor-position cursor-column cursor-row) tty
+  (with-slots (saved-cursor-position) tty
     (when saved-cursor-position
-      (with-cursor-movement (tty)
-	(setf cursor-column (car saved-cursor-position)
-	      cursor-row (cdr saved-cursor-position))))))
+      (move-to tty (car saved-cursor-position) (cdr saved-cursor-position)))))
 
 #|
 (defun describe-terminal ()
@@ -2858,8 +3075,7 @@ links highlight differently?"
     ;; :-D This is so magically easy, it must be right.
     (when (> column cursor-column)
       (clear-text stream cursor-column cursor-row column cursor-row :erase t)
-      (with-cursor-movement (stream)
-	(setf cursor-column column))))
+      (move-to stream nil column)))
   t)
 
 ;;(defmethod stream-fresh-line ((stream terminal-x11-stream))
@@ -2937,14 +3153,12 @@ links highlight differently?"
 	   (#.(char-util:ctrl #\c) (throw 'interactive-interrupt t))
 	   (#.(char-util:ctrl #\d) (setf done t got-eof t))
 	   (#.(char-util:ctrl #\u)
-	      (with-cursor-movement (tty)
-		(setf cursor-column 0))
-	      (stretchy-truncate result 0))
-	   (#\backspace
+	    (move-to tty nil 0)
+	    (stretchy-truncate result 0))
+	   ((#\backspace #\rubout)
 	    (when (not (zerop (length result)))
 	      (when (not (zerop cursor-column))
-		(with-cursor-movement (tty)
-		  (decf cursor-column)))
+		(move-to tty (1- cursor-column) nil))
 	      (stretchy-truncate result (1- (length result)))))
 	   (otherwise
 	    (stretchy-append result c)))
