@@ -58,7 +58,7 @@ Finally close the original ‘fd’."
     :when (/= i fd)
     :do (posix-close i)))
 
-(defun run-the-program (fd program &optional args #| (environment nil env-p) |#)
+(defun run-the-program (fd program &optional args (environment nil #|env-p|#))
   "Run the ‘program’ in the terminal slave ‘fd’ with ‘args’ as the list of
 string arguments."
   (let* ((cmd-and-args (cons program args))
@@ -81,6 +81,9 @@ string arguments."
 
 	    (setf child-pid (fork))
 	    (when (= child-pid 0)
+	      (when environment
+		(loop :for (name value) :in environment
+		      :do (setf (nos:env name) value)))
 	      ;; in the child
 	      ;; (msg (s+ "FOOOB" #\newline))
 	      (close-other-fds fd)
@@ -183,6 +186,7 @@ string arguments."
 	       input-buffer) term
     (let (key)
       (loop
+	:do (terminal-finish-output out-term)
 	:while (terminal-listen-for out-term 0)
 	:do
 	   ;; (dbug "before get-key~%")
@@ -234,7 +238,8 @@ string arguments."
 ;; Currently this is like screen or tmux, but with only one process, so it's
 ;; only really useful for testing our emulation.
 
-(defun emulate (&key (program "/bin/bash") x device debug-term)
+(defun emulate (&key (program (or (env "SHELL") "/bin/bash"))
+		  x device debug-term (term-env "xterm-256color"))
   "Run ‘program’ in a terminal on ‘device’."
   (cond
     ((or x device)
@@ -290,8 +295,15 @@ string arguments."
 	   ;; Break it into words with the shell and run it as an executable.
 	   (let ((all-args (lish::shell-words-to-list
 			    (lish::shell-expr-words
-			     (lish:shell-read program)))))
-	     (setf pid (run-the-program slave (car all-args) (cdr all-args))
+			     (lish:shell-read program))))
+		 (env `(("TERM" ,term-env))))
+	     (when (typep (term-out-term *term*) 'terminal-x11:terminal-x11)
+	       (push `("WINDOWID"
+		       ,(format nil "~d" (xlib:window-id
+					  (terminal-x11::window
+					   (term-out-term *term*)))))
+		     env))
+	     (setf pid (run-the-program slave (car all-args) (cdr all-args) env)
 		   (term-pid *term*) pid)))
 	  (symbol
 	   (unless (fboundp program)
@@ -317,6 +329,9 @@ string arguments."
 		 (dbug "before select ~s~%" fds)
 		 (when (terminal-listen-for out-term 0)
 		   (process-keys *term*))
+		 (when x
+		   (dbug "event-listen -@-@-@-@- ~s~%"
+			 (xlib:event-listen (terminal-x11::display out-term) 0)))
                  (setf results (uos:lame-select fds nil))
 		 (dbug "after select = ~s~%" results)
 		 (when (/= 0 (uos::real-waitpid pid status-ptr
