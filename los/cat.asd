@@ -10,6 +10,6 @@
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Concatenate files. Copy streams."
-    :depends-on (:dlib #| :flexi-streams |# :utf8b-stream :los-config)
+    :depends-on (:dlib :utf8b-stream :opsys :dlib-misc :los-config)
     :components
     ((:file "cat")))
