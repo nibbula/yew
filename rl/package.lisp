@@ -22,7 +22,6 @@
    #:line-editor
    #:line-editor-p
    #:*line-editor-prototype*
-   #:make-line-editor
    #:screen-relative-row
    #:screen-col
    #:line-editor-terminal
@@ -40,6 +39,7 @@
    #:line-editor-auto-suggest-p
    #:line-editor-auto-suggest-rendition
    #:line-editor-mode-line
+   #:line-editor-package #:editor-package
    #:draw-mode-line
    #:first-point
    #:use-context

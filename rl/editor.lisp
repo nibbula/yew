@@ -424,7 +424,10 @@ Otherwise the region is deactivated every command loop.")
    (line-ending-cache
     :initarg :line-ending-cache :accessor line-ending-cache
     :initform nil
-    :documentation "Cache of the results of calculate-line-endings."))
+    :documentation "Cache of the results of calculate-line-endings.")
+   (package
+    :initarg :package :accessor line-editor-package :initform nil
+    :documentation "Package for buffer local variables."))
   (:default-initargs
     :contexts (make-contexts)
     :non-word-chars *default-non-word-chars*
@@ -481,6 +484,37 @@ Otherwise the region is deactivated every command loop.")
 
   ;; Set the current dynamic var.
   (setf *line-editor* e))
+
+(defgeneric editor-package (e)
+  (:documentation "Return the editor package.")
+  (:method ((e line-editor))
+    (or (line-editor-package e)
+	(setf (line-editor-package e) (make-package (gensym "RL-"))))))
+
+(defmethod (setf editor-package) (package (e line-editor))
+  (setf (line-editor-package e) package))
+
+;; @@@ Could this be simpler somehow??
+(defmacro with-editor-vars ((editor &rest vars) &body body)
+  "Evaluate ‘body’ with the list of symbols in ‘vars’ being macros for the same
+named symbols in the local package for ‘editor’."
+  (let* ((pkg-name (gensym "WEV-PKG"))
+	 (pkg-var `(,pkg-name (editor-package ,editor)))
+	 (prefix (gensym "WEV-PREFIX"))
+	 (symbol-names
+	   (loop :for v :in vars
+		 :collect (symbolify (s+ prefix "-" v))))
+	 (symbol-bindings
+	   (loop :for v :in vars
+		 :for s :in symbol-names
+		 :collect `(,s (intern (symbol-name ',v) ,pkg-name))))
+	 (macro-list
+	   (loop :for v :in vars
+		 :for s :in symbol-names
+		 :collect `(,v (symbol-value ,s)))))
+    `(let* (,pkg-var ,@symbol-bindings)
+       (symbol-macrolet (,@macro-list)
+	 ,@body))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Spot methods
@@ -641,7 +675,8 @@ but perhaps reuse some resources."))
 	(need-to-redraw e)	nil
 	;; (show-mode-line e)	nil
 	(exit-flag e)		nil
-	(did-under-complete e)	nil))
+	(did-under-complete e)	nil
+	(line-editor-package e) (make-package (gensym "RL-"))))
 
 #| old-way without contexts
 (defmacro save-excursion ((e) &body body)
