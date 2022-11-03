@@ -1858,7 +1858,11 @@ A utility for debugging DEBUG-FUNCTION-ARGLIST."
       ((typep f 'generic-function)
        (sb-mop:generic-function-lambda-list f))
       ((null f) nil)
-      (t (sb-kernel:%fun-lambda-list f))))
+      (t
+       (let ((raw-result (sb-kernel:%fun-lambda-list f)))
+	 (if (eq raw-result :unknown)
+	     (values nil t)
+	     (values raw-result nil))))))
   #+ccl (ccl:arglist fun)
   #+clisp (when (not (special-operator-p fun))
 	    (ext:arglist fun))
