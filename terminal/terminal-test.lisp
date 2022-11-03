@@ -57,6 +57,10 @@
 		      (message "Press Q to quit, anything else to continue.")
 		      (position :bottom)
 		      redraw-func)
+  "Display ‘message’ and wait for a key press. The message is displayed
+at ‘position’, which can be one of :bottom, :top, or :center. If ‘redraw-func’
+is provided, it will be called to re-draw the scrren, and pressing ^L will
+work. Pressing #\Q will invoke a QUIT restart."
   (with-immediate ()
     (flet ((show-message ()
 	     (when message
@@ -67,7 +71,8 @@
 				      message))
 		 (:top
 		  (tt-write-string-at 0 0 message))
-		 (:center (center message 0))))))
+		 (:center
+		  (center message 0))))))
       (show-message)
       (tt-finish-output)
       (unwind-protect
@@ -78,17 +83,22 @@
 		(case (tt-get-key)
 		  ((#\Q #\q)
 		   (invoke-restart (find-restart 'quit)))
+		  (#.(ctrl #\L)
+		   (when redraw-func
+		     (setf again t)))
 		  (:resize
 		   ;; (tt-format "GOT A RESIZE")
 		   ;; (tt-get-key)
-		   (terminal-get-size *terminal*)
+		   ;; (terminal-get-size *terminal*)
+		   ;; (tt-format ":resize to ~s~%"
+		   ;; 	      (terminal-get-size *terminal*))
 		   (setf again t)))
 		:while again
 		:do (setf again nil)
 		:when (and redraw-func
 			   (or (functionp redraw-func)
 			       (and (symbolp redraw-func)
-				    (fboundp  redraw-func))))
+				    (fboundp redraw-func))))
 		:do
 		(funcall redraw-func)
 		(show-message)))
@@ -121,7 +131,7 @@
     "     v"
     "---> X"))
 
-(defun put-at (row col thing)
+(defun put-at (row col thing &key step)
   "Put a ‘thing’ at ‘row’ and ‘col’. Don't ouput spaces. Clip to the screen.
 ‘thing’ should be an array of strings."
   (tt-move-to row col)
@@ -136,14 +146,16 @@
       (when (and (char/= #\space c)
 		 (>= y 0) (< y (tt-height))
 		 (>= x 0) (< x (tt-width)))
-	(tt-write-char-at y x c)))))
+	(tt-write-char-at y x c)
+	(when step
+	  (tt-get-key))))))
 
 (defun test-screen-size-draw ()
   (tt-clear) (tt-home)
   (put-at 0 0 *top-left*)
   (put-at 0 (- (tt-width) 6) *top-right*)
   (put-at (- (tt-height) 4) 0 *bottom-left*)
-  (put-at (- (tt-height) 4) (- (tt-width) 6) *bottom-right*)
+  (put-at (- (tt-height) 4) (- (tt-width) 6) *bottom-right* #| :step t |#)
 
   ;; message
   (center "There should be an 'X' in every corner of the screen.~%" 0)
@@ -711,58 +723,61 @@ drawing, which will get overwritten."
 
 (defun test-scrolling-region ()
   (blurp ()
-   (let ((width  (z-width))
-	 (height (z-height))
-	 (junk "%@#-."))
-     (tt-format
-      "We will now test setting the scrolling region.~@
-       This should remain visible and unaffected by scrolling below.~@
-       There should be some similar text at the bottom.~%~@
-       Press any key to begin.")
-     (tt-move-to 8 0)
-     (tt-format "~v,,,'-a" width "-")
-     (tt-move-to (- height 3) 0)
-     (tt-format "~v,,,'-a~%" width "-")
-     (tt-format "This should remain visible and unaffected.~%")
-     (tt-format "There should be some similar text at the top.")
-     (tt-get-key)
-     (tt-set-scrolling-region 9 (- height 4))
-     (tt-move-to 10 0)
-     (loop :for i :from 1 :to 200 :do
-       (loop :for j :from 0 :below (1- width) :do
+    (let ((width  (z-width))
+	  (height (z-height))
+	  (junk "%@#-."))
+      (tt-format
+       "We will now test setting the scrolling region.~@
+        This should remain visible and unaffected by scrolling below.~@
+        There should be some similar text at the bottom.~%~@
+        Press any key to begin.")
+      (tt-move-to 8 0)
+      (tt-format "~v,,,'-a" width "-")
+      (tt-get-key)
+      (tt-move-to (- height 3) 0)
+      (tt-format "~v,,,'-a~%" width "-")
+      (tt-get-key)
+      (tt-format "This should remain visible and unaffected.~%")
+      (tt-format "There should be some similar text at the top.")
+      (tt-get-key)
+      (tt-set-scrolling-region 9 (- height 4))
+      (tt-move-to 10 0)
+      (loop :for i :from 1 :to #|200|# 80 :do
+        (loop :for j :from 0 :below (1- width) :do
 	  (tt-write-char (elt junk (random (length junk)))))
 	(tt-write-char #\newline)
 	(tt-finish-output)
-	;; (sleep .03)
-	(sleep .003)
+	(sleep .03)
+	;; (sleep .003)
+	;; (tt-get-key)
 	)
-     (tt-set-scrolling-region nil nil)
-     (tt-move-to 4 0)
-     (tt-erase-line)
-     (tt-write-span '("Press any key to " (:standout "continue.")))
-     (tt-get-key)
-     (tt-erase-line) (tt-format "We will now un-set the scrolling region.~%")
-     (tt-erase-line) (tt-format
-		      "This should soon disappear by scrolling off the top.~%")
-     (tt-erase-line) (tt-format "~%")
-     (tt-erase-line) (tt-format "~%")
-     ;; (tt-move-to 8 0)
-     ;; (tt-format "~v,,,'-a" width "-")
-     (tt-move-to (- height 3) 0)
-     ;; (tt-format "~v,,,'-a~%" width "-")
-     (tt-erase-line)
-     (tt-format "This should soon disappear by scrolling off the top.")
-     (tt-erase-line)
-     (tt-format-at (1- height) 0
-		   "You should not see this when scrolling is done!.~%")
-     (tt-move-to 10 0)
-     (loop :with str
-	:for i :from 1 :to 400 :do
+      (tt-set-scrolling-region nil nil)
+      (tt-move-to 4 0)
+      (tt-erase-line)
+      (tt-write-span '("Press any key to " (:standout "continue.")))
+      (tt-get-key)
+      (tt-erase-line) (tt-format "We will now un-set the scrolling region.~%")
+      (tt-erase-line) (tt-format
+		       "This should soon disappear by scrolling off the top.~%")
+      (tt-erase-line) (tt-format "~%")
+      (tt-erase-line) (tt-format "~%")
+      ;; (tt-move-to 8 0)
+      ;; (tt-format "~v,,,'-a" width "-")
+      (tt-move-to (- height 3) 0)
+      ;; (tt-format "~v,,,'-a~%" width "-")
+      (tt-erase-line)
+      (tt-format "This should soon disappear by scrolling off the top.")
+      (tt-erase-line)
+      (tt-format-at (1- height) 0
+		    "You should not see this when scrolling is done!.~%")
+      (tt-move-to 10 0)
+      (loop :with str
+        :for i :from 1 :to 400 :do
 	(setf str (format nil "~d" (expt 2 i)))
 	(tt-write-string (subseq str 0 (min (1- width) (length str))))
 	(tt-write-char #\newline)
 	(tt-finish-output))
-     (tt-format "The screen should have only numbers above.~%")))
+      (tt-format "The screen should have only numbers above.~%")))
   t)
 
 (defparameter *big-down-arrow*
