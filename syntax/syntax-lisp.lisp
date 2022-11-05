@@ -199,19 +199,21 @@ be of even length and matched in order."
 (defun matching-paren-position (string &key position
 					 (char #\))
 					 (pairs "()[]{}" pairs-p))
-  "Return the position in STRING of CHAR matching a, perhaps hypothetical,
-paired char at POSITION. If there is none, return nil. If POSITION is
+  "Return the position in ‘string’ of ‘char’ matching a, perhaps hypothetical,
+paired char at ‘position’. If there is none, return nil. If ‘position’ is
 not provided, it defaults to the end or beginning of the string, depending if
-CHAR is an open or a close. PAIRS is an even length string of paired characters
-in order, \"{open}{close}...\". PAIRS defaults to something reasonable."
+‘char’ is an open or a close. ‘pairs’ is an even length string of paired
+characters in order, \"{open}{close}...\". ‘pairs’ defaults to something
+reasonable."
   ;; (declare (type string string))
   (let* ((starts nil) (c nil)
 	 (oc (when pairs-p (opens-and-closes pairs)))
 	 (opens (if pairs-p (first oc) "([{"))
 	 (closes (if pairs-p (second oc) ")]}"))
 	 (forward (and (position char opens) t))
-	 (end (if forward (olength string) position))
-	 (start (if forward position 0))
+	 (pos (or position (if forward 0 (olength string))))
+	 (end (if forward (olength string) pos))
+	 (start (if forward pos 0))
 	 (i start))
     ;; (format t "opens = ~s closes = ~s~%" opens closes)
     ;; (format t "forward = ~s end = ~s start = ~s~%" forward end start)
@@ -255,7 +257,7 @@ in order, \"{open}{close}...\". PAIRS defaults to something reasonable."
 	       (when (not starts)
 		 (return-from matching-paren-position i)))
 	      ((ochar= c #\") (eat-string))
-	      ((and (ochar= c #\#) (< i (- position 2))) ; # reader macro char
+	      ((and (ochar= c #\#) (< i (- pos 2))) ; # reader macro char
 	       (incf i)
 	       (case (setf c (ochar string i))
 		 (#\\ (incf i))		; ignore the quoted char
@@ -264,7 +266,7 @@ in order, \"{open}{close}...\". PAIRS defaults to something reasonable."
 	      ;; single line comment
 	      ((eql c #\;) (eat-line-comment)))
 	    (incf i)))
-	(t
+	(t ;; backward
 	 (loop
 	    :while (< i end)
 	    :do (setf c (ochar string i))
