@@ -239,8 +239,14 @@ string arguments."
 ;; only really useful for testing our emulation.
 
 (defun emulate (&key (program (or (env "SHELL") "/bin/bash"))
-		  x device debug-term (term-env "xterm-256color"))
+		  (output-type :ansi) x device debug-term
+		  (term-env "xterm-256color"))
   "Run ‘program’ in a terminal on ‘device’."
+  (when x
+    (setf output-type :x11))
+  (when (not (find-terminal-class-for-type output-type))
+    (error "I don't know the output-type ~s. Maybe it's not loaded?"
+	   output-type))
   (cond
     ((or x device)
      ;; If we are using a separate terminal, use the current terminal as
@@ -249,9 +255,7 @@ string arguments."
     (t
      ;; When not using X11 or given a separate device, use the current tty.
      (setf device (uos:ttyname 0))))
-  (let* ((out-term (make-instance (if x
-				      'terminal-x11:terminal-x11
-				      'terminal-ansi:terminal-ansi)
+  (let* ((out-term (make-instance (find-terminal-class-for-type output-type)
 				  :device-name device))
 	 (ansi (make-instance 'ansi-terminal:ansi-stream
 			      :terminal out-term
@@ -329,7 +333,7 @@ string arguments."
 		 (dbug "before select ~s~%" fds)
 		 (when (terminal-listen-for out-term 0)
 		   (process-keys *term*))
-		 (when x
+		 (when (eq output-type :x11)
 		   (dbug "event-listen -@-@-@-@- ~s~%"
 			 (xlib:event-listen (terminal-x11::display out-term) 0)))
                  (setf results (uos:lame-select fds nil))
