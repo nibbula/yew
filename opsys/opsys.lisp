@@ -309,7 +309,10 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
 						  'ccl:input-stream))))
     ((typep stream 'ccl::basic-stream)
      (ccl::ioblock-device
-      (ccl::basic-stream-ioblock stream))))
+      (ccl::basic-stream-ioblock stream)))
+    ((typep stream 'ccl::fundamental-stream)
+     (ccl::ioblock-device
+      (ccl::stream-ioblock stream t))))
   #+cmu
   (cond
     ((typep stream 'two-way-stream)
