@@ -61,7 +61,7 @@ else stupid."
   ;; (format t "howmany(FD_SETSIZE,NFDBITS) = ~s~%" (howmany FD_SETSIZE NFDBITS))
   ;; (format t "+fd-count+ = ~s~%" +fd-count+)
   ;; (format t "sizeof(fd_set) = ~s~%" (foreign-type-size 'fd_set))
-  (let ((nfds 0) ret-val results time-left sec frac)
+  (let ((nfds 0) ret-val results time-left sec frac actual-timeval)
     (with-foreign-objects ((read-fds :uint32 +fd-count+)
  			   (write-fds :uint32 +fd-count+)
  			   (err-fds :uint32 +fd-count+)
@@ -95,40 +95,47 @@ else stupid."
       ;; 	    do
       ;; 	    (princ (if (= 0 (fd-isset i err-fds)) #\0 #\1)))
       ;; (terpri)
-      (with-foreign-slots ((tv_sec tv_usec) tv (:struct foreign-timeval))
-	(cond
-	  (timeout
+
+      (cond
+	(timeout
+	 (with-foreign-slots ((tv_sec tv_usec) tv (:struct foreign-timeval))
 	   (multiple-value-setq (sec frac) (truncate timeout))
 	   (setf time-left
 		 (make-timeval :seconds sec
 			       :micro-seconds (truncate (* frac 1000000)))
 		 tv_sec sec
 		 tv_usec (timeval-micro-seconds time-left)))
-	  (t
-	   ;; no timeout, wait for something to happen
-	   (setf tv (null-pointer))))
+	 (setf actual-timeval tv))
+	(t
+	 ;; no timeout, wait for something to happen
+	 (setf actual-timeval (null-pointer))
+	 ;; (setf (pointer-address tv) 0)
+	 ;; (setf tv (make-pointer 0))
+	 ))
 	;; (let ((usec (truncate (* frac 1000000))))
 	;;   (dbugf :select "nfds ~s sec ~s usec ~s ~g ~s~%"
 	;; 	   nfds sec usec usec (type-of usec))
 	;;   (dbugf :select "timveval sec ~s usec ~s~%"
 	;; 	   tv_sec tv_usec))
-	(if retry
-	    (loop :with elapsed :and start-time :and end-time
-	      :do
-	        (setf start-time (gettimeofday))
-		(setf ret-val
-		      (unix-select (1+ nfds) read-fds write-fds err-fds tv))
-		(setf end-time (gettimeofday))
-	      :while (and (= ret-val -1) (or (= *errno* +EINTR+)
+      (if retry
+	  (loop :with elapsed :and start-time :and end-time
+	    :do
+	      (setf start-time (gettimeofday))
+	      (setf ret-val
+		    (unix-select (1+ nfds) read-fds write-fds err-fds
+				 actual-timeval))
+	      (setf end-time (gettimeofday))
+	    :while (and (= ret-val -1) (or (= *errno* +EINTR+)
 					     (= *errno* 0))
 			  (not (or *got-sigwinch* *got-tstp*))
 			  ;; @@@ some systems we might need to check EAGAIN?
 			  (timeval-plusp
 			   (setf elapsed (timeval-sub end-time start-time))))
-	      :do (setf time-left (timeval-sub time-left elapsed)))
-	    ;; no retry loop
-	    (setf ret-val
-		  (unix-select (1+ nfds) read-fds write-fds err-fds tv))))
+	    :do (setf time-left (timeval-sub time-left elapsed)))
+	  ;; no retry loop
+	  (setf ret-val
+		(unix-select (1+ nfds) read-fds write-fds err-fds
+			     actual-timeval)))
       (when (= -1 ret-val)
 	(cond
 	  (*got-sigwinch*
