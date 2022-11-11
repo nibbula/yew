@@ -90,12 +90,12 @@ smallest unit of written language."
 
 (defgeneric grapheme-equal (g1 g2) #| sealed |#
   (:documentation "Return true if the graphemes are equal based on char-equal.")
-  (:method ((g1 character) (g2 character)) (char= g1 g2))
-  (:method ((g1 string) (g2 string)) (string= g1 g2))
+  (:method ((g1 character) (g2 character)) (char-equal g1 g2))
+  (:method ((g1 string) (g2 string)) (string-equal g1 g2))
   (:method ((g1 string) (g2 character))
-    (and (= (length g1) 1) (char= (char g1 0) g2)))
+    (and (= (length g1) 1) (char-equal (char g1 0) g2)))
   (:method ((g1 character) (g2 string))
-    (and (= (length g2) 1) (char= (char g2 0) g1))))
+    (and (= (length g2) 1) (char-equal (char g2 0) g1))))
 
 (defconstant +default-char+ (code-char 0)
   "Default character value for fatchars.")
@@ -198,6 +198,9 @@ smallest unit of written language."
 
 (defmethod ochar-equal ((char-1 fatchar) (char-2 character))
   (grapheme-equal (fatchar-c char-1) char-2))
+
+(defmethod ochar-equal ((char-1 fatchar) (char-2 fatchar))
+  (grapheme-equal (fatchar-c char-1) (fatchar-c char-2)))
 
 (defmethod ochar/= ((char-1 fatchar) (char-2 fatchar))
   (fatchar/= char-1 char-2))
@@ -420,55 +423,76 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 		  #'fatchar-c))))
 
 (defmethod oposition ((item fatchar) (string fat-string)
-		      &key from-end test test-not key
+		      &key from-end
+			(test #'equalp test-p)
+			(test-not nil test-not-p)
+			key
 			(start nil start-p)
 			(end nil end-p))
   "Position of a fatchar in a fat-string."
   (declare (ignorable start start-p end end-p))
-  (call-with-start-and-end
+  (when (not test-p)
+    (setf test-p t
+	  test #'equalp))
+  (call-with-start-end-test
    position
    (item (fat-string-string string)
 	 :from-end from-end
-	 ;; Default to reasonable tests.
-	 :test (or test #'equalp)
-	 :key key
-	 :test-not (or test-not (lambda (x y) (not (equalp x y)))))))
+	 :key key)))
 
 (defmethod oposition ((item character) (string fat-string)
-		      &key from-end test test-not key
+		      &key from-end
+			(test #'ochar=)
+			(test-not #'ochar/= test-not-p)
+			key
 			(start nil start-p)
 			(end nil end-p))
   "Position of a fatchar in a fat-string."
   (declare (ignorable start start-p end end-p))
-  (call-with-start-and-end
-   position
-   (item (fat-string-string string)
-	 :from-end from-end
-	 :test test :test-not test-not
-	 ;; Make the key reach into the fatchar for the character.
-	 :key (or (and key (_ (funcall key (fatchar-c _))))
-		  #'fatchar-c))))
+  (cond
+    (test-not-p
+      (call-with-start-and-end
+       position
+       (item (fat-string-string string)
+	     :from-end from-end
+	     :test-not test-not
+	     ;; Make the key reach into the fatchar for the character.
+	     :key (or (and key (_ (funcall key (fatchar-c _))))
+		      #'fatchar-c))))
+    (t
+      (call-with-start-and-end
+       position
+       (item (fat-string-string string)
+	     :from-end from-end
+	     :test test
+	     ;; Make the key reach into the fatchar for the character.
+	     :key (or (and key (_ (funcall key (fatchar-c _))))
+		      #'fatchar-c))))))
 
 (defmethod oposition ((item fatchar) (string vector)
 		      &key from-end
-			(test #'ochar= test-p)
+			(test #'ochar=)
 			(test-not #'ochar/= test-not-p)
 			key
 			(start nil start-p)
 			(end nil end-p))
   "Position of a fatchar in a string."
   (declare (ignorable start start-p end end-p))
-  (when test-p
-    (setf test-not nil))
-  (when test-not-p
-    (setf test nil))
-  (when test
-    (setf test-p t))
-  (call-with-start-end-test
-   position
-   (item string
-	 :from-end from-end
-	 :key key)))
+  (cond
+    (test-not-p
+     (call-with-start-and-end
+      position
+      (item string
+	    :from-end from-end
+	    :test-not test-not
+	    :key key)))
+    (t
+     (call-with-start-and-end
+      position
+      (item string
+	    :from-end from-end
+	    :test test
+	    :key key)))))
 
 (defmethod oposition-if (predicate (string fat-string)
 			 &key from-end key
