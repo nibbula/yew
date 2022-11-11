@@ -971,7 +971,7 @@ If COLLECTIONS are SEQUENCEs, the elements are applied in the sequence order.")
   (apply #'omap-into (container-data mutable-collection) function collections))
 
 ;; I think there's not really any reason why oevery, etc. have to be generic.
-;; @@@ Yes, I know these don't do the multi-dimensional iteration thing.
+;; @@@ Yes, I know these don't do the multi-dimensional iteration thing yet.
 
 (defun oevery (function &rest collections)
   "Return true if FUNCTION returns true for every element of COLLECTIONS."
