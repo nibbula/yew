@@ -14,7 +14,7 @@ for things with functionality not in the standard.
    ))
 (in-package :collections-l2)
 
-;; @@@ Should osplit be in here?
+;; @@@ Shouldn't osplit be in here?
 
 (defgeneric orandomize (thing)
   (:documentation "Randomly rearrange a collection in place. Returns the
