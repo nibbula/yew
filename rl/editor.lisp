@@ -655,6 +655,9 @@ but perhaps reuse some resources."))
 ;;; @@@@ this should be the approprate MOP initialize thing!
 (defmethod freshen ((e line-editor))
   "Make the editor ready to read a fresh line."
+  (when (line-editor-package e)
+    (delete-package (line-editor-package e)))
+
   (setf (inator-command e)	nil
 	(inator-last-command e) nil
 	(last-event e)          nil
@@ -676,7 +679,7 @@ but perhaps reuse some resources."))
 	;; (show-mode-line e)	nil
 	(exit-flag e)		nil
 	(did-under-complete e)	nil
-	(line-editor-package e) (make-package (gensym "RL-"))))
+	(line-editor-package e) nil))
 
 #| old-way without contexts
 (defmacro save-excursion ((e) &body body)
