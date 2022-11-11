@@ -2,25 +2,23 @@
 ;;; source-paths.lisp - Source-paths
 ;;;
 
-;; CMUCL/SBCL use a data structure called "source-path" to locate
-;; subforms.  The compiler assigns a source-path to each form in a
-;; compilation unit.  Compiler notes usually contain the source-path
-;; of the error location.
+;; CMUCL/SBCL use a data structure called "source-path" to locate subforms.
+;; The compiler assigns a source-path to each form in a compilation unit.
+;; Compiler notes usually contain the source-path of the error location.
 ;;
 ;; Compiled code objects don't contain source paths, only the
-;; "toplevel-form-number" and the (sub-) "form-number".  To get from
-;; the form-number to the source-path we need the entire toplevel-form
-;; (i.e. we have to read the source code).  CMUCL has already some
-;; utilities to do this translation, but we use some extended
-;; versions, because we need more exact position info.  Apparently
-;; Hemlock is happy with the position of the toplevel-form; we also
-;; need the position of subforms.
+;; "toplevel-form-number" and the (sub-) "form-number". To get from the
+;; form-number to the source-path we need the entire toplevel-form (i.e. we
+;; have to read the source code). CMUCL has already some utilities to do this
+;; translation, but we use some extended versions, because we need more exact
+;; position info. Apparently Hemlock is happy with the position of the
+;; toplevel-form; we also need the position of subforms.
 ;;
-;; We use a special readtable to get the positions of the subforms.
-;; The readtable stores the start and end position for each subform in
-;; hashtable for later retrieval.
+;; We use a special readtable to get the positions of the subforms. The
+;; readtable stores the start and end position for each subform in hashtable
+;; for later retrieval.
 ;;
-;; This code has been placed in the Public Domain.  All warranties
+;; This code has been placed in the Public Domain. All warranties
 ;; are disclaimed.
 
 ;;; Taken from swank-cmucl.lisp, by Helmut Eller
