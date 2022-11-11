@@ -2507,8 +2507,8 @@ could be useful in case the streams support multiple element types."
   ;; imagine that a future IDE will collapse or footnotify comments tagged
   ;; with "^^^".
   (when (and errorp
-	     (not (eql (stream-element-type source)
-		       (stream-element-type destination))))
+	     (not (equal (stream-element-type source)
+			 (stream-element-type destination))))
     ;; It would be nice if we could handle this, but there are all kinds of
     ;; potential issues. Also, only subtypes of integer and character are in
     ;; the standard.
