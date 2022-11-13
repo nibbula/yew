@@ -25,8 +25,9 @@ Addresses:
   t                    symbol    Every line.
   nil                  symbol    No line. Done before reading lines.
   \"regexp\"             string    A line matching ‘regexp’.
-  (first last)         cons      The range of line from ‘first’ address to
-                                 ‘last’ address.
+  (first last)         cons      The range of lines from ‘first’ address to
+                                 ‘last’ address. Either can be nil, to mean
+                                 the start or end of the input.
   (first :plus number) cons      ‘first’ address, and ‘number’ more lines.
   (first :mod number) cons       ‘first’ address, until the line number is
                                  evenly divisible by ‘number’.
@@ -185,7 +186,8 @@ the currrent line number. ‘eof-p’ is true if we're at the last line."))
   (>= count (address-value address)))
 
 (defmethod address-matches ((address line-number-end-address) line count eof-p)
-  (<= count (address-value address)))
+  (or (null (address-value address))
+      (<= count (address-value address))))
 
 (defmethod address-matches ((address regex-address) line count eof-p)
   (multiple-value-bind (result strings)
@@ -255,12 +257,17 @@ the currrent line number. ‘eof-p’ is true if we're at the last line."))
 			(make-instance 'line-number-start-address :value n))
 		       (:end
 			(make-instance 'line-number-end-address :value n))))
+		    (null
+		     (ecase which
+		       (:start
+			(make-instance 'line-number-start-address :value 0))
+		       (:end
+			(make-instance 'line-number-end-address :value nil))))
 		    (string
 		     (make-address n)))))
 	    (make-instance 'range-address
 			   :start (make-range-x (first form) :start)
-			   :end (make-range-x
-				 (or (second form) (cdr form)) :end))))
+			   :end (make-range-x (second form) :end))))
 	 (3
 	  (when (not (member (second form) '(:plus :mod)))
 	    (error "Second item in a range must be one of ~s" +range-types+))
