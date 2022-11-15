@@ -4,8 +4,7 @@
 
 (defpackage :apropos
   (:documentation "Dans lequel nous échouons preuve d'à propos.")
-  (:use :cl :dlib :collections :char-util :table :grout :syntax :syntax-lisp
-	:lish)
+  (:use :cl :dlib :collections :char-util :table :grout :syntax :syntax-lisp)
   (:export
    #:mondo-apropos #:!apropos
    ))
@@ -87,6 +86,8 @@
     (or (and collect results) did-one)))
 
 (defun command-apropos (thing collect)
+  #-lish nil
+  #+lish
   (let* ((scanner
 	  (ppcre:create-scanner (princ-to-string thing)
 				:case-insensitive-mode t))
@@ -136,7 +137,8 @@
     (when full
       (setf table
 	    (loop :with pos
-	       :for line :in (!_= full thing)
+	       ;; :for line :in (!_= full thing)
+	       :for line :in (shell-lines full (string thing))
 	       :when (setf pos (search "- " line))
 	       :collect (list (rtrim (subseq line 0 pos))
 			      (ltrim (subseq line (1+ pos))))))
@@ -218,42 +220,5 @@
   (time (dotimes (i n) (apropos::way3))))
 
 |#
-    
-#+lish
-(lish:defcommand apropos
-  ((os-only boolean :short-arg #\o
-    :help "Search for operating system commands only.")
-   (lish-only boolean :short-arg #\L
-    :help "Search for Lish commands only.")
-   (lisp-only boolean :short-arg #\l
-    :help "Search for Common Lisp symbols only.")
-   (quicklisp-only boolean :short-arg #\q
-    :help "Search for Quicklisp systems only.")
-   (external-only boolean :short-arg #\e
-    :help "Limit search to only external symbols in packages.")
-   (package package :short-arg #\p
-    :help "Limit search to this Lisp package.")
-   (type symbol :short-arg #\t
-    :help "Limit search to this type of thing.")
-   (collect boolean :short-arg #\c :help "Collect results into lists.")
-   (compound boolean :short-arg #\C
-    :help "Use compound prefix matching for Lisp symbols, e.g. w-o-t-s.")
-   (thing object :help "Like what?"))
-  :args-as args
-  "Words given but not taken."
-  (let ((types *types*))
-    (when os-only        (setf types '(:os)))
-    (when lish-only      (setf types '(:lish)))
-    (when lisp-only      (setf types '(:lisp)))
-    (when quicklisp-only (setf types '(:quicklisp)))
-    (when type (setf types (list type)))
-    (if collect
-	(setf *output*
-	      (mondo-apropos :thing thing :types types :package package
-			     :external-only external-only :collect collect
-			     :compound compound))
-	(mondo-apropos :thing thing :types types :package package
-		       :external-only external-only :collect collect
-		       :compound compound))))
 
 ;; EOF
