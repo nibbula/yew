@@ -197,7 +197,7 @@
    ;; files (low level)
    #:+O_RDONLY+ #:+O_WRONLY+ #:+O_RDWR+ #:+O_ACCMODE+ #:+O_NONBLOCK+
    #:+O_APPEND+ #:+O_SYNC+ #:+O_SHLOCK+ #:+O_EXLOCK+ #:+O_CREAT+ #:+O_TRUNC+
-   #:+O_EXCL+
+   #:+O_EXCL+ #:+O_NOCTTY+
    #+linux #:+O_LARGEFILE+
    #+linux #:+O_DIRECTORY+
    #+linux #:+O_NOFOLLOW+
