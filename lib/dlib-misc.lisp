@@ -1067,35 +1067,40 @@ SUFFIX is a string to append to each row."
 	 (terpri stream)))
     rows))
 
+(defconstant +size-names+ 11
+  "Number of sizes in the size name arrays.")
+
 (define-constant +binary-size-prefixes+
-  #(nil "kibi" "mebi" "gibi" "tebi" "pebi" "exbi" "zebi" "yobi" "buttload")
+  #(nil "kibi" "mebi" "gibi" "tebi" "pebi" "exbi" "zebi" "yobi" "ronni"
+    "quetti" "buttload")
   "Standard prefixes for sizes in bits."
   'vector-equal)
 
 (define-constant +traditional-size-prefixes+
-  #(nil "kilo" "mega" "giga" "tera" "peta" "exa" "zetta" "yotta" "buttload")
+  #(nil "kilo" "mega" "giga" "tera" "peta" "exa" "zetta" "yotta" "ronna"
+    "quetta" "buttload")
   "Traditional prefixes for sizes in bits."
   'vector-equal)
 
 (define-constant +binary-size-abbreviations+
-  #(nil "Ki" "Mi" "Gi" "Ti" "Pi" "Ei" "Zi" "Yi" "**")
+  #(nil "Ki" "Mi" "Gi" "Ti" "Pi" "Ei" "Zi" "Yi" "Ri" "Qi" "**")
   "Abbreviations for standard sizes in bits."
   'vector-equal)
 
 (define-constant +traditional-size-abbreviations+
-  #(nil "k" "M" "G" "T" "P" "E" "Z" "Y" "*")
+  #(nil "k" "M" "G" "T" "P" "E" "Z" "Y" "R" "Q" "*")
   "Traditional abbreviations for standard sizes in bits."
   'vector-equal)
 
 (define-constant +binary-sizes+
-  #.(make-array '(11) :initial-contents
-	      (loop :for i :from 0 :to 10 :collect (expt 1024 i)))
+  #.(make-array (1+ +size-names+) :initial-contents
+	      (loop :for i :from 0 :to +size-names+ :collect (expt 1024 i)))
   "Binary bit size multipliers."
   'vector-equal)
 
 (define-constant +decimal-sizes+
-  #.(make-array '(11) :initial-contents
-	      (loop :for i :from 0 :to 10 :collect (expt 1000 i)))
+  #.(make-array (1+ +size-names+) :initial-contents
+	      (loop :for i :from 0 :to +size-names+ :collect (expt 1000 i)))
   "Decimal bit size multipliers."
   'vector-equal)
 
@@ -1136,11 +1141,11 @@ FORMAT defaults to \"~:[~3,1f~;~d~]~@[ ~a~]~@[~a~]\""
 				  prefixes
 				  abbrevs) i)
 		       (when (svref abbrevs i) unit)))))
-      (loop :for i :from 0 :to 9
+      (loop :for i :from 0 :below +size-names+
 	 :do
 	 (when (< size (svref sizes (1+ i)))
 	   (return-from print-size (pr i))))
-      (pr 9))))
+      (pr +size-names+))))
 
 (defun center (object width &key (pad-char #\space))
   "Return a string with ‘object’ surrounded by approximately equal amounts of
