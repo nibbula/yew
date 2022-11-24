@@ -299,15 +299,31 @@
 		 (cursor table-viewer::cursor)) renderer
       ;; we need to go to the file name cell, so we can get it's point
       (let* ((old-name (ochar:osimplify (current-file-cell o)))
-	     (new-name
-	       (rl-widget:widget-read
-		:x (table-point-col cursor)
-		:y (table-point-row cursor)
-		:width (- (tt-width) (table-point-col cursor))
-		:buf (make-fatchar-string old-name))))
-	(when (not (string= old-name new-name))
-	  (dired-rename-file (path-append old-name directory)
-			     (path-append new-name directory)))))))
+	     new-name
+	     (rl:*entry-hook*
+	       `(,(lambda (e)
+		    (rl::without-undo (e)
+		      (rl::buffer-insert e 0 old-name 0)
+		      ;; (setf (inator-point e) (length string))
+		      (rl::set-all-points e (olength old-name)))))))
+
+	(multiple-value-bind (x y width #|height|#)
+	    (cell-box o (table-point-row cursor)
+		      (table:table-column-number "Name" table))
+	  (setf new-name
+		(rl-widget:widget-read
+		 :x x :y y :width width
+		 ;; :buf (make-fatchar-string old-name
+		 ;;       :fill-pointer (olength old-name))
+		 :rendition (style:styled-char
+			     (theme:value '(:program :input :style)) #\X)
+		 :flex-width t
+		 ;; :box-p t
+		 ))
+	  (when (not (string= old-name new-name))
+	    (dired-rename-file (path-append directory old-name)
+			       (path-append directory new-name))))))
+    (refresh o)))
 
 (defun new-directory (o)
   (let ((new-name (input-window "Create a new directory"

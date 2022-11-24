@@ -12,6 +12,6 @@
     :long-description   "Edit directories, like dired from a famous editor."
     :depends-on (:dlib :opsys :keymap :char-util :terminal :inator
 		 :terminal-inator :terminal-table :table-viewer :lish :ls
-		 :view-generic :view :rl :fui :rl-widget :mkdir)
+		 :view-generic :view :rl :fui :rl-widget :mkdir :theme :style)
     :components
     ((:file "dired")))
