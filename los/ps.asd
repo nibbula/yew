@@ -13,4 +13,9 @@
     :depends-on (:dlib :dlib-misc :table-print :opsys :tree-viewer :collections
 		 :los-config :los-util :dtime)
     :components
-    ((:file "ps")))
+    ((:file "ps")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "ps-cmds"))
+      :depends-on ("ps"))))

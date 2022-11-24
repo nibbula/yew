@@ -12,4 +12,9 @@
     :long-description   "Just like in the good old times."
     :depends-on (:opsys :dlib :dlib-misc :table :grout :fatchar-io :los-config)
     :components
-    ((:file "df")))
+    ((:file "df")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "df-cmds"))
+      :depends-on ("df"))))

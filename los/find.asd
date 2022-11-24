@@ -14,4 +14,9 @@
     :depends-on (:dlib :opsys :collections :cl-ppcre :magic #| :lparallel |#
 		 :char-util :los-config)
     :components
-    ((:file "find")))
+    ((:file "find")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "find-cmds"))
+      :depends-on ("find"))))

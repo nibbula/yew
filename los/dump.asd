@@ -10,6 +10,11 @@
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "dump file bytes"
-    :depends-on (:grout :opsys :terminal :los-config)
+    :depends-on (:dlib :grout :opsys :terminal :los-config)
     :components
-    ((:file "dump")))
+    ((:file "dump")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "dump-cmds"))
+      :depends-on ("dump"))))

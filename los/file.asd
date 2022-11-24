@@ -12,4 +12,9 @@
     :long-description   "Guess file contents."
     :depends-on (:dlib :opsys :dlib-misc :magic :grout :table :los-config)
     :components
-    ((:file "file")))
+    ((:file "file")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "file-cmds"))
+      :depends-on ("file"))))

@@ -6,7 +6,7 @@
   (:documentation "Print the directory name of a file.")
   (:use :cl :dlib :opsys :collections :lish)
   (:export
-   #:dirname
+   #:!dirname
    ))
 (in-package :dirname)
 

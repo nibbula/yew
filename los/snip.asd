@@ -13,4 +13,9 @@
     :depends-on (:dlib :cl-ppcre :opsys :stretchy :lish :los-config
 		 :utf8b-stream)
     :components
-    ((:file "snip")))
+    ((:file "snip")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "snip-cmds"))
+      :depends-on ("snip"))))

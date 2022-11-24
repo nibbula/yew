@@ -154,17 +154,15 @@ Swap:    ~11d ~11d ~11d~%"
 (defparameter *bar-char* (code-char #x2592)) ; ▒
 ;; (defparameter *bar-char* (code-char #x2588)) ; █
 
-(defcommand free
-  ((bytes boolean :short-arg #\b :help "Show the sizes in bytes.")
-   (table boolean :short-arg #\t :help "Show as a table."))
-  "Describe free memory."
+(defun describe-free-memory (&key bytes table)
+  "Describe free system memory."
   (cond
     (table
      (let ((table (free-memory-table :in-bytes bytes)))
        (with-grout ()
          (grout-print-table table))
        (setf *output* table)))
-   (t
+    (t
     ;; Like htop
     (with-grout ()
       (let* ((bar-width (- (grout-width) (+ 1 3 1 1 1)))

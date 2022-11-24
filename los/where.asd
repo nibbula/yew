@@ -13,4 +13,9 @@
     "A where command for the shell working as an adverb or a verb."
     :depends-on (:dlib :collections :lish #| :where-is |#)
     :components
-    ((:file "where")))
+    ((:file "where")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "where-cmds"))
+      :depends-on ("where"))))

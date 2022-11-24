@@ -12,4 +12,9 @@
     :long-description   "Show free memory."
     :depends-on (:dlib :opsys :dlib-misc :table :grout :lish)
     :components
-    ((:file "free")))
+    ((:file "free")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "free-cmds"))
+      :depends-on ("free"))))

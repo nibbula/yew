@@ -12,4 +12,9 @@
     :long-description   "Make directories."
     :depends-on (:opsys :los-config)
     :components
-    ((:file "mkdir")))
+    ((:file "mkdir")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "mkdir-cmds"))
+      :depends-on ("mkdir"))))

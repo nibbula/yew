@@ -12,4 +12,9 @@
     :long-description   "Print unique lines."
     :depends-on (:dlib :collections :los-config :cl-ppcre)
     :components
-    ((:file "uniq")))
+    ((:file "uniq")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "uniq-cmds"))
+      :depends-on ("uniq"))))

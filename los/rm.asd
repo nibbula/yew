@@ -14,4 +14,9 @@
 rmdir commands."
     :depends-on (:opsys :los-config)
     :components
-    ((:file "rm")))
+    ((:file "rm")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "rm-cmds"))
+      :depends-on ("rm"))))

@@ -5,7 +5,7 @@
 (defpackage :ps
   (:documentation "Process status listing")
   (:use :cl :dlib :dlib-misc :opsys #+unix :os-unix #+windows :os-ms
-        :table :table-print :grout :lish :collections :los-config :los-util
+        :table :table-print :grout :collections :los-config :los-util
         :dtime)
   (:export
    #:!ps
@@ -236,11 +236,6 @@ user, pid, ppid, size, command."
     ;; (tree-viewer:view-tree tree)
     ))
 
-#+lish
-(lish:defcommand ps-tree ()
-  "Show a tree of processes."
-  (ps-tree))
-
 (defun fake-ps ()
   (with-grout ()
     (let ((proc-list (sort-muffled
@@ -429,21 +424,5 @@ owned by ‘user’."
 		:user user :print (not quiet))))
 
 (defalias 'ps 'describe-processes)
-
-#+lish
-(lish:defcommand ps
-  ((matching string :help "Only show processes matching this.")
-   (show-kernel-processes boolean :short-arg #\k :default nil
-    :help "True to show kernel processes.")
-   (user user :short-arg #\u :help "User to show processes for.")
-   ;; (sort-by choice :short-arg #\s :default "size" :help "Field to sort by."
-   ;; 	    #| :choice-func #'process-columns |# )
-   (long boolean :short-arg #\l :help "True to show the long output.")
-   (quiet boolean :short-arg #\q :help "True to suppress printing output."))
-  "Process status."
-  (setf *output* (describe-processes
-		  :matching matching
-		  :show-kernel-processes show-kernel-processes
-		  :user user :quiet quiet :long long)))
 
 ;; EOF

@@ -4,8 +4,10 @@
 
 (defpackage :tr
   (:documentation "Translate characters.")
-  (:use :cl :dlib :glob :lish)
+  (:use :cl :dlib :glob)
   (:export
+   #:translate-characters
+   #:tr
    #:!tr
    ))
 (in-package :tr)
@@ -13,10 +15,12 @@
 (declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
 
 ;; @@@ We're probably too intimate with glob. Or glob should export this stuff.
+;; or we should put character sets in a separate thing?
 
 (defun compile-char-set (s)
   "Convert char set description into a char-set."
   (let* ((set (glob::make-char-set))
+	 ranges
 	 (cc-str
 	  (with-output-to-string (str)
 	    (loop :for e :in s :do
@@ -33,13 +37,15 @@
 		    ((eql (car e) :class)
 		     (push (cadr e) (glob::char-set-classes set)))
 		    ((characterp (car e))
-		     (push (vector (char-code (car e))
-				   (char-code (cadr e)))
-			   (glob::char-set-ranges set)))
+		     (push (cons (char-code (car e))
+				 (char-code (cadr e))) ranges))
 		    (t
 		     (error "Unkown type in char set"))))
 		 ((characterp (princ e str))))))))
-    (setf (glob::char-set-string set) cc-str)
+    (setf (glob::char-set-string set) cc-str
+	  (glob::char-set-ranges set)
+	  (when ranges
+	    (make-array (length ranges) :initial-contents ranges)))
     set))
 
 ;; Sadly, tr charset are different enough from glob charsets that I'm not sure
@@ -157,17 +163,8 @@ Second value is where the character set ended."
   rep			; repitition we're at
   rep-c)		; repitition character
 
-(defcommand tr
-  ((set1 string :help "Set of characters to translate from.")
-   (set2 string :help "Set of characters to translate to.")
-   (files input-stream-or-filename :help "Input file or stream.")
-   (help boolean :long-arg "help" :help "Show the help."))
-  "Translate characters."
-  (when help
-    (lish::print-command-help (lish:get-command "tr"))
-    (return-from !tr (values)))
-  (when (not set1)
-    (error "Missing set1 argument."))
+(defun translate-characters (&key set1 set2 files)
+  "Translate characters from ‘set1’ to ‘set2’."
   (let* ((table (make-hash-table :test #'equal :size (length set1)))
 	 (cset1 (get-char-set set1 nil))
 	 (cset2 (get-char-set set2 nil))
@@ -253,5 +250,7 @@ Second value is where the character set ended."
 	      :while (setf c (read-char input-stream nil))
 	      :do
 		(write-char (or (gethash c table) c)))))))
+
+(defalias 'tr 'translate-characters)
 
 ;; EOF

@@ -12,4 +12,9 @@
     :long-description   "Count words."
     :depends-on (:dlib :opsys :los-config)
     :components
-    ((:file "wc")))
+    ((:file "wc")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "wc-cmds"))
+      :depends-on ("wc"))))

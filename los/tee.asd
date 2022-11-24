@@ -12,4 +12,9 @@
     :long-description   "Copy input to multiple outputs."
     :depends-on (:dlib :cat)
     :components
-    ((:file "tee")))
+    ((:file "tee")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "tee-cmds"))
+      :depends-on ("tee"))))

@@ -12,4 +12,9 @@
     :long-description   "sort or something"
     :depends-on (:dlib #| :lish |# :los-config)
     :components
-    ((:file "sort")))
+    ((:file "sort")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "sort-cmds"))
+      :depends-on ("sort"))))

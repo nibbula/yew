@@ -13,4 +13,9 @@
     :depends-on (:cl-ppcre :dlib :opsys :stretchy :grout :los-config :fatchar
 		 :char-util :collections :table :theme :style :view-generic)
     :components
-    ((:file "grep")))
+    ((:file "grep")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "grep-cmds"))
+      :depends-on ("grep"))))

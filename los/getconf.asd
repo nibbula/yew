@@ -12,4 +12,9 @@
     :long-description   "Get system configuration values."
     :depends-on (:opsys :lish :los-config)
     :components
-    ((:file "getconf")))
+    ((:file "getconf")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "getconf-cmds"))
+      :depends-on ("getconf"))))

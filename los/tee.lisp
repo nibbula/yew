@@ -84,11 +84,4 @@ pathnames, or satisfy ‘is-binary.’."
       (loop :for s :in to-close :do
 	(close s)))))
 
-#+lish
-(lish:defcommand tee
-  ((outputs pathname :repeating t :help "Files or streams to write output to."))
-  "Copy input to multiple outputs."
-  (apply #'tee outputs)
-  (setf lish:*output* lish:*input*))
-
 ;; End

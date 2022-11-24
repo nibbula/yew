@@ -4,7 +4,7 @@
 
 (defpackage :sort-by
   (:documentation "Sort sequences.")
-  (:use :cl :dlib :collections :lish :table :grout)
+  (:use :cl :dlib :collections :table :grout)
   (:export
    #:sort-by
    #:!sort-by
@@ -12,18 +12,20 @@
 (in-package :sort-by)
 
 (defun sort-by (predicate sequence &key key)
-  "Return the items from SEQUENCE sorted by PREDICATE.
-Predicate can be a function of two arguments, or a list which which is the body
-of a function the two arguments A and B. If sequence is a table or something
-that can be converted to a table, and predicate is a symbol or keyword
-do sort by."
+  "Return the items from ‘sequence’ sorted by ‘predicate’.
+‘predicate’ can be a function of two arguments, or a list which which is the
+body of a function of the two arguments A and B."
+;; @@@@
+;;;If ‘sequence’ is a table or something that can be converted to a table,
+;; and ‘predicate’ is a symbol or keyword do sort by column ???.
+;; @@@@
   (let (key-func)
     (cond
       ;; Sort by table column name
       ((and key (typep sequence 'table)
 	    (typep key '(or symbol string)))
        (dbugf :sort-by "table column key ~s~%" key)
-       (let ((col-num (position key (table:table-columns *input*)
+       (let ((col-num (position key (table:table-columns sequence)
 				:key #'table:column-name :test #'string-equal)))
 	 (if col-num
 	     (setf key-func (_ (oelt _ col-num)))
@@ -67,30 +69,5 @@ do sort by."
        ;; 	 (osort predicate sequence :key key-func)
        ;; 	 (error "Symbol predicate isn't a function."))))))
        (osort sequence predicate :key key-func)))))
-
-(defcommand sort-by
-  ((predicate object
-    :required t
-    :help
-    "A function designator which returns true for items to keep from sequence.")
-   (key object :help "A key to sort by.")
-   (sequence object :short-org #\s :help "A sequence to use instead of *input*.")
-   (print boolean :short-arg #\p :help "Print the result."))
-  "Sort a collection by a predicate or key and predicate."
-  :accepts 'collection
-  (dbugf :sort-by "------~%predicate ~s ~s~%key ~s ~s~%sequence ~s ~s~%"
-	 (type-of predicate) predicate
-	 (type-of key) key
-	 (type-of sequence) sequence)
-  (prog1 (setf *output*
-	       (sort-by predicate (or *input* sequence) :key key))
-    (when print
-      (typecase *output*
-	(table
-	 (with-grout ()
-	   (grout-print-table *output*)))
-	(t
-	 (write *output*)
-	 (terpri))))))
 
 ;; End

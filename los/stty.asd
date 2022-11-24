@@ -12,4 +12,9 @@
     :long-description   "Show and set terminal settings."
     :depends-on (:dlib :opsys :dlib-misc :char-util :los-config :completion)
     :components
-    ((:file "stty")))
+    ((:file "stty")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "stty-cmds"))
+      :depends-on ("stty"))))

@@ -14,4 +14,9 @@
     :depends-on (:dlib :opsys :dlib-misc :dtime :table-print :grout :lish
 		 :los-config :los-util)
     :components
-    ((:file "who")))
+    ((:file "who")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "who-cmds"))
+      :depends-on ("who"))))

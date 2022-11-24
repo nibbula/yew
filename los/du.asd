@@ -13,4 +13,9 @@
     :depends-on (:dlib :opsys :find :terminal :view-generic
 		 :los-config :view :unicode :tree-viewer :table-viewer)
     :components
-    ((:file "du")))
+    ((:file "du")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "du-cmds"))
+      :depends-on ("du"))))

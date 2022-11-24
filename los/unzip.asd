@@ -13,4 +13,9 @@
     :depends-on (:dlib :opsys :dlib-misc :dtime :zip :mkdir :table :grout :rl
 		 :los-config)
     :components
-    ((:file "unzip")))
+    ((:file "unzip")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "unzip-cmds"))
+      :depends-on ("unzip"))))

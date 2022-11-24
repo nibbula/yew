@@ -10,6 +10,11 @@
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Sort sequences."
-    :depends-on (:dlib :collections :table :grout :lish)
+    :depends-on (:dlib :collections :table :grout)
     :components
-    ((:file "sort-by")))
+    ((:file "sort-by")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "sort-by-cmds"))
+      :depends-on ("sort-by"))))

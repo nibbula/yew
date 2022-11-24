@@ -12,4 +12,9 @@
     :long-description   "A stream editor, not compaitble with unix sed."
     :depends-on (:dlib :collections :cl-ppcre)
     :components
-    ((:file "sed")))
+    ((:file "sed")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "sed-cmds"))
+      :depends-on ("sed"))))

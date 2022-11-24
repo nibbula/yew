@@ -14,4 +14,9 @@
     :depends-on (:dlib :lish :stretchy :char-util :unicode :table :cl-ppcre
 		 :los-config)
     :components
-    ((:file "cut")))
+    ((:file "cut")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "cut-cmds"))
+      :depends-on ("cut"))))

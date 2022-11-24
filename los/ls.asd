@@ -17,4 +17,9 @@
 		 :terminal-ansi :grout :table :table-print :terminal-table
 		 :fatchar :fatchar-io :theme :style :magic :los-config)
     :components
-    ((:file "ls")))
+    ((:file "ls")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "ls-cmds"))
+      :depends-on ("ls"))))

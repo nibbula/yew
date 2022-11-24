@@ -6,11 +6,12 @@
 
 (defpackage :who
   (:documentation "User information commands.")
-  (:use :cl :dlib :opsys :dlib-misc :dtime :table :table-print :grout :lish
+  (:use :cl :dlib :opsys :dlib-misc :dtime :table :table-print :grout
         #+unix :os-unix :los-util)
   (:export
    #:who
    #:!who
+   #:!lastlogin
    #:uptime
    #:print-uptime
    #:!uptime
@@ -30,16 +31,6 @@
 ;; But why?
 ;; Although I would like a mode which would print a bunch more user information
 ;; like 'finger'.
-
-(defun who-user-name-list ()
-  (append (los-util:user-name-list) (list "am" "i")))
-
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defclass lish-user::arg-who-user (lish-user::arg-user)
-    ()
-    (:default-initargs
-     :choice-func #'who-user-name-list)
-    (:documentation "User name.")))
 
 (defun dev-name (device)
   "Convert a short device from utmpx to a stat-able pathname."
@@ -87,42 +78,9 @@
 (defun who (&key users show-dead all (print t))
   (declare (ignore users show-dead all print)))
 
-(defcommand who
-  ((show-dead boolean :short-arg #\d
-    :help "True to show dead processes.")
-   (all boolean :short-arg #\a
-    :help "True to show all processes, not only user processes.")
-   (tty string :long-arg "tty"
-    :help "Terminal to exclusively report on.")
-   (file pathname :short-arg #\f
-    :help "Name of a file to use as the database.")
-   (users who-user :repeating t :help "Users to report on."))
-  "Who is on."
-  (when (equalp users '("am" "i"))
-    (setf users (list (user-name))
-	  tty (file-handle-terminal-name 0)))
-  (setf *output*
-	(who :users users :show-dead show-dead :all all :tty tty :file file)))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; lastlogin
 
-#+lish
-(lish:defcommand lastlogin
-  ((show-history boolean :short-arg #\h :help "True to show login history.")
-   (users user :repeating t :help "User to show the last login for."))
-  "Show users' last login."
-  ;; @@@ There should be an option where it tries to figure out durations
-  ;; for sessions and booted times, like the "last" command.
-  (setf *output*
-	(who :users users :all t
-	     :file (cond
-		     (show-history
-		      (default-utmpx-file +UTXDB-LOG+))
-		     (t
-		      ;; @@@ I can't be bothered to do this correctly now.
-		      #+linux (default-utmpx-file +UTXDB-LOG+)
-		      #-linux (default-utmpx-file +UTXDB-LASTLOGIN+))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; uptime
@@ -159,7 +117,6 @@ probably printed as floats to 2 places."
   (defun uptime () 0)
   (defun load-averages () (values 0 0 0)))
 |#
-
 
 ;; This is an highly un-hygenic macro.
 (defmacro with-time-units ((seconds &key from-days-p) &body body)
@@ -242,15 +199,6 @@ If FROM-DAYS-P is true, days are the biggest units to break SECONDS into."
 	 (format stream "~d user~:*~p,  " (length (users-logged-in)))
 	 (format stream
 		 "load average: ~4,2f, ~4,2f, ~4,2f~%" one five fifteen))))))
-
-#+lish
-(lish:defcommand uptime
-  ((pretty boolean :short-arg #\p
-    :help "True to show in a long drawn-out format, mostly for gloating.")
-   (show-since boolean :short-arg #\s
-    :help "True to show the time the system has been up since."))
-  "Show how long the system has been running."
-  (print-uptime :pretty pretty :show-since show-since))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; w (or who-what)
@@ -374,11 +322,4 @@ return all the arguments too."
 (defun who-what (users &key no-header long)
   (declare (ignore users no-header long)))
 
-(defcommand w
-  ((no-header boolean :short-arg #\h :help "True to omit the header.")
-   (long boolean :short-arg #\l :help "True show the longer output.")
-   (users user :repeating t :help "Users to show."))
-  "Show who's doing what."
-  (setf lish:*output* (who-what :users users :no-header no-header :long long)))
-
-;; EOF
+;; End

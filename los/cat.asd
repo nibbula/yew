@@ -12,4 +12,9 @@
     :long-description   "Concatenate files. Copy streams."
     :depends-on (:dlib :utf8b-stream :opsys :dlib-misc :los-config)
     :components
-    ((:file "cat")))
+    ((:file "cat")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "cat-cmds"))
+      :depends-on ("cat"))))

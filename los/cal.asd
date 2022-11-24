@@ -13,4 +13,9 @@
     :depends-on (:dlib :calendar :table :table-print :grout :fatchar :char-util
 		 :collections)
     :components
-    ((:file "cal")))
+    ((:file "cal")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "cal-cmds"))
+      :depends-on ("cal"))))

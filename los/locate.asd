@@ -12,4 +12,10 @@
     :long-description   "Try to somehow locate files."
     :depends-on (:dlib :dlib-misc :cl-ppcre #| :trie |# :opsys :los-config)
     :components
-    ((:file "locate")))
+    ((:file "locate")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "locate-cmds"))
+      :depends-on ("locate"))))
+

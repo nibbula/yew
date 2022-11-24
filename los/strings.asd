@@ -11,6 +11,11 @@
     :source-control	:git
     :long-description
     "Try to extract human readable strings from data."
-    :depends-on (:dlib :stretchy :lish :los-config)
+    :depends-on (:dlib :stretchy :los-config)
     :components
-    ((:file "strings")))
+    ((:file "strings")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "strings-cmds"))
+      :depends-on ("strings"))))

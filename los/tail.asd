@@ -12,4 +12,9 @@
     :long-description   "Let us see that tail."
     :depends-on (:dlib :stretchy :opsys :snip :los-config)
     :components
-    ((:file "tail")))
+    ((:file "tail")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "tail-cmds"))
+      :depends-on ("tail"))))
