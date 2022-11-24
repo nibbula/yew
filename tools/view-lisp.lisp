@@ -9,6 +9,8 @@
 	:view-generic :terminal-utils)
   (:export
    #:view-lisp
+   #:!view-lisp
+   #:view-packages
    ))
 (in-package :view-lisp)
 
@@ -20,11 +22,7 @@
 
 (defun package-mostly-use-list (pkg)
   "All packages except the superfluous :COMMON-LISP package."
-  (loop :with name
-     :for p :in (package-use-list pkg)
-     :do (setf name (package-name p))
-     :if (not (equal name "COMMON-LISP"))
-     :collect name))
+  (remove (find-package :cl) (package-use-list pkg)))
 
 (defun all-package-dependencies-tree ()
   "Return a tree viewer tree of all package dependencies."
@@ -46,11 +44,6 @@
   (let ((lst ()))
     (do-external-symbols (s :cl lst) (push s lst)))
   "External symbols in CL package.")
-
-(defun package-used-by-name-list (package)
-  "Like PACKAGE-USED-BY-LIST but returns package names instead of objects."
-  (mapcar (_ (package-name _))
-	  (package-used-by-list package)))
 
 ;; @@@ This very foolishly duplicates code from doc.lisp
 (defparameter *doc-types* '(compiler-macro function method-combination setf
@@ -112,7 +105,7 @@
    ))
 
 (defmethod print-object ((object decorated-symbol) stream)
-  "Print a class to STREAM."
+  "Print a class to ‘stream’."
   (cond
     ((or *print-readably* *print-escape*)
      (call-next-method))
@@ -155,6 +148,32 @@
 (defmethod display-object ((node symbol-node) object level)
   (display-fat-object node object level))
 
+(defclass package-node (cached-dynamic-node)
+  ()
+  (:documentation "A node that is a package."))
+
+(defmethod display-node ((node package-node) level)
+  "Make packages show up in lower case."
+  (display-object node
+		  (format nil "~(~a~)"
+			  (let ((obj (node-object node)))
+			    (typecase obj
+			      (package (package-name obj))
+			      (t obj))))
+		  level))
+
+(defun view-package (package)
+  (view-tree (make-instance 'package-node
+			    :object package
+			    :func #'package-contents
+			    :open t)))
+
+(defmethod view-node ((node package-node))
+  (view-package (node-object node)))
+
+(defmethod view ((thing package))
+  (view-package thing))
+
 (defun package-contents (package-in)
   (when (or (and (typep package-in 'object-node)
 		 (not (find-package (node-object package-in))))
@@ -163,9 +182,10 @@
     (return-from package-contents nil))
   (flet ((nn (o &optional b)
 	   (make-object-node :object o :branches b :open nil)))
-    (let* ((package (or (and (stringp package-in) package-in)
-			(and (typep package-in 'object-node)
-			     (node-object package-in))))
+    (let* ((package
+	     (typecase package-in
+	       ((or string package) package-in)
+	       (object-node (node-object package-in))))
 	   (pkg (find-package package))
 	   (doc (documentation (find-package package) t))
 	   (nicks (package-nicknames package))
@@ -191,17 +211,19 @@
 		  (loop :for n :in nicks :collect (nn n))) contents))
       (push (nn "Uses"
 		(loop :for p :in (package-use-list package)
-		   :collect (make-cached-dynamic-node
-			     :object (package-name p)
-			     :func #'package-mostly-use-list
-			     :open nil)))
+		      :collect
+		      (make-instance 'package-node
+				     :object p
+				     :func #'package-mostly-use-list
+				     :open nil)))
 	    contents)
       (push (nn "Used By"
 		(loop :for p :in (package-used-by-list package)
-		   :collect (make-cached-dynamic-node
-			     :object (package-name p)
-			     :func #'package-used-by-name-list
-			     :open nil)))
+		   :collect
+		   (make-instance 'package-node
+				  :object p
+				  :func #'package-used-by-list
+				  :open nil)))
 	    contents)
       (push (nn (format nil "External Symbols (~d)" (length external))
 		(loop :for e :in external
@@ -229,10 +251,10 @@
    :branches
    (loop :for p :in (list-all-packages)
       :collect
-      (make-cached-dynamic-node
-       :object (package-name p)
-       :func #'package-contents
-       :open nil))))
+      (make-instance 'package-node
+		     :object p
+		     :func #'package-contents
+		     :open nil))))
 
 (defun view-packages ()
   (view-tree (package-contents-tree)))
@@ -309,11 +331,19 @@
      ;; | ( :require module-name )
      (let ((s (asdf/find-component::resolve-dependency-spec nil name)))
        (when s
-	 (list (asdf:component-name s)))))
-    ((or string symbol)
+	 (list
+	  (make-instance 'system-use-node
+			 :object
+			 (or (ignore-errors (asdf:find-system s)) s))))))
+    ((or string symbol asdf/system:system)
      (let ((sys (asdf:find-system name nil)))
-       (when sys
-	 (asdf:system-depends-on sys))))))
+       (if sys
+	   (mapcar (_ (make-instance 'system-use-node
+				     :object
+				     (or (ignore-errors (asdf:find-system _))
+					 _)))
+		   (asdf:system-depends-on sys))
+	   name)))))
 
 (defun system-contents (system)
   (list
@@ -325,12 +355,7 @@
    (make-instance 'parent-component-node :name "Components"
 		  :object system :open nil)
    (make-object-node :object "Depends on"
-		     :branches
-		     (loop :for dep :in (asdf:system-depends-on system)
-			:collect (make-cached-dynamic-node
-				  :object dep
-				  :func #'system-use-list
-				  :open nil))
+		     :branches (system-use-list system)
 		     :open nil)))
 
 (defclass system-node (cached-dynamic-node)
@@ -360,6 +385,20 @@
       (setf (char str (1- (length str))) #\space))
     (display-object node str level)))
 
+(defclass system-use-node (system-node)
+  ()
+  (:default-initargs
+   :func #'system-use-list))
+
+(defmethod display-node ((node system-use-node) level)
+  (display-object node
+		  (typecase (node-object node)
+		    (asdf/system:system
+		     (asdf:component-name (node-object node)))
+		    (t
+		     (node-object node)))
+		  level))
+
 ;; List of systems nodes
   
 (defclass systems-node (cached-dynamic-node) ())
@@ -372,9 +411,17 @@
       :object (asdf::registered-system s)
       :open nil)))
 
+(defun view-system (system)
+  (view-tree (make-instance 'system-node
+			    :object (asdf:find-system system)
+			    :open t)))
+
 ;; (defmethod view ((thing asdf:cl-source-file))
 (defmethod view ((thing asdf:component))
   (view (asdf:component-pathname thing)))
+
+(defmethod view ((thing asdf/system:system))
+  (view-system thing))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Class nodes
@@ -553,10 +600,11 @@
     :branches
     (loop :for p :in (sort (mapcar #'package-name (list-all-packages)) #'string<)
        :collect
-       (make-cached-dynamic-node
-	:object p
-	:func #'package-contents
-	:open nil)))
+       (make-instance 'package-node
+		      :object (or (ignore-errors (find-package p)) p)
+		      :func #'package-contents
+		      :open nil)
+	  ))
    (make-instance
     'cached-dynamic-node
     :object "Classes"
