@@ -298,11 +298,15 @@ If FROM-DAYS-P is true, days are the biggest units to break SECONDS into."
 	      (format-date "~a~2,'0d" (:day-abbrev :hour) :time login-time))
 	  (format-date "~2,'0d:~2,'0d" (:hour :minute) :time login-time))))
 
-
   (defun find-foreground-process (proc-list parent tty
 				  &optional (pick parent) (level 1))
     "Try to return a unix-process that is the current process running on TTY,
 given a PARENT pid, and PROC-LIST as returned by opsys:process-list."
+    ;; Some things put non-devices line field like :0.0 for an X11 server,
+    ;; so this hackish method of picking the process won't work.
+    (when (not (file-exists (dev-name tty)))
+      (return-from find-foreground-process nil))
+
     (let* (;(parent-proc (find parent proc-list :key #'os-process-id))
 	   (children (remove-if (_ (/= (unix-process-parent-id _) parent))
 				proc-list))
