@@ -345,6 +345,7 @@
    #:+AT-FDCWD+ #:+AT-SYMLINK-NOFOLLOW+
    #:utimes
    #:utimensat
+   #:futimens
    #:symlink
    #:symlinkat
    

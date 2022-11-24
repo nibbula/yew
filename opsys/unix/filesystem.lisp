@@ -2570,6 +2570,10 @@ lock, checking at least every INCREMNT seconds."
   (times (:pointer (:struct foreign-timespec))) ; struct timespec times[2]
   (flags :int))
 
+(defcfun ("futimens" real-futimens) :int
+  (fd :int)
+  (times (:pointer (:struct foreign-timespec))))
+
 (defcstruct foreign-utimbuf
   "File times for utime."
   (actime time-t)
@@ -2606,12 +2610,13 @@ structures. Either can be NIL to avoid setting the time."
     (syscall (real-utimes filename tv))))
 
 (defun utimensat (dir-fd path &key access-time modification-time set-link-p)
-  "Set the given times on the PATH. DIR-FD is an open directory containing the
-file, or NIL to use the current directory. The ACCESS-TIME and MODIFICATION-TIME
-are TIMESPEC structures. Either of the times can be :NOW to set them to the
-current time, or NIL, not to set them. If PATH is NIL, use DIR-FD as the file
-descriptor to set the times of. If SET-LINK-P is true, and the path is a
-symbolica link, set the times on the link instead of the pointed to file."
+  "Set the given times on the ‘path’. ‘dir-fd’ is an open directory containing
+the file, or NIL to use the current directory. The ‘access-time’ and
+‘modification-time’ are ‘timespec’ structures. Either of the times can be :NOW
+to set them to the current time, or NIL, not to set them. If ‘path’ is NIL,
+use ‘dir-fd’ as the file descriptor to set the times of. If ‘set-link-p’ is
+true, and the path is a symbolica link, set the times on the link instead of
+the pointed to file."
   (when (and (null access-time) (null modification-time))
     (return-from utimensat nil))
   (when (or (and (null access-time)
@@ -2651,19 +2656,67 @@ symbolica link, set the times on the link instead of the pointed to file."
 	(syscall (real-utimensat dir-fd path tv
 				 (if set-link-p +AT-SYMLINK-NOFOLLOW+ 0))))))
 
-(defmethod set-file-time ((path string) &key access-time modification-time)
-  "Set the given times on PATH. The times are OS-TIME structures. Either
+(defun futimens (fd &key access-time modification-time)
+  "Set the given times on the file descriptor ‘fd’. The ‘access-time’ and
+‘modification-time’ are ‘timespec’ structures. Either of the times can be :NOW
+to set them to the current time, or NIL, not to set them."
+  (when (and (null access-time) (null modification-time))
+    (return-from futimens nil))
+  (when (or (and (null access-time)
+		 (null (timespec-seconds modification-time))
+		 (null (timespec-nanoseconds modification-time)))
+	    (and (null modification-time)
+		 (null (timespec-seconds access-time))
+		 (null (timespec-nanoseconds access-time))))
+    (return-from futimens nil))
+  (check-type fd integer)
+  (if (and (eq access-time :now) (eq modification-time :now))
+      ;; Quick path for setting both to now, so we don't have to allocate.
+      (syscall (real-futimens fd (null-pointer)))
+      (with-foreign-objects ((tv '(:struct foreign-timespec) 2))
+	(labels ((set-time (i seconds nano-seconds)
+		   (setf (foreign-slot-value
+			  (mem-aptr tv '(:struct foreign-timespec) i)
+			  '(:struct foreign-timespec) 'tv_sec)
+			 (or seconds 0)
+			 (foreign-slot-value
+			  (mem-aptr tv '(:struct foreign-timespec) i)
+			  '(:struct foreign-timespec) 'tv_nsec)
+			 (or nano-seconds 0)))
+		 (set-timespec (i ts)
+		   (cond
+		     ((null ts)
+		      (set-time i 0 +UTIME-OMIT+))
+		     ((eq ts :now)
+		      (set-time i 0 +UTIME-NOW+))
+		     (t
+		      (with-slots (seconds nanoseconds) ts
+			(set-time i seconds nanoseconds))))))
+	  (set-timespec 0 access-time)
+	  (set-timespec 1 modification-time))
+	(syscall (real-futimens fd tv)))))
+
+(defun convert-to-timespec (time)
+  (when time
+    (if (eq time :now)
+	:now
+	(make-timespec
+	 :seconds (universal-to-unix-time (os-time-seconds time))
+	 :nanoseconds (or (os-time-nanoseconds time) 0)))))
+
+(defmethod set-file-time ((file string) &key access-time modification-time)
+  "Set the given times on ‘file’. The times are ‘os-time’ structures. Either
 time can be :NOW to use the current time."
-  (flet ((flank (time)
-	   (if time
-	       (if (eq time :now)
-		   :now
-		   (make-timespec
-		    :seconds (universal-to-unix-time (os-time-seconds time))
-		    :nanoseconds (or (os-time-nanoseconds time) 0))))))
-    (utimensat nil path
-	       :access-time (flank access-time)
-	       :modification-time (flank modification-time))))
+  (utimensat nil file
+	     :access-time (convert-to-timespec access-time)
+	     :modification-time (convert-to-timespec modification-time)))
+
+(defmethod set-file-time ((file integer) &key access-time modification-time)
+  "Set the given times on ‘file’. The times are ‘os-time’ structures. Either
+time can be :NOW to use the current time."
+  (futimens file
+	    :access-time (convert-to-timespec access-time)
+	    :modification-time (convert-to-timespec modification-time)))
 
 ;; Apple metadata crap:
 ;; searchfs

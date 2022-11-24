@@ -252,8 +252,17 @@ actually exists.")
 (defmethod os-rename-file (from to)
   (os-rename-file (os-namestring from) (os-namestring to)))
 
-(defmethod set-file-time (path &key access-time modification-time)
-  (set-file-time (os-namestring path) :access-time access-time
+(defmethod set-file-time ((file pathname) &key access-time modification-time)
+  (set-file-time (os-namestring file) :access-time access-time
+		 :modification-time modification-time))
+
+(defmethod set-file-time ((file os-pathname) &key access-time modification-time)
+  (set-file-time (os-namestring file) :access-time access-time
+		 :modification-time modification-time))
+
+(defmethod set-file-time ((file stream) &key access-time modification-time)
+  (set-file-time (stream-system-handle file)
+		 :access-time access-time
 		 :modification-time modification-time))
 
 (defmethod make-symbolic-link (from to)

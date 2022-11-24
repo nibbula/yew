@@ -712,6 +712,9 @@ versions of the keywords used in Lisp open.
  (file-information       LPVOID)
  (buffer-size            DWORD))
 
+;; @@@ Consider adding a set-file-time method for handles, like the one
+;; on unix for fds.
+
 (defmethod set-file-time ((path string) &key access-time modification-time)
   "Set the given times on PATH. The times are OS-TIME structures. Either
 time can be :NOW to use the current time."
