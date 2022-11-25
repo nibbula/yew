@@ -650,13 +650,14 @@ or ‘to’ exists."
       (setf y 1)
 
       ;; Adjust the view to the point
-      (when (>= (table-point-row point) (+ (table-point-row start) rows))
-	(setf (table-point-row start) (1+ (- (table-point-row point) rows))))
-      (when (< (table-point-row point) (table-point-row start))
-	(setf (table-point-row start) (table-point-row point)))
+      (when point
+	(when (>= (table-point-row point) (+ (table-point-row start) rows))
+	  (setf (table-point-row start) (1+ (- (table-point-row point) rows))))
+	(when (< (table-point-row point) (table-point-row start))
+	  (setf (table-point-row start) (table-point-row point)))
 
-      ;; Unset the cursor
-      (setf (table-point-row cursor) nil)
+	;; Unset the cursor
+	(setf (table-point-row cursor) nil))
 
       ;; Tell the renderer where point is.
       (setf (table-viewer::current-position renderer) point)
@@ -672,9 +673,10 @@ or ‘to’ exists."
 	(setf message nil))
 
       ;; Make the cursor show up in the right spot.
-      (when (table-point-row cursor) ;; @@@ XXX workaround
-	;;(tt-move-to (table-point-row cursor) 0)
-	(tt-move-to (+ y (table-point-row cursor)) x)))))
+      (when point
+	(when (table-point-row cursor) ;; @@@ XXX workaround
+	  ;;(tt-move-to (table-point-row cursor) 0)
+	  (tt-move-to (+ y (table-point-row cursor)) x))))))
 
 (defun dired (&optional (directory (nos:current-directory)))
   (with-terminal ()
