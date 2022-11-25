@@ -192,16 +192,16 @@ already, just return the list."
       (complete-list context pos all new-list))))
 
 (defun string-completion-list (word list)
-  "Return all the words from LIST that have the prefix WORD. Second value is
-the count of matches."
-  (let ((i 0) pos (len (olength word)))
+  "Return a completion-result for all the words from ‘list’ that have the
+prefix ‘word’. The result contains a count of matches."
+  (let ((i 0) pos (len (olength word)) sw)
     (make-completion-result
      :completion
      (loop :for w :in list
-	:if (or (not (setq pos (mismatch (stringify w) word)))
-		(>= pos len))
-	  :collect (prog1 (highlight-difference len w) (incf i))
-	:end)
+       :do (setf sw (stringify w))
+       :when (or (not (setq pos (mismatch sw word)))
+		 (>= pos len))
+         :collect (prog1 (highlight-difference len sw) (incf i)))
      :count i)))
 
 ;; @@@ Consdier ditching this in favor of the "generic" ostring-completion.
