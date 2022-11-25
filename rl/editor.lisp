@@ -567,7 +567,7 @@ named symbols in the local package for ‘editor’."
 	 (inline first-point))
 (defun first-point (e)
   "Get the value of the first point."
-  (inator-point (aref (inator-contexts e) 0)))
+  (values (inator-point (aref (inator-contexts e) 0))))
 
 (defun set-first-point (e p)
   "Set the first point of the editor E to P."
