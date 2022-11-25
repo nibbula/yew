@@ -1076,13 +1076,14 @@ at which it's found or NIL if it's not found."
       (tt-erase-below)
 
       ;; Adjust the view to the point
-      (when (>= (table-point-row point) (+ (table-point-row start) rows))
-	(setf (table-point-row start) (1+ (- (table-point-row point) rows))))
-      (when (< (table-point-row point) (table-point-row start))
-	(setf (table-point-row start) (table-point-row point)))
+      (when point
+	(when (>= (table-point-row point) (+ (table-point-row start) rows))
+	  (setf (table-point-row start) (1+ (- (table-point-row point) rows))))
+	(when (< (table-point-row point) (table-point-row start))
+	  (setf (table-point-row start) (table-point-row point)))
 
-      ;; Unset the cursor
-      (setf (table-point-row cursor) nil)
+	;; Unset the cursor
+	(setf (table-point-row cursor) nil))
 
       ;; Tell the renderer where point is.
       (setf (current-position renderer) point)
@@ -1101,14 +1102,15 @@ at which it's found or NIL if it's not found."
 	;;(tt-move-to (table-point-row cursor) 0)
 	(tt-move-to (+ y (table-point-row cursor)) x)))))
 
-;; (defgeneric start-inator ((o table-viewer))
-;;   )
-
-;; (defgeneric finish-inator ((o table-viewer))
-;;   )
-
-;; @@@@@@@
-;; (defgeneric table-viewer-for (
+(defmethod finish-inator ((o table-viewer))
+  ;; Redraw without the current row highlighted.
+  (let ((saved-point (inator-point o)))
+    (unwind-protect
+	 (progn
+	   (setf (inator-point o) nil)
+	   (update-display o))
+      (setf (inator-point o) saved-point)))
+  (call-next-method))
 
 (defun view-table (table &key long-titles (type 'table-viewer))
   "View a table."
