@@ -225,8 +225,10 @@ EVENT-LOOP with an INATOR sub-class instance.")
 (defgeneric quit (inator)
   (:documentation "Quit the Inator.")
   (:method ((i inator)) (setf (inator-quit-flag i) t)))
+
 (defgeneric accept (inator)
   (:documentation "Accept the data and usually exit."))
+
 (defgeneric redraw (inator)
   (:documentation "Redraw the screen."))
 
