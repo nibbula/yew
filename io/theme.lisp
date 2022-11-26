@@ -658,6 +658,6 @@ set-theme-items."
 				   (format nil "~c[~amx" #\escape value))))))))
 	   (if i (rplacd i val)
 	       (setf result (acons tt val result)))))
-    (alexandria:alist-plist result)))
+    (alist-to-plist result)))
 
 ;; EOF
