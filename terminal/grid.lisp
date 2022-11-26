@@ -293,6 +293,91 @@ z    (flet ((add-grid-char (char)
   "Return true if ‘char’ is #\nul."
   (char/= #.(code-char 0) char))
 
+#|
+(defun grid-to-fat-string (s &key (start 0) end null-as keep-nulls)
+  "Return a fat-string equivalent to S. S can be a grid-string or a grid-char."
+  (let* ((len (olength s)) ;; (grid-string-character-length s))
+	 (result (make-array len
+			     :element-type 'fatchar
+			     :initial-element (make-fatchar)))
+	 (j 0)
+	 output-start output-end)
+    (flet ((add-grid-char (i char)
+	     "Add CHAR to the result."
+	     (etypecase (grid-char-c char)
+	       (null
+		;; Ignore it unless it has other data.
+		;; @@@ It this reasonable?
+		(when (or (grid-char-fg    char)
+			  (grid-char-bg    char)
+			  (grid-char-attrs char)
+			  (not (zerop (grid-char-line char)))
+			  output-start)
+		  (when (not output-start)
+		    (setf output-start i))
+		  (setf (aref result j)
+			(make-fatchar :fg    (copy-color (grid-char-fg char))
+				      :bg    (copy-color (grid-char-bg char))
+				      :attrs (copy-list (grid-char-attrs char))
+				      :line  (grid-char-line  char)
+				      :c null-as))
+		  (when (not output-end)
+		    (setf output-end j))
+		  (incf j)))
+	       (character
+		(when (or output-start
+			  ;; (char/= (grid-char-c char) #.(code-char 0)))
+			  ;; (or (char/= (grid-char-c char) #.(code-char 0))
+			  (or (not-null-char (grid-char-c char))
+			      keep-nulls))
+		  (when (not output-start)
+		    (setf output-start i))
+		  (setf (aref result j)
+			(make-fatchar :c     (or (grid-char-c char) null-as)
+				      :fg    (copy-color (grid-char-fg char))
+				      :bg    (copy-color (grid-char-bg char))
+				      :attrs (copy-list (grid-char-attrs char))
+				      :line  (grid-char-line  char)))
+		  (when (not output-end)
+		    (setf output-end
+			  (if (grid-char-c char) nil j)))
+		  (incf j)))
+	       (string
+		(loop :for c :across (grid-char-c char)
+		   :do
+		   (when (or output-start
+			     ;; (char/= (grid-char-c char) #.(code-char 0))
+			     (not-null-char (grid-char-c char))
+			     keep-nulls)
+		     (when (not output-start)
+		       (setf output-start i))
+		     (setf (aref result j)
+			   (make-fatchar :c     (if (null-char c) null-as c)
+					 :fg    (copy-color (grid-char-fg char))
+					 :bg    (copy-color (grid-char-bg char))
+					 :attrs (copy-list
+						 (grid-char-attrs char))
+					 :line  (grid-char-line  char)))
+		     (when (not output-end)
+		       (setf output-end
+			     (if (null-char c) nil j)))
+		     (incf j)))))))
+      (etypecase s
+	(null result)
+	(grid-char (add-grid-char 0 s))
+	(vector
+	 (loop
+	    :for i :from start :below (or end (length s))
+	    :do
+	    (add-grid-char i (aref s i)))))
+      (if (not output-start)
+	  (values (make-fat-string :string (vector)) nil)
+	  (values (make-fat-string :string (if keep-nulls
+					       result
+					       (subseq result 0 output-end)))
+		  output-start)))))
+|#
+
 (defun grid-to-fat-string (s &key (start 0) end null-as keep-nulls)
   "Return a fat-string equivalent to S. S can be a grid-string or a grid-char."
   (let* ((len (olength s)) ;; (grid-string-character-length s))
