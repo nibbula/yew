@@ -428,12 +428,21 @@ by nos:read-directory."))
 	(a-year (ls-state-about-a-year *ls-state*)))
     (setf date-format (keywordify date-format)
 	  size-format (keywordify size-format))
+    (flet ((get-info (file)
+	     (with-error-handling ()
+	       #+unix (uos:lstat (item-full-path file))
+	       #-unix (nos:get-file-info (item-full-path file))))
+	   #+unix
+	   (link-name (file)
+	     (handler-case
+		 (uos:readlink (item-full-path file))
+	       (opsys-error (c)
+		 (ß `(:red ,(error-message (opsys-error-code c))))))))
     #+unix
     (make-table-from
      (loop :with s
 	:for file :in file-list
-	;;:for s = (unix-stat (item-full-path file))
-	:do (setf s (uos:lstat (item-full-path file)))
+	:do (setf s (get-info file))
 	:collect
 	(list
 	 (colorize-symbolic-mode (uos:file-status-mode s))
@@ -446,7 +455,7 @@ by nos:read-directory."))
 	   (uos:file-status-modify-time s)))
 	 (if (uos:is-symbolic-link (uos:file-status-mode s))
 	     (fs+ (get-styled-file-name file) " -> "
-		  (uos:readlink (item-full-path file)))
+		  (link-name file))
 	     (get-styled-file-name file))))
      :columns
      `((:name "Mode")
@@ -467,7 +476,7 @@ by nos:read-directory."))
      (loop
 	:for file :in file-list
 	;;:for s = (nos:get-file-info (dir-entry-name file))
-	:for s = (nos:get-file-info (item-full-path file))
+	:for s = (get-info file)
 	:collect (list
 		  (file-info-type s)
 		  (file-info-flags s)
@@ -485,7 +494,7 @@ by nos:read-directory."))
 	      :format ,(lambda (n width)
 			 (format nil "~va" width
 				 (format-the-date n date-format today a-year))))
-       (:name "Name")))))
+       (:name "Name"))))))
 
 (defun format-short (file dir show-size)
   (if show-size
@@ -621,8 +630,8 @@ which is mostly the args from ‘ls’ command. Returns two values, the list of
     (omapn (_ (get-it _)) files)))
 
 (defun present-files (files args label-dir-p)
-  "Show the FILES, displayed according the the plist ARGS. See the lish ‘ls’
-command for details. If LABEL-DIR is true, print directory labels."
+  "Show the FILES, displayed according the the plist ‘args’. See the ‘ls’
+command for details. If ‘label-dir-p’ is true, print directory labels."
   ;; (format t "present files -> ~s~%" files)
   ;; (format t "grout ~s~%grout-stream ~s~%term ~s~%stdout ~s~%"
   ;; 	     *grout* (grout-stream *grout*) *terminal* *standard-output*)
