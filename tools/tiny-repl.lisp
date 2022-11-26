@@ -424,7 +424,7 @@ to quit everything. Arguments are:
 	 start-level
 	 (rl:*history-context* :repl))
     (when (not theme:*theme*)
-      (setf theme:*theme* (theme:default-theme)))
+      (setf theme:*theme* (theme-default:default-theme)))
 
     (with-repl-terminal (terminal)
       ;; This is where 'the trouble' likes to start:
