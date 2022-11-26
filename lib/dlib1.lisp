@@ -44,6 +44,7 @@
    #:overwhelming-permission
    #:exe-in-path
    #:try-things
+
    ;; io-ish
    #:resilient-read-line
    #:with-open-file-or-stream
@@ -64,6 +65,7 @@
    #:name-to-title
    #:print-properties
    #:interactive-interrupt
+
    ;; sequences
    ;;#:call-with-start-and-end
    #:initial-span
@@ -85,6 +87,7 @@
    #:join-by-string
    #:join-by
    #:fill-by
+
    ;; lists
    #:delete-nth
    #:insert-at
@@ -105,7 +108,8 @@
    #:range-lazy #:range-start #:range-end #:range-step #:make-range
    #:clamp
    #:clampf
-   ;; objects
+
+   ;; Objects
    #:shallow-copy-object
    #:*mop-package*
    #:d-add-feature
@@ -115,6 +119,7 @@
    #-ccl-1.6 #:remove-feature
    #:has-feature
 ;   #:with-struct-slots
+
    ;; Implementation-ish
    #:missing-implementation-error
    #:missing-implementation-error-symbol
@@ -126,7 +131,8 @@
    #:with-muffled-notes
    #:sort-muffled
    #:stable-sort-muffled
-   ;; language-ish
+
+   ;; Language-ish
    #:define-constant
    #:defconstant-to-list
    #:vector-equal
@@ -163,7 +169,8 @@
    #:function-designator
    #:+simple-condition-format-control-slot+
    #:+simple-condition-format-arguments-slot+
-   ;; debugging
+
+   ;; Debugging
    #:*dbug* #:*dbug-output* #:*dbug-package* #:*dbug-facility*
    #:dbug #:dbugf #:if-dbugf #:with-dbug #:with-dbug-package
    #:with-dbugf
@@ -171,6 +178,7 @@
    #:without-dbug
    #:dbugf-toggle
    #:dump-values
+
    ;; Environment features
    #:*host*
    #:*arch*
@@ -1601,7 +1609,6 @@ ORIGINAL is something that a define-alias method is defined for."
 
 (defalias '⇚ 'multiple-value-list)
 
-;; This is just to pretend that we're trendy and modern.
 ;(setf (macro-function 'λ) (macro-function 'cl:lambda))
 ;;Umm actually I mean:
 ;; #-(or lispworks clasp)
