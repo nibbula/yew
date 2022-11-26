@@ -88,6 +88,8 @@
    ;; lists
    #:delete-nth
    #:insert-at
+   #:alist-to-plist
+   #:plist-to-alist
    #:alist-to-hash-table
    #:plist-to-hash-table
    #:hash-table-to-alist
@@ -1080,6 +1082,19 @@ value, if you want to delete the first item."
 	  (if x
 	      (rplacd x (cons item (cdr x)))
 	      x)))))
+
+(defun alist-to-plist (alist)
+  "Returns a property list containing the same keys and values as the
+association list ‘alist’ in the same order."
+  (loop :for pair :in alist
+    :collect (car pair)
+    :collect (cdr pair)))
+
+(defun plist-to-alist (alist)
+  "Returns an association list containing the same keys and values as the
+property list ‘plist’ in the same order."
+  (loop :for (a b) :on alist :by #'cddr
+	:collect (cons a b)))
 
 (defun alist-to-hash-table (alist &key (table (make-hash-table))
 				    check-for-duplicates)
