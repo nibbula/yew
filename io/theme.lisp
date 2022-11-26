@@ -110,16 +110,10 @@ Creating and customizing themes:
    #:file-suffix-type
    #:dircolors-to-theme
    #:set-theme-items
-   #:default-theme
-   #:set-theme-defaults-for-16-color
-   #:set-theme-defaults-for-monochrome-dark
-   #:default-theme-monochrome-light
-   #:default-theme-monochrome-dark
-   #:default-theme-16-color
    ))
 (in-package :theme)
 
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
 ;; This is really just a fairly lame word based hierarchical data store.
 
@@ -305,6 +299,32 @@ the first present value in a list of themes."
 (defmethod (setf theme-value) (value (theme theme) item)
   "Setter for theme node values."
   (set-node theme item value))
+
+;; The current theme.
+
+(defvar *theme* nil
+  "The current theme.")
+
+(defun value (item)
+  "Get a value from the current theme."
+  (theme-value *theme* item))
+
+(defun set-value (item value)
+  "Set a value in the current theme."
+  (setf (theme-value *theme* item) value))
+
+(defsetf value set-value
+  "Accessor for a value in the current theme.")
+
+(defun set-theme-items (theme item-value-list)
+  "Set item in theme from item-value-list which is a plist like list of
+alternating (item value ...)."
+  (loop
+     :for i = item-value-list :then (cdr i)
+     :while i
+     :do
+     (setf (theme-value theme (car i)) (cadr i)
+	   i (cdr i))))
 
 (defun print-theme-node-stupidly (theme-node &key prefix repeat-line stream)
   (let* ((name-string (format nil "~(~a~)" (theme-name theme-node)))
@@ -517,16 +537,16 @@ this loses information, such as descriptions and titles."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; theme-ish things that maybe should be elsewhere?
 
-(defvar *theme* nil
-  "The current theme.")
-
 ;; (defun print-themed (thing-type thing)
 ;;   (let ((style (theme-value *theme* thing)))
 ;;     (when style
 ;;       (with-style (style)
 ;; 	(print thing)))))
 
-;; @@@ This should probably come from a system database.
+;; @@@ This should probably come from a system database, and is related to
+;; the stuff in iof/magic.lisp and tools/view.lisp
+;; There are more types in here than than in MIME categories because we're
+;; not just classifying the contents, but other properties, e.g. ignorable.
 (defparameter *file-type-suffixes*
   '((:archive (".tar" ".tgz" ".tbz"".tbz2" ".arc" ".arj" ".taz" ".lha" ".lz4"
 	       ".lzh" ".lzma" ".tlz" ".txz" ".tzo" ".t7z" ".zip"
@@ -534,30 +554,60 @@ this loses information, such as descriptions and titles."
 	       ".zoo" ".cpio" ".7z" ".rz" ".cab"))
     (:compressed (".z" ".Z" ".dz" ".gz" ".lrz" ".lz" ".lzo" ".xz" ".bz2" ".bz"
 		  ".tz"))
-    (:image (".jpg" ".jpeg" ".gif" ".bmp" ".pbm" ".pgm" ".ppm" ".tga" ".xbm"
-	     ".xpm" ".tif" ".tiff" ".png" ".svg" ".svgz" ".mng" ".pcx"
-	     ".xwd" ".yuv" ".cgm"".emf"
-	     ".gl" ".dl"))
+    (:image (".jpg" ".jpeg" ".png" ".svg" ".gif" ".webp" ".bmp" ".ico"
+	     ".pbm" ".pgm" ".ppm" ".tga" ".xbm" ".xpm" ".tif" ".tiff"
+	     ".svgz" ".mng" ".pcx" ".xwd" ".yuv" ".cgm"".emf" ".gl" ".dl"))
     (:video (".mov" ".mpg" ".mpeg" ".m2v" ".mkv" ".webm" ".ogm" ".mp4" ".m4v"
 	     ".mp4v" ".vob" ".qt" ".nuv" ".wmv" ".asf" ".rm" ".rmvb" ".flc"
 	     ".avi" ".fli"".flv"
 	     ".ogv" ".ogx"))
-    (:audio (".aac" ".au" ".flac" ".m4a" ".mid" ".midi" ".mka" ".mp3" ".mpc"
-	     ".ogg" ".ra" ".wav" ".oga" ".opus" ".spx"".xspf"))))
+    (:audio (".aac" ".mp3" ".ogg" ".opus" ".flac" ".m4a" ".mid" ".midi" ".au"
+	     ".wav" ".wma" ".mka" ".mpc" ".ra" ".oga" ".spx"".xspf"))
+    ;; (:ignorable (".bak" ".BAK" ".tmp" ".TMP"))
+    ))
 
 (defparameter *file-suffix-table* nil)
 
+(defun ensure-file-suffix-table ()
+  "Return the *file-suffix-table*. Create and populate it if it hasn't been
+done already."
+  (or *file-suffix-table*
+      (progn
+	(setf *file-suffix-table* (make-hash-table :test #'equal))
+	(loop :for type :in theme:*file-type-suffixes* :do
+	  (loop :for suffix :in (second type) :do
+	    (setf (gethash suffix *file-suffix-table*) (first type))))
+	*file-suffix-table*)))
+
+(defparameter *file-type-patterns*
+  `((:ignorable . ("~$" "^#.*#$" "\\.[Bb][Aa][Kk]$" "\\.[Tt][Mm][Pp]$"))))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun patternize (pattern-list)
+    "Make a sigle regular expression string from a list of alternatives."
+    (format nil "(~{~a~^|~})" pattern-list))
+
+  (defun make-file-pattern-list ()
+    "Return a copy of *file-type-patterns* with the scanners compiled."
+    (mapcar (_ (cons (car _) (ppcre:create-scanner (patternize (cdr _)))))
+	    *file-type-patterns*)))
+
+;; Hopefully this will compile the RE's at compile time so they're quicker.
+(defparameter *file-pattern-list*
+  (load-time-value (make-file-pattern-list)))
+
+(defun ensure-file-pattern-list ()
+  (or *file-pattern-list*
+      (setf *file-pattern-list* (make-file-pattern-list))))
+
 (defun file-suffix-type (file)
   "Return the file suffix type for the given file name."
-  (when (not *file-suffix-table*)
-    (setf *file-suffix-table* (make-hash-table :test #'equal))
-    (loop :for type :in theme:*file-type-suffixes* :do
-       (loop :for suffix :in (second type) :do
-	  (setf (gethash suffix *file-suffix-table*) (first type)))))
   (let* ((dot (position #\. file :from-end t))
 	 (suffix (and dot (subseq file dot))))
-    (when suffix
-      (gethash suffix *file-suffix-table*))))
+    (or (when suffix
+	  (gethash suffix (ensure-file-suffix-table)))
+	(car (find-if (_ (ppcre:scan (cdr _) file))
+		      (ensure-file-pattern-list))))))
 
 (defparameter *dircolor-map*
   #(("rs" . nil) 			; reset
@@ -576,9 +626,11 @@ this loses information, such as descriptions and titles."
     ("st" . (:file :type :sticky                :style))
     ("tw" . (:file :type :sticky-other-writable :style))
     ("ow" . (:file :type :other-writable        :style))
-    ("ex" . (:file :type :executable            :style))))
+    ("ex" . (:file :type :executable            :style)))
+  "Map GNU ls LS_COLORS two letter codes to our theme node names.")
 
 (defun find-theme-node-for (name)
+  "Return the theme name for the GNU ls LS_COLORS two letter code."
   (let (result)
     (or (and (setf result (find name theme::*dircolor-map*
 				:key #'car :test #'equal))
@@ -607,219 +659,5 @@ set-theme-items."
 	   (if i (rplacd i val)
 	       (setf result (acons tt val result)))))
     (alexandria:alist-plist result)))
-
-(defun value (item)
-  "Get a value from the current theme."
-  (theme-value *theme* item))
-
-(defun set-value (item value)
-  "Set a value in the current theme."
-  (setf (theme-value *theme* item) value))
-
-(defsetf value set-value
-  "Accessor for a value in the current theme.")
-
-(defun set-theme-items (theme item-value-list)
-  "Set item in theme from item-value-list which is a plist like list of
-alternating (item value ...)."
-  (loop
-     :for i = item-value-list :then (cdr i)
-     :while i
-     :do
-     (setf (theme-value theme (car i)) (cadr i)
-	   i (cdr i))))
-
-(defun default-theme ()
-  (let ((tt (make-theme
-	     'default
-	     :title "Default theme."
-	     :description (format nil "~
-A default theme that isn't too unexpected and works for a dark background.
-Something like the default setting of typical GNU tools."))))
-    (set-theme-items
-     tt
-     ;; File type
-     `((:file :type :directory             :style) (:bold :fg-blue)
-       (:file :type :link                  :style) (:bold :fg-cyan)
-       (:file :type :symbolic-link         :style) (:bold :fg-cyan)
-       (:file :type :pipe                  :style) (:fg-black :fg-yellow)
-       (:file :type :socket                :style) (:bold :fg-magenta)
-       (:file :type :block-device          :style) (:bg-black :fg-yellow :bold)
-       (:file :type :character-device      :style) (:bg-black :fg-yellow :bold)
-       (:file :type :setuid                :style) (:fg-white :bg-red)
-       (:file :type :setgid                :style) (:fg-black :bg-yellow)
-       (:file :type :sticky                :style) (:fg-white :bg-blue)
-       (:file :type :sticky-other-writable :style) (:fg-black :bg-green)
-       (:file :type :other-writable        :style) (:fg-blue :bg-green)
-       (:file :type :group-writable        :style) (:fg :color
-						    #(:rgb8 #xff #x7f #x24))
-       (:file :type :executable            :style) (:bold)
-       ;; File name suffixes
-       (:file :suffix :archive             :style) (:bold :fg-red)
-       (:file :suffix :compressed          :style) (:bold :fg-cyan)
-       (:file :suffix :image               :style) (:bold :fg-magenta)
-       (:file :suffix :video               :style) (:bold :fg-magenta)
-       (:file :suffix :audio               :style) (:fg-cyan)
-       ;; Syntax
-       (:syntax :comment :line :semicolon  :style) (:fg-cyan)
-       (:syntax :comment :block            :style) (:fg-cyan)
-       (:syntax :comment :block            :style) (:fg-cyan)
-       (:syntax :constant :character       :style) (:fg-white)
-       (:syntax :constant :language        :style) (:fg-white)
-       (:syntax :constant :other           :style) (:fg-white)
-       (:syntax :entity :name :function    :style) (:fg-red)
-       ;; (:syntax :entity :name :macro       :style) (:fg-red)
-       (:syntax :entity :name :macro       :style) (:fg :color #(:rgb 1. .6 .1))
-       (:syntax :entity :name :type        :style) (:fg-blue)
-       (:syntax :entity :keyword :operator :style) (:fg-magenta)
-       (:syntax :entity :keyword :control  :style) (:fg-magenta)
-       (:syntax :support :function         :style) (:fg-magenta)
-       (:syntax :support :variable         :style) (:fg-green)
-       (:syntax :support :function         :style) (:fg-magenta)
-       (:syntax :variable :other           :style) (:fg-green)
-       ;; Commands
-       (:command :not-found	    :style) (:red)
-       (:command :found		    :style) (:bold :blue)
-       (:command :directory	    :style) (:fg :color #(:rgb .0 .5 .9))
-       ;;(:command :system-command    :style) (:fg :color #(:rgb .4 .5 .9))
-       (:command :system-command    :style) (:fg :color #(:rgb .0 .8 .9))
-       (:command :external-command  :style) (:fg :color #(:rgb .0 .5 .9))
-       (:command :builtin-command   :style) (:fg :color #(:rgb .9 .4 .7))
-       (:command :shell-command	    :style) (:fg :color #(:rgb .7 .5 .9))
-       (:command :loadable-system   :style) (:fg :color #(:rgb .9 .6 .0))
-       (:command :command	    :style) (:bold :blue)
-       (:command :alias		    :style) (:fg :color #(:rgb .8 .7 .9))
-       (:command :function	    :style) (:magenta)
-       (:command-arg :existing-path :style) (:underline)
-       ;; Programs
-       (:program :modeline             :style)     (:standout)
-       (:program :search-match         :style)     (:underline :red)
-       (:program :completion :difference :style)   (:underline :bold)
-       (:program :empty-line-indicator :style)     (:normal)
-       (:program :empty-line-indicator :character) #\~
-       (:program :selection            :style)     (:standout)
-       (:program :label		       :style)     (:cyan)
-       (:program :data		       :style)     (:green)
-       (:program :meter		       :character) #.(code-char #x2592)
-       (:program :input                :style)     (:bg-blue :fg-cyan)
-       (:program :suggestion           :style)
-       (:fg :color #(:rgb8 #x50 #x50 #x50))
-       (:program :table :current-cell  :style)     (:fg-yellow :inverse)
-       (:program :table :current-row   :style)     (:inverse)
-       (:program :tree :open-indicator)            ,(ß '(:magenta "▾"))
-       (:program :tree :closed-indicator)          ,(ß '(:cyan "▸"))
-       (:program :editor :paren-highlight :style)  (:standout)
-       ))
-    tt))
-
-(defun set-theme-defaults-for-16-color (theme)
-  (set-theme-items theme
-    `((:file :type :executable      :style) (:green :bold)
-      (:command :directory	    :style) (:blue)
-      (:command :system-command     :style) (:cyan)
-      (:command :external-command   :style) (:cyan :bold)
-      (:command :builtin-command    :style) (:magenta)
-      (:command :shell-command      :style) (:magenta)
-      (:command :loadable-system    :style) (:magenta)
-      (:command :alias		    :style) (:magenta :bold)
-      (:program :suggestion         :style) (:fg :black :bold)
-      (:syntax :entity :name :macro :style) (:fg-yellow))))
-
-(defun default-theme-16-color ()
-  "Default theme for 16-color"
-  (let ((theme (default-theme)))
-    (set-theme-defaults-for-16-color theme)
-    theme))
-
-(defun set-theme-defaults-for-monochrome-dark (theme)
-  (set-theme-items theme
-    `((:file :type :directory             :style) ()
-      (:file :type :link                  :style) ()
-      (:file :type :symbolic-link         :style) ()
-      (:file :type :pipe                  :style) ()
-      (:file :type :socket                :style) ()
-      (:file :type :block-device          :style) ()
-      (:file :type :character-device      :style) ()
-      (:file :type :setuid                :style) ()
-      (:file :type :setgid                :style) ()
-      (:file :type :sticky                :style) ()
-      (:file :type :sticky-other-writable :style) ()
-      (:file :type :other-writable        :style) ()
-      (:file :type :group-writable        :style) ()
-      (:file :type :executable            :style) ()
-      ;; File name suffixes
-      (:file :suffix :archive             :style) ()
-      (:file :suffix :compressed          :style) ()
-      (:file :suffix :image               :style) ()
-      (:file :suffix :video               :style) ()
-      (:file :suffix :audio               :style) ()
-      ;; Syntax
-      (:syntax :comment :line :semicolon  :style) ()
-      (:syntax :comment :block            :style) ()
-      (:syntax :comment :block            :style) ()
-      (:syntax :constant :character       :style) ()
-      (:syntax :constant :language        :style) ()
-      (:syntax :constant :other           :style) ()
-      (:syntax :entity :name :function    :style) ()
-      (:syntax :entity :name :macro       :style) ()
-      (:syntax :entity :name :type        :style) ()
-      (:syntax :entity :keyword :operator :style) ()
-      (:syntax :entity :keyword :control  :style) ()
-      (:syntax :support :function         :style) ()
-      (:syntax :support :variable         :style) ()
-      (:syntax :support :function         :style) ()
-      (:syntax :variable :other           :style) ()
-      ;; Commands
-      (:command :not-found	    :style) ()
-      (:command :found		    :style) ()
-      (:command :directory	    :style) ()
-      (:command :system-command     :style) ()
-      (:command :external-command   :style) ()
-      (:command :builtin-command    :style) ()
-      (:command :shell-command	    :style) ()
-      (:command :loadable-system    :style) ()
-      (:command :command	    :style) ()
-      (:command :alias		    :style) ()
-      (:command :function	    :style) ()
-      (:command-arg :existing-path :style) (:underline)
-      ;; Programs
-      (:program :modeline                 :style)     (:standout)
-      (:program :search-match             :style)     (:underline)
-      (:program :empty-line-indicator     :style)     (:normal)
-      (:program :empty-line-indicator     :character) #\~
-      (:program :selection                :style)     (:standout)
-      (:program :label		          :style)     ()
-      (:program :data		          :style)     ()
-      (:program :meter		          :character) #.(code-char #x2592)
-      (:program :input                    :style)     ()
-      (:program :suggestion               :style)     ()
-      (:program :table :current-cell      :style)     (:inverse)
-      (:program :tree :open-indicator)    "-"
-      (:program :tree :closed-indicator)  "+"
-      ;; (:program :return-value-indicator   :string)    "⇒"
-      ;; (:program :return-value-indicator   :style)     (:cyan)
-      ;; (:program :multiple-value-indicator :string)    ";"
-      )))
-
-(defun set-theme-defaults-for-monochrome-light (theme)
-  (set-theme-defaults-for-monochrome-dark theme))
-
-(defun default-theme-monochrome-dark ()
-  "Default theme for monochrome with a dark background."
-  (let ((theme (default-theme)))
-    (set-theme-defaults-for-monochrome-dark theme)
-    theme))
-
-(defun default-theme-monochrome-light ()
-  "Default theme for monochrome with a light background."
-  (let ((theme (default-theme)))
-    (set-theme-defaults-for-monochrome-dark theme)
-    theme))
-
-;; @@@ We should probably make a default monochrome theme.
-;; And default light backgroud themes.
-
-(when (not *theme*)
-  (setf *theme* (default-theme)))
 
 ;; EOF
