@@ -13,6 +13,7 @@
    #:vertical-bar
    #:do-bars
    #:draw-chart
+   #:make-chart-from
    #:make-chart-from-table
    #:chart-viewer
    #:view-chart
@@ -109,24 +110,85 @@
       (tt-format "~v,,,va" (1- (tt-width))
 		 vertical-separator vertical-separator))))
 
-(defun make-chart-from-table (type table &key (label-column 0) (value-column 1))
-  "Make a chart of TYPE from TABLE. Get the labels from LABEL-COLUMN or the
-first column, and the values from VALUE-COLUMN or the second column. The columns
-can be specified as column names or numbers."
+(defgeneric make-chart-from (chart-type object
+			     &key label-column value-column)
+  (:documentation "Make a chart of ‘chart-type’ from ‘object’."))
+
+(defmethod make-chart-from (type (object chart)
+			    &key (label-column 0) (value-column 1))
+  (declare (ignore label-column value-column))
+  (when (not (subtypep (type-of object) type))
+    ;; @@@ What should we do?
+    (warn "Chart is a different type than asked for ~s: ~a."
+	  type (type-of object)))
+  object)
+
+(defmethod make-chart-from (type (object table)
+			    &key (label-column 0) (value-column 1))
+  "Make a chart of ‘type’ from ‘table’. Get the labels from ‘label-column’ or
+the first column, and the values from ‘value-column’ or the second column.
+The columns can be specified as column names or numbers."
   (flet ((get-col (col default)
 	   (if (numberp col)
 	       col
-	       (or (table-column-number col table :test #'equalp) default))))
+	       (or (table-column-number col object :test #'equalp) default))))
     (let ((label-col (get-col (or label-column "label") 0))
 	  (value-col (get-col (or value-column "value") 1))
 	  labels values)
       (omap (lambda (row)
 	      (push (oelt row label-col) labels)
 	      (push (oelt row value-col) values))
-	    table)
+	    object)
       (setf labels (nreverse labels)
 	    values (nreverse values))
       (make-instance type :labels labels :values values))))
+
+(defun make-chart-from-table (type table
+			      &key (label-column 0) (value-column 1))
+  (make-chart-from type table
+		   :label-column label-column :value-column value-column))
+
+(defmethod make-chart-from (type (object cons)
+			    &key (label-column 0) (value-column 1))
+  (declare (ignore label-column value-column)) ;; @@@
+  (multiple-value-bind (labels values)
+    (cond
+      ((let ((first (first object)))
+	 (or (and (consp first) (not (consp (cdr first))))
+	     (>= (olength (first object)) 2)))
+       ;; Assume it's a two 2d list.
+       (loop :for e :in object
+	     :collecting (car e) :into labels
+	     :collecting (if (consp (cdr e)) ;; support alists or plists
+			     (cadr e)
+			     (cdr e)) :into values
+	     :finally (return (values labels values))))
+      (t
+       ;; Assume it's 1d.
+       (loop
+	 :for e :in object :and i :from 1
+	 :collecting (princ-to-string i) :into labels
+	 :collecting e :into values
+	 :finally (return (values labels values)))))
+    (make-instance type :labels labels :values values)))
+
+(defmethod make-chart-from (type (object vector)
+			    &key (label-column 0) (value-column 1))
+  (multiple-value-bind (labels values)
+      (cond
+	((>= (olength (oelt object 0)) 2)
+	 ;; Assume it's a two 2d thing.
+	 (loop :for e :across object
+	       :collecting (oelt e label-column) :into labels
+	       :collecting (oelt e value-column) :into values
+	       :finally (return (values labels values))))
+	(t ;; Assume it's 1d.
+	 (loop :for e :across object
+	       :for i :from 1
+	       :collecting (princ-to-string i) :into labels
+	       :collecting (oelt e value-column) :into values
+	       :finally (return (values labels values)))))
+    (make-instance type :labels labels :values values)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Chart viewer
@@ -188,13 +250,11 @@ can be specified as column names or numbers."
       (error "View what chart?"))
     (setf chart lish:*input*))
   (let ((cc
-	 (typecase chart
-	   (null lish:*input*)
-	   (table (make-chart-from-table
-		   (symbolify (string type) :package (find-package :chart))
-		   chart))
-	   (chart chart)
-	   (t (error "I don't know how to view a ~s.~%" (type-of chart))))))
+	  ;; (error "I don't know how to view a ~s.~%" (type-of chart))))
+	  (make-chart-from
+	   (symbolify (string type) :package (find-package :chart))
+	   chart)
+	 ))
     (view-chart cc)))
 
 ;; End
