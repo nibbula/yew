@@ -89,19 +89,22 @@
       (do-bars (label value chart)
 	(tt-format "~v@a" labels-width (or label ""))
 	(tt-write-string horizontal-separator)
-	(tt-format "~v,,,va"
-		   (round (* value width) max-value) bar-fill bar-fill)
+	(when (not (zerop max-value))
+	  (tt-format "~v,,,va"
+		     (round (* value width) max-value) bar-fill bar-fill))
 	(tt-fresh-line)))))
 
 (defmethod draw-chart ((chart vertical-bar))
   (with-slots (labels values bar-fill horizontal-separator vertical-separator)
       chart
-    (let* ((max-value    (loop :for v :in values :maximize v))
+    (let* ((max-value (loop :for v :in values :maximize v))
 	   (height (- (tt-height) 2))
 	   (x 0))
       (do-bars (label value chart)
 	(loop :for y :from height
-	   :downto (- height (round (* value height) max-value))
+	   :downto (if (zerop max-value)
+		       height
+		       (- height (round (* value height) max-value)))
 	   :do
 	     (tt-move-to y x)
 	     (tt-write-char bar-fill))
