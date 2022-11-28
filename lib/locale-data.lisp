@@ -40,7 +40,7 @@
 
 (defmethod language-month-names ((calendar gregorian) (language (eql :en))
 				 (format (eql :narrow))
-				 (context (eql :stand-alone)))
+				 (context (eql :standalone)))
   (declare (ignore format context))
   #("J" "F" "M" "A" "M" "J" "J" "A" "S" "O" "N" "D"))
 
