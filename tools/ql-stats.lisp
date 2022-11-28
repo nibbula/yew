@@ -10,6 +10,7 @@
    #:get-year
    #:get-all
    #:view-it
+   #:chart-it
    #:!ql-stats
    ))
 (in-package :ql-stats)
@@ -165,8 +166,9 @@ current month."
    (year number :short-arg #\y :help "View statistics for a year.")
    (all boolean :short-arg #\a :help "View statistics for all cached files.")
    (collect boolean :short-arg #\c
-    :help (s+ "Just collect the data and return it as a table. Don't run the "
-              "viewer.")))
+    :help "Just collect the data and return it as a table. Don't run the viewer.")
+   (system quicklisp-system-designator :short-arg #\s :repeating t
+    :help "System to report on."))
   "Show Quicklisp download statistics."
   (let ((table
 	  (cond
@@ -187,5 +189,45 @@ current month."
     (when (not collect)
       (view-it table))
     (setf lish:*output* table)))
+
+(defun chart-it (&key (dir :horizontal) (type :total) system)
+  "Show a chart of counts of Quicklisp downloads."
+  (flet ((month-total (month year)
+	   (reduce '+ (omap-as 'list (_ (oitem 1 _))
+			       (ql-stats:!ql-stats :collect t
+						   :month month
+						   :year year))))
+	 (top (month year)
+	   (oitem 1 (oitem 0 (ql-stats:!ql-stats :collect t
+						 :month month :year year))))
+	 (one (month year)
+	   (let ((s (ofind system
+			   (ql-stats:!ql-stats :collect t
+					       :month month :year year)
+			   :test #'equal :key (_ (oitem 2 _)))))
+	     ;; If we can't find the system, pretend it's zero.
+	     (if s
+		 (oitem 1 s)
+		 0))))
+    (let* ((func (cond
+		   (system #'one)
+		   ((eq type :total) #'month-total)
+		   ((eq type :top) #'top)
+		   (t (error "Unknown chart type ~s" type))))
+	   (chart
+	     (loop :for year :from 2020 :to (calendar:current-year) :append
+	       (loop :for month :from 1 :below
+	         (if (= year (calendar:current-year))
+		     (oitem 'month (calendar:current-date))
+                     12)
+		 :collect (cons (s+ (calendar:month-name
+				     month year :format :abbreviated)
+				    " " year)
+				(funcall func month year))))))
+      (chart:view-chart (chart:make-chart-from
+			 (if (member dir '(:h :horizontal))
+			     'chart::horizontal-bar
+			     'chart::vertical-bar)
+			 chart)))))
 
 ;; End
