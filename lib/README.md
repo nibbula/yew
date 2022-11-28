@@ -1,1 +1,2 @@
-The `lib` directory is for widely useful packages mostly for use in other code.
+The `lib` directory is for things that are considered libraries. In other words,
+widely useful packages of general applicability for use in other programs.
