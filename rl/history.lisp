@@ -204,6 +204,14 @@ from oldest to most recent."
 from most recent to oldest."
   (dl-list-do (history-head (get-history context)) function))
 
+(defun map-history-backward-from (function element
+				  &optional (context *history-context*))
+  "Call FUNCTION with every history-entry in the history given by CONTEXT,
+from element to oldest, or if element is NIL, from the most recent."
+  (when (not element)
+    (setf element (history-head (get-history context))))
+  (dl-list-do-element element function))
+
 (defun history-line-list (&optional (context *history-context*))
   "Return a list of history lines."
   (let (result)
@@ -256,5 +264,31 @@ from most recent to oldest."
 			 (format nil "~v@a" width
 				 (and n (date-string :time n)))))
        (:name "Line")))))
+
+#| This hasn't been tested properly!
+
+(defun history-dedup (&optional (context *history-context*))
+  "Get rid of duplicate history lines."
+  (let ((hist (get-history context))
+	(new-list (make-dl-list))
+	(table (make-hash-table :test #'equal))
+	(tmp-list))
+    ;; Put every line in a hash table, which should dedup it.
+    (map-history (_ (setf (gethash
+			   (ostring-trim *whitespace* (history-entry-line _))
+			   table) _)) context)
+    ;; Pull the table out to a list.
+    (omap (_ (push _ tmp-list)) table)
+    ;; Sort the list oldest first.
+    (setf tmp-list (sort-muffled tmp-list #'> :key #'history-entry-time)
+	  new-list (make-dl-list tmp-list)
+	  (history-head hist) new-list
+	  (history-tail hist) (dl-last new-list)
+	  ;; Make the start be the whole new list, so the old history gets
+	  ;; overwritten when we save to the history-store.
+	  ;; @@@ Is this what we want?
+	  (history-start hist) (history-tail hist)
+	  (history-cur hist) new-list)))
+|#
 
 ;; EOF

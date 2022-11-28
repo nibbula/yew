@@ -66,6 +66,7 @@
    #:history-line-matches
    #:show-history
    #:history-table
+   ;; #:history-dedup
    #:history-save
    #:history-load
    #:history-store
