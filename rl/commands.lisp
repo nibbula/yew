@@ -354,14 +354,11 @@ the new point."
   ;; functions, so that what column we wanted set in column-spots would be
   ;; gotten from the index in spots, as soon at it was set. Unfortunately that
   ;; wouldn't work for previous lines, only next lines.
-  (dbugf :roo "FIPPPY~%")
   (let* ((coords (point-coords e point))
 	 (line (car coords))
 	 (col (cdr coords))
 	 to-index endings)
-    (dbugf :roo "FOOOOPY~%line = ~a col = ~a~%" line col)
     (setf (values to-index endings) (index-of-coords e (+ line n) col))
-    (dbugf :roo "to-index = ~a endings = ~a~%" to-index endings)
     (if to-index
 	(setf point to-index)
 	;; If we didn't find the same column on the previous line,
@@ -818,15 +815,18 @@ in order, \"{open}{close}...\".")
 just before the cursor."
   (with-slots (buf-str) e
     (with-context ()
-      (let* ((ppos (matching-paren-position buf-str :position point)))
-	(if ppos
-	    (let ((saved-point point))
-	      (setf point ppos)
-	      (update-display e)
-	      (tt-finish-output)
-	      (tt-listen-for .5)
-	      (setf point saved-point))
-	    (beep e "No match."))))))
+      (multiple-value-bind (ppos complain)
+	  (matching-paren-position buf-str :position point
+				   :char (last-event e))
+	(when ppos
+	  (let ((saved-point point))
+	    (setf point ppos)
+	    (update-display e)
+	    (tt-finish-output)
+	    (tt-listen-for .5)
+	    (setf point saved-point)))
+	(when complain
+	  (beep e "No match."))))))
 
 (defun highlight-matching-parentheses (e)
   "Hightlight the match of the current character if it's an opening character,
