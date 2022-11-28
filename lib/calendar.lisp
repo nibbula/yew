@@ -26,6 +26,7 @@
    #:weekday-name
    #:months
    #:month-name #:date-month-name
+   #:month-names
    #:current-year
    #:current-date
    ))
@@ -45,14 +46,21 @@
 ;; calendars, but some time in the future we should probably support arbitrary
 ;; named divisions. But that would add quite a bit of complexity.
 
+(define-constant +month-f&c-help+
+"Formats and contexts can be defined by the locale, but typically can be:
+  ‘format’   = { :abbreviated :narrow nil }
+  ‘context’  = { :format :standalone nil }
+If ‘format’ or ‘context’ is NIL, it means whatever the default is.")
+
 (defgeneric calendar-months (calendar year)
   (:documentation "Number of months for a year."))
 
 (defgeneric calendar-month-names (calendar year context format)
-  (:documentation "Return a vector of month names."))
+  (:documentation #.(s+ "Return a vector of month names. " +month-f&c-help+)))
 
 (defgeneric calendar-month-name (calendar month year context format)
-  (:documentation "Return the name of the numbered MONTH."))
+  (:documentation #.(s+ "Return the name of the numbered ‘month’. "
+			+month-f&c-help+)))
 
 (defgeneric calendar-days-per-month (calendar month year)
   (:documentation "Number of days in a specific month."))
@@ -61,10 +69,18 @@
   (:documentation "Return the number of days in a week."))
 
 (defgeneric calendar-weekday-names (calendar context format)
-  (:documentation "Return a vector of weekday names."))
+  (:documentation "Return a vector of weekday names.
+"))
+
+(define-constant +weekday-f&c-help+
+"Formats and contexts can be defined by the locale, but typically can be:
+  ‘format’  = { :abbreviated :short nil }
+  ‘context’ = { :standalone nil }
+If ‘format’ or ‘context’ is NIL, it means whatever the default is.")
 
 (defgeneric calendar-weekday-name (calendar weekday context format)
-  (:documentation "Return the name of weekday numbered WEEKDAY."))
+  (:documentation #.(s+ "Return the name of weekday numbered ‘weekday’. "
+			+weekday-f&c-help+)))
 
 (defgeneric calendar-day-of-week (calendar year month day)
   (:documentation "Return the day of the week of the given date."))
@@ -269,6 +285,7 @@ current locale."
 			   (date-day   date)))
 
 (defun months (year)
+  "Return how many months are in ‘year’."
   (calendar-months (locale-calendar (ensure-locale)) year))
 
 (defun days-per-month (month year)
@@ -283,25 +300,31 @@ current locale."
 			   (date-year date)))
 
 (defun weekday-name (weekday &key (context :format) format)
+  #.(s+ "Return the weekday name for ‘weekday’. " +weekday-f&c-help+)
   (calendar-weekday-name (locale-calendar (ensure-locale))
 			 weekday context format))
 
 (defun month-name (month year &key (context :format) format)
+  #.(s+ "Return the month name for ‘month’ and ‘year’. " +month-f&c-help+)
   (calendar-month-name (locale-calendar (ensure-locale)) month year
 		       context format))
 
 (defun date-month-name (date &key (context :format) format)
+  #.(s+ "Return the month name for ‘date’. " +month-f&c-help+)
   (calendar-month-name (locale-calendar (ensure-locale))
 		       (date-month date) (date-year date)
 		       context format))
 
 (defun month-names (year &key (context :format) format)
+  #.(s+ "Return a list of the month names for ‘year’. " +month-f&c-help+)
   (calendar-month-names (locale-calendar (ensure-locale)) year context format))
 
 (defun current-year ()
+  "Return the current year."
   (calendar-current-year (locale-calendar (ensure-locale))))
 
 (defun current-date ()
+  "Return the current date."
   (calendar-current-date (locale-calendar (ensure-locale))))
 
 ;; End
