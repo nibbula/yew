@@ -580,7 +580,8 @@ done already."
 	*file-suffix-table*)))
 
 (defparameter *file-type-patterns*
-  `((:ignorable . ("~$" "^#.*#$" "\\.[Bb][Aa][Kk]$" "\\.[Tt][Mm][Pp]$"))))
+  `((:ignorable . ("~$" "^#.*#$" "\\.[Bb][Aa][Kk]$" "\\.[Tt][Mm][Pp]$"))
+    (:notable . ("^(?i)README"))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun patternize (pattern-list)

@@ -48,6 +48,7 @@ Something like the default setting of typical GNU tools."))))
        (:file :suffix :video               :style) (:bold :fg-magenta)
        (:file :suffix :audio               :style) (:fg-cyan)
        (:file :suffix :ignorable           :style) (:fg :color #(:rgb .5 .5 .5))
+       (:file :suffix :notable             :style) (:underline :fg-yellow)
        ;; Syntax
        (:syntax :comment :line :semicolon  :style) (:fg-cyan)
        (:syntax :comment :block            :style) (:fg-cyan)
