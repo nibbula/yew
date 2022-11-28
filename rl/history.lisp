@@ -265,10 +265,10 @@ from element to oldest, or if element is NIL, from the most recent."
 				 (and n (date-string :time n)))))
        (:name "Line")))))
 
-#| This hasn't been tested properly!
 
 (defun history-dedup (&optional (context *history-context*))
   "Get rid of duplicate history lines."
+#| This hasn't been tested properly!
   (let ((hist (get-history context))
 	(new-list (make-dl-list))
 	(table (make-hash-table :test #'equal))
@@ -288,7 +288,10 @@ from element to oldest, or if element is NIL, from the most recent."
 	  ;; overwritten when we save to the history-store.
 	  ;; @@@ Is this what we want?
 	  (history-start hist) (history-tail hist)
-	  (history-cur hist) new-list)))
-|#
+	  (history-cur hist) new-list))
+  |#
+  (declare (ignore context))
+  (warn "Sorry, it's not working yet.")
+  )
 
 ;; EOF
