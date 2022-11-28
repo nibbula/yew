@@ -191,6 +191,15 @@ be of even length and matched in order."
 		 :do (princ (char pairs i) str)))
 	    out))))
 
+(defun matching-brace-char (char opens closes)
+  "Return the match for ‘char’ given the aligned sequences of ‘opens’
+and ‘closes’, or NIL if there isn't one."
+  (let ((open  (oposition char opens))
+	(close (oposition char closes)))
+    (cond
+      (open  (oelt closes open))
+      (close (oelt opens close)))))
+
 ;; This done in a temporary hackish way, until we make the whole reader.
 ;; I'm curious to compare the performance of this vs a rule 184 based
 ;; implementation.
@@ -205,18 +214,17 @@ not provided, it defaults to the end or beginning of the string, depending if
 ‘char’ is an open or a close. ‘pairs’ is an even length string of paired
 characters in order, \"{open}{close}...\". ‘pairs’ defaults to something
 reasonable."
-  ;; (declare (type string string))
-  (let* ((starts nil) (c nil)
+  (let* ((starts nil) (c nil) (in-a-thing nil)
 	 (oc (when pairs-p (opens-and-closes pairs)))
 	 (opens (if pairs-p (first oc) "([{"))
 	 (closes (if pairs-p (second oc) ")]}"))
-	 (forward (and (position char opens) t))
+	 (forward (and (oposition char opens) t))
 	 (pos (or position (if forward 0 (olength string))))
 	 (end (if forward (olength string) pos))
 	 (start (if forward pos 0))
 	 (i start))
-    ;; (format t "opens = ~s closes = ~s~%" opens closes)
-    ;; (format t "forward = ~s end = ~s start = ~s~%" forward end start)
+    ;; (dbugf :mpp "opens = ~s closes = ~s~%" opens closes)
+    ;; (dbugf :mpp "forward = ~s end = ~s start = ~s~%" forward end start)
     (flet ((eat-string ()
 	     "Scan past the string."
 	     (incf i)
@@ -242,10 +250,13 @@ reasonable."
 		     (incf level)))
 		(incf i)))
 	   (eat-line-comment ()
+	     (setf in-a-thing t)
 	     (loop :while (and (< i end)
 			       (not (ochar= #\newline
 					    (setf c (ochar string i)))))
-		:do (incf i))))
+		   :do (incf i))
+	     (when (ochar= c #\newline)
+	       (setf in-a-thing nil))))
       (cond
 	(forward
 	 (loop
@@ -259,31 +270,46 @@ reasonable."
 	      ((ochar= c #\") (eat-string))
 	      ((and (ochar= c #\#) (< i (- pos 2))) ; # reader macro char
 	       (incf i)
-	       (case (setf c (ochar string i))
-		 (#\\ (incf i))		; ignore the quoted char
-		 (#\| (eat-comment))	; scan past matched #| comments |#
+	       (case (setf c (osimplify (ochar string i)))
+		 (#\\ (incf i) (setf in-a-thing t)) ; ignore the quoted char
+		 (#\| (eat-comment))	 ; scan past matched #| comments |#
 		 (#\( (push i starts)))) ; vectors, treated just like a list
 	      ;; single line comment
 	      ((eql c #\;) (eat-line-comment)))
 	    (incf i)))
 	(t ;; backward
 	 (loop
-	    :while (< i end)
-	    :do (setf c (ochar string i))
-	    (cond
-	      ((oposition c opens) (push i starts))
-	      ((oposition c closes) (pop starts))
-	      ((ochar= c #\") (eat-string))
-	      ((and (ochar= c #\#) (< i (- end 2))) ; # reader macro char
-	       (incf i)
-	       (case (setf c (ochar string i))
-		 (#\\ (incf i))		; ignore the quoted char
-		 (#\| (eat-comment))	; scan past matched #| comments |#
-		 (#\( (push i starts)))) ; vectors, treated just like a list
-	      ;; single line comment
-	      ((ochar= c #\;) (eat-line-comment)))
-	    (incf i))
-	 (first starts))))))
+	   :while (< i end)
+	   :do
+	   (setf c (ochar string i))
+	   (dbugf :mpp "~s ~s ~s~%" i in-a-thing c)
+	   (setf in-a-thing nil)
+	   (cond
+	     ((oposition c opens) (push i starts))
+	     ((oposition c closes) (pop starts))
+	     ((ochar= c #\") (eat-string))
+	     ((and (ochar= c #\#) (<= i (- end 2))) ; # reader macro char
+	      (incf i)
+	      (setf c (osimplify (ochar string i)))
+	      (dbugf :mpp "--> ~s ~s ~s~%" i in-a-thing c)
+	      (case c
+		(#\\ (incf i)		 ; Ignore the quoted char
+		 (when (= i end)	 ; If we're at the end, we're still in
+		   (setf in-a-thing t))) ; the backslash.
+		(#\| (eat-comment))	 ; Scan past matched #| comments |#
+		(#\( (push i starts))))	 ; Vectors, treated just like a list.
+	     ;; single line comment
+	     ((ochar= c #\;) (eat-line-comment)))
+	   (incf i))))
+      ;; (dbugf :mpp "end ~s ~s ~s~%" i in-a-thing c)
+      (let* ((result (first starts))
+	     (found (and result (ochar= (matching-brace-char char opens closes)
+					(ochar string result))))
+	     (complain (and (not found) (not in-a-thing))))
+	;; (dbugf :mpp "result ~s ~s ~s~%" result char found)
+	(values
+	 (when (and found (not in-a-thing)) result)
+	 complain)))))
 	
 (defun eat-whitespace (stream)
   (let (c)
