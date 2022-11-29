@@ -408,18 +408,6 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Viewer
 
-(defmethod next-file (o)
-  "Go to the next file."
-  (declare (ignore o))
-  (when (find-restart 'next-file)
-    (invoke-restart 'next-file)))
-
-(defmethod previous-file (o)
-  "Go to the previous file."
-  (declare (ignore o))
-  (when (find-restart 'previous-file)
-    (invoke-restart 'previous-file)))
-
 (defkeymap *tree-keymap* ()
   `((#\q		. quit)
     (#\Q		. quit)
@@ -468,8 +456,6 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
     (#\v		. view-node)
     (#\V		. view-node-raw)
     (#\?		. help)
-    (,(meta-char #\n)	. next-file)
-    (,(meta-char #\p)	. previous-file)
     (,(meta-char #\=)	. describe-key-briefly)
     (#\escape		. *tree-escape-keymap*)))
 

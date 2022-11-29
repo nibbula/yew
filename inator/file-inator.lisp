@@ -34,9 +34,17 @@
 ;; File operations
 
 (defgeneric next-file (file-inator)
-  (:documentation "Go to the next file."))
+  (:documentation "Go to the next file.")
+  (:method ((inator file-inator))
+    (when (find-restart 'next-file)
+      (invoke-restart 'next-file))))
+
 (defgeneric previous-file (file-inator)
-  (:documentation "Go to the previous file."))
+  (:documentation "Go to the previous file.")
+  (:method ((inator file-inator))
+    (when (find-restart 'previous-file)
+      (invoke-restart 'previous-file))))
+
 (defgeneric save-file (file-inator)
   (:documentation "Save the current file."))
 (defgeneric save-as-file (file-inator)
