@@ -28,10 +28,13 @@
   (:documentation
    "Org mdoe node."))
 
-(defparameter *org-colors*
-  ;; `(,+color-white+ ,+color-red+ ,+color-green+ ,+color-yellow+ ,+color-blue+
-  ;;   ,+color-magenta+ ,+color-cyan+))
+(defparameter *default-colors*
   '(:white :red :green :yellow :blue :magenta :cyan))
+
+(defun colors ()
+  "Return a collection of colors used for level lines."
+  (or (theme:value '(:program :org-mode :colors))
+      *default-colors*))
 
 (defmethod node-object ((node org-node))
   (org-node-heading node))
@@ -85,7 +88,7 @@
   "Display an org-node."
   (with-accessors ((indent tb::indent)) *viewer*
     (let ((fake-level (max 0 (1- level))))
-      (tt-color (elt *org-colors* (mod level (length *org-colors*))) :black)
+      (tt-color (elt (colors) (mod level (length (colors)))) :black)
       (display-node-line node (s+ (format nil "~v,,,va "
 					  (* fake-level indent)
 					  #\space "")
@@ -165,7 +168,7 @@ dashes (a.k.a. #\\hyphen-minus), convert it to the symbol |-|."
        cols))))
 
 (defun read-org-mode-file (file)
-  "Read FILE and return the contents as a tree of ORG-NODES."
+  "Read ‘file’ and return the contents as a tree of ‘org-nodes’."
   (let* ((root (make-instance 'org-node :heading file))
 	 (cur root)
 	 (parent (list root))
@@ -254,7 +257,7 @@ dashes (a.k.a. #\\hyphen-minus), convert it to the symbol |-|."
     root))
 
 (defun view-org (file)
-  "View an org-mode FILE with the tree viewer."
+  "View an org-mode ‘file’ with the tree viewer."
   (with-terminal ()
     (let ((tree (read-org-mode-file file)))
       (setf (node-open tree) t)
@@ -303,6 +306,7 @@ dashes (a.k.a. #\\hyphen-minus), convert it to the symbol |-|."
     (with-file-list (file org-files)
       (with-terminal ()
 	(let ((tree (read-org-mode-file file)))
+	  (setf (node-open tree) t)
 	  (when (= 1 (length (multiple-value-list
 			      (view-tree tree
 					 :viewer (make-instance

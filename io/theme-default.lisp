@@ -98,6 +98,8 @@ Something like the default setting of typical GNU tools."))))
        (:program :tree :open-indicator)            ,(ß '(:magenta "▾"))
        (:program :tree :closed-indicator)          ,(ß '(:cyan "▸"))
        (:program :editor :paren-highlight :style)  (:standout)
+       (:program :org-mode :colors)
+         (:white :red :green :yellow :blue :magenta :cyan)
        ))
     tt))
 
@@ -185,6 +187,7 @@ Something like the default setting of typical GNU tools."))))
       (:program :table :current-cell      :style)     (:inverse)
       (:program :tree :open-indicator)    "-"
       (:program :tree :closed-indicator)  "+"
+      (:program :org-mode :colors)        (:default)
       ;; (:program :return-value-indicator   :string)    "⇒"
       ;; (:program :return-value-indicator   :style)     (:cyan)
       ;; (:program :multiple-value-indicator :string)    ";"
