@@ -129,7 +129,8 @@ attributes."))
   "Shorthand for adding a column to a table. Name can be just the name or a
 column structure. Note that this just adds to the metadata in table-columns.
 To add data, use insert-column or collection functions."
-  (let ((col (or (and (column-p name) name) (make-column :name name))))
+  (let ((col (or (and (column-p name) name)
+		 (make-column :name (princ-to-string name)))))
     (when type   (setf (column-type   col) type))
     (when width  (setf (column-width  col) width))
     (when format (setf (column-format col) format))
