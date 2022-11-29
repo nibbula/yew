@@ -11,6 +11,7 @@
    #:viewer-for
    #:set-viewers
    #:view-things
+   #:view-raw-things
    #:view
    #:view-raw
    #:!view
@@ -224,6 +225,11 @@ or a system command, designated by either a string, or a list of
 
 (defmethod view-raw ((thing stream))
   (view-raw-file thing))
+
+(defun view-raw-things (things)
+  (loop :for thing :in things :do
+     (with-simple-restart (continue "View the next thing.")
+       (view-raw thing))))
 
 ;; This is really stubby yet.
 #+lish
