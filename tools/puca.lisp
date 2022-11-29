@@ -1095,8 +1095,12 @@ for the command-function).")
 (defun view-file (p)
   "View file"
   (declare (ignore p))
-  (do-literal-command "view ~{\"~a\" ~}" (list (selected-files))
-		      :do-pause nil))
+  (view:view-things (selected-files)))
+
+(defun view-raw-file (p)
+  "View the file's raw data."
+  (declare (ignore p))
+  (view:view-raw-things (selected-files)))
 
 (defmethod previous ((p puca-app))
   "Previous line"
@@ -1723,6 +1727,7 @@ point in time (a.k.a. revision hash).")
     (#\u        		. update-command)
     (#\U        		. update-all-command)
     (#\v        		. view-file)
+    (#\V        		. view-raw-file)
     (#\w                	. what-command)
     (#\X			. toggle-region)
     (#\x			. toggle-line)
