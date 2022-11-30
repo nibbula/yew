@@ -12,6 +12,6 @@
     :long-description
     "A simple appliction of the tree viewer to view Org Mode files."
     :depends-on (:dlib :collections :tree-viewer :terminal :inator :file-inator
-		 :table :table-print :terminal-table :ostring :cl-ppcre)
+		 :table :table-print :terminal-table :ostring :cl-ppcre :style)
     :components
     ((:file "view-org")))
