@@ -31,7 +31,7 @@ the branches and subsequently behave like a static OBJECT-NODE.
 
 There are methods which one can specialize to change the behavior of nodes:
 
-   node-branches ndoe => list of branches
+   node-branches node => list of branches
      Specializing this, you can make a tree out of anything. This is how the
      dynamic and cached-dynamic trees work, so for those you would have to
      preserve their semantics, if you want them to live up to their name.
