@@ -42,7 +42,7 @@
     :documentation "Text of node."))
   (:documentation "Generic node with text lines."))
 
-(defmethod node-object ((node text-node))
+(defmethod node-object ((node text-like-node))
   (text node))
 
 (defclass text-node (text-like-node)
