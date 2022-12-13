@@ -100,6 +100,7 @@ Something like the default setting of typical GNU tools."))))
        (:program :editor :paren-highlight :style)  (:standout)
        (:program :org-mode :colors)
          (:white :red :green :yellow :blue :magenta :cyan)
+       (:program :org-mode :default :style)        ()
        ))
     tt))
 
