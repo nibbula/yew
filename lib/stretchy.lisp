@@ -1,17 +1,17 @@
 ;;;
-;;; stretchy.lisp - Adjustable arrays and strings
+;;; stretchy.lisp - Adjustable vectors and strings
 ;;;
 
 (defpackage :stretchy
   (:documentation
-   "Functions for manipulating adjustable arrays and strings.
+   "Functions for manipulating adjustable vectors and strings.
 
 Common Lisp provides adjustable arrays, and therefore also adjustable strings,
 but the programming interface is somewhat clumsy. This is an attempt to make
 it better.
 
-Perhaps this is misguided and we should just use WITH-OUTPUT-TO-STRING since
-it seems much faster on most implementations.
+If you can use ‘with-output-to-string’ instead of this, it will probably be
+faster.
 ")
   (:use :cl)
   (:export
@@ -152,24 +152,6 @@ to expand by when expansion is needed."
 
 #|
 
-;;; %%% Common Lisp fail?
-;;; I'd like to make methods on a deftype but classes and types are dismorphic.
-;;; Is there some way to unify them while retaining the powers, and even most of
-;;; the efficiency, of both types and classes?
-;;;
-;;; In this case there are system classes, and a string *is* a vector, but
-;;; maybe I'd like to be able to define a non-string-vector. I suppose in
-;;; Dylan this could be a limited type? But I think in Dylan, limited types
-;;; are not necessarily extensible? You can define a vector of a limited type,
-;;; but perhaps not of "not some type". Also, how do limited types work with
-;;; unboxing?
-;;;
-;;; One can make something with macros
-;;; template-function https://github.com/markcox80/template-function
-;;; specialization-store https://github.com/markcox80/specialization-store
-;;; inlined-generic-function https://github.com/guicho271828/inlined-generic-function
-;;; cl-parametric-types https://github.com/cosmos72/cl-parametric-types
-
 (defgeneric stretchy-append (to from &key factor)
   (:documentation "Append FROM to TO. Expand by FACTOR if necessary."))
 
@@ -235,11 +217,9 @@ amount of the total size to expand by when expansion is needed."
   "Truncate a stretchy to length LEN."
   (setf (fill-pointer s) len))
 
-;;;; TESTS!!
-
+#|
 ;; Compare performance vs. with-output-to-string
 
-#|
 (defun dork1 (n)
   (let ((ss (make-stretchy-string 100)))
     (loop :for i fixnum :from 1 :to n :do
