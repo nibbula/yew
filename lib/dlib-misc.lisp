@@ -1067,8 +1067,9 @@ SUFFIX is a string to append to each row."
 	 (terpri stream)))
     rows))
 
-(defconstant +size-names+ 11
-  "Number of sizes in the size name arrays.")
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defconstant +size-names+ 11
+    "Number of sizes in the size name arrays."))
 
 (define-constant +binary-size-prefixes+
   #(nil "kibi" "mebi" "gibi" "tebi" "pebi" "exbi" "zebi" "yobi" "ronni"
