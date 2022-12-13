@@ -6,11 +6,11 @@
   (:documentation
    "Associate functions with keys.
 
-This defines a KEYMAP class which contains mappings of keys to actions.
+This defines a ‘keymap’ class which contains mappings of keys to actions.
 The KEYMAP class has slots:
-  MAP             - The the actual table of bindings, accessed by KEYMAP-MAP.
-  DEFAULT-BINDING - The binding that is invoked if the key doesn't match,
-                    accessed by KEYMAP-DEFAULT-BINDING.
+  map             - The the actual table of bindings, accessed by KEYMAP-MAP.
+  default-binding - The binding that is invoked if the key doesn't match,
+                    accessed by ‘keymap-default-binding’.
 
 Keys are customarily a character or a keyword. Keywords are used to indicate
 keys or events that aren't characters, like :F1 or :RESIZE.
@@ -81,7 +81,7 @@ Keymap stacks:
    ))
 (in-package :keymap)
 
-(declaim (optimize (debug 3)))
+;; (declaim (optimize (debug 3)))
 
 (defclass keymap ()
   ((map
