@@ -46,11 +46,12 @@
 ;; calendars, but some time in the future we should probably support arbitrary
 ;; named divisions. But that would add quite a bit of complexity.
 
-(define-constant +month-f&c-help+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (define-constant +month-f&c-help+
 "Formats and contexts can be defined by the locale, but typically can be:
   ‘format’   = { :abbreviated :narrow nil }
   ‘context’  = { :format :standalone nil }
-If ‘format’ or ‘context’ is NIL, it means whatever the default is.")
+If ‘format’ or ‘context’ is NIL, it means whatever the default is."))
 
 (defgeneric calendar-months (calendar year)
   (:documentation "Number of months for a year."))
@@ -72,11 +73,12 @@ If ‘format’ or ‘context’ is NIL, it means whatever the default is.")
   (:documentation "Return a vector of weekday names.
 "))
 
-(define-constant +weekday-f&c-help+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (define-constant +weekday-f&c-help+
 "Formats and contexts can be defined by the locale, but typically can be:
   ‘format’  = { :abbreviated :short nil }
   ‘context’ = { :standalone nil }
-If ‘format’ or ‘context’ is NIL, it means whatever the default is.")
+If ‘format’ or ‘context’ is NIL, it means whatever the default is."))
 
 (defgeneric calendar-weekday-name (calendar weekday context format)
   (:documentation #.(s+ "Return the name of weekday numbered ‘weekday’. "
