@@ -59,18 +59,17 @@
     (fatchar-string (display-length (fatchar-string-to-string str)))))
 
 (defmacro without-messing-up-cursor ((e) &body body)
-  (let ((old-row (gensym "OLD-ROW"))
-	(old-col (gensym "OLD-COL")))
-  `(let ((,old-row (screen-relative-row ,e))
-	 (,old-col (screen-col ,e)))
-     (prog1 ,@body
-       (if (< ,old-row (screen-relative-row ,e))
-	   (tt-up (- (screen-relative-row ,e) ,old-row))
-	   (tt-down (- ,old-row (screen-relative-row ,e))))
-       (tt-beginning-of-line)
-       (tt-forward ,old-col)
-       (setf (screen-relative-row ,e) ,old-row
-	     (screen-col ,e) ,old-col)))))
+  (with-names (old-row old-col)
+    `(let ((,old-row (screen-relative-row ,e))
+	   (,old-col (screen-col ,e)))
+       (prog1 ,@body
+	 (if (< ,old-row (screen-relative-row ,e))
+	     (tt-up (- (screen-relative-row ,e) ,old-row))
+	     (tt-down (- ,old-row (screen-relative-row ,e))))
+	 (tt-beginning-of-line)
+	 (tt-forward ,old-col)
+	 (setf (screen-relative-row ,e) ,old-row
+	       (screen-col ,e) ,old-col)))))a
 
 (defgeneric draw-mode-line (editor)
   (:documentation "Draw the mode line."))
