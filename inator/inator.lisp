@@ -9,10 +9,10 @@ that's encouraged is what one might call ‘emacs-like’. I consider this as a
 ‘lesser’ Frobulator, in other words a style of interaction and editing that
 can be applied to many types of data.
 
-To make an app, you subclass INATOR and provide editing, input and display
+To make an app, you subclass ‘inator’ and provide editing, input and display
 methods. You can also provide a custom keymap. You can probably get by with
-just providing methods for UPDATE-DISPLAY and AWAIT-EVENT, and then calling
-EVENT-LOOP with an INATOR sub-class instance.")
+just providing methods for ‘update-display’ and ‘await-event’, and then calling
+‘event-loop’ with an ‘inator’ sub-class instance.")
   (:use :cl :dlib :keymap :char-util)
   (:export
    ;; Inator classes
@@ -197,7 +197,6 @@ EVENT-LOOP with an INATOR sub-class instance.")
   (:documentation
    "An editor with a single editing context."))
 
-;; @@@ I think this is temporary until we implement views?
 (defclass multi-inator-mixin ()
   ((contexts
     :initarg :contexts :accessor inator-contexts
@@ -263,16 +262,33 @@ EVENT-LOOP with an INATOR sub-class instance.")
   (:documentation "Start the inator, then continue updating the display,
 waiting for events, and processing events, util the quit-flag is set.
 Finish the inator when done."))
-(defgeneric update-display (inator))
+
+(defgeneric update-display (inator)
+  (:documentation "Make changes to the inator state observable."))
+
 (defgeneric await-event (inator)
   (:documentation "Wait for an event. Return NIL if there was no event, for
-example if reading it timed out, in which case the event-loop normally does
-not call process-event with it."))
-(defgeneric process-event (inator event &optional keymap-in))
-(defgeneric start-inator (inator))
-(defgeneric finish-inator (inator))
+example if reading timed out, in which case the event-loop normally does
+not call ‘process-event’ with it."))
+
+(defgeneric process-event (inator event &optional keymap-in)
+  (:documentation
+  "Call commands from the keyamps for event. Can call ‘await-event’ to get more
+events if needed. This is usually called with an event from ‘await-event’ inside
+the ‘event-loop’. This should set ‘last-command’ if applicable. If ‘keymap-in’
+is specified, use it instead of the inator's keymaps."))
+
+(defgeneric start-inator (inator)
+  (:documentation "Prepare the inator for entering the event-loop.
+Paired with ‘finiish-inator’"))
+
+(defgeneric finish-inator (inator)
+  (:documentation
+   "Called when the event-loop is exiting to deactivate the inator. Paired
+with ‘start-inator’."))
+
 (defgeneric resize (inator)
-  (:documentation "Called when we get a resize event."))
+  (:documentation "Called when the inator gets a resize event."))
 
 (defgeneric read-key-sequence (inator)
   (:documentation "Read a key sequence from the inator input."))
@@ -338,7 +354,7 @@ of the inator's keymap."
 		   (push ev event-list)
 		   ev)))
 	   (sub-process (ev map)
-	     "Look up the definition in keymap M and try to invoke it."
+	     "Look up the definition in keymap ‘map’ and try to invoke it."
 	     (dbugf :event "sub-process ~s ~s ~s~%" ev saved-list map)
 	     (when (setf command (key-definition ev map
 						 :use-default use-default))
