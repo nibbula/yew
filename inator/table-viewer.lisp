@@ -96,7 +96,10 @@ for a range of rows, or a table-point for a specific item,"
     :documentation "True to show long column titles.")
    (message
     :initarg :message :accessor table-viewer-message :initform nil
-    :documentation "Temporary message."))
+    :documentation "Temporary message.")
+   (search-string
+    :initarg :search-string :accessor table-viewer-search-string :initform nil
+    :documentation "Last search string or NIL."))
   (:default-initargs
    :point (make-table-point :row 0)
    :keymap `(,*table-viewer-keymap* ,*default-inator-keymap*))
@@ -788,20 +791,27 @@ at which it's found or NIL if it's not found."
 
 (defun search-table-command (o &optional (direction :forward))
   "Search for a string."
-  (with-slots ((point inator::point)) o
+  (with-slots ((point inator::point) search-string) o
     (tt-move-to (1- (tt-height)) 0) (tt-erase-to-eol)
     (tt-finish-output)
-    (let ((string (rl:rl :prompt "Search for: "))
-	  result)
+    (let* ((string (rl:rl :prompt
+			  (format nil " Search for~@[ [~a]~]: " search-string)
+			  :history-context :table-viewer-search))
+	   (search (if (and search-string
+			    (zerop (length string)))
+		       search-string
+		       string))
+	   result)
       (tt-finish-output)
-      (when (and string (not (zerop (length string))))
-	(if (setf result (search-table o string direction))
+      (setf search-string search)
+      (when search
+	(if (setf result (search-table o search direction))
 	    (progn
 	      (setf (table-point-row point) (table-point-row result)
 		    (table-point-col point) (table-point-col result))
 	      ;; (message o "found at ~s" point)
 	      )
-	    (message o "~s not found" string))
+	    (message o "~s not found" search))
 	result))))
 
 (defmethod search-command ((o table-viewer))
