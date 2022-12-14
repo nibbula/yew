@@ -536,10 +536,6 @@ been encountered."
   "Set the PARENT of the given NODE in the current tree-viewer."
   (setf (gethash node (parents *viewer*)) parent))
 
-;; (defun quit ()
-;;   "Quit the tree viewer."
-;;   (setf (inator-quit-flag *viewer*) t))
-
 (defun pick-object (o)
   "Pick the current object and return it."
   (with-slots (picked-object current) o
