@@ -841,7 +841,7 @@ and resets it to be so afterward."
 
 (defmethod message ((pager pager) format-string &rest args)
   "Display a message at next command loop, until next input."
-  (setf (pager-message *pager*) (apply #'format nil format-string args)))
+  (setf (pager-message pager) (apply #'format nil format-string args)))
 
 (defmethod prompt ((pager pager) format-string &rest args)
   "Display a short message, asking the user for input."
@@ -1419,6 +1419,7 @@ list containing strings and lists."
 		    (update-display *pager*)
 		    (message pager "~(~a~) is ~:[Off~;On~]" ',option ,option)
 		    (tt-finish-output))))
+      ;; Shouldn't this be in a keymap holmes?
       (let ((char (tt-get-char)))
 	(case char
 	  ((#\l #\L) (toggle-option show-line-numbers))
@@ -1429,7 +1430,7 @@ list containing strings and lists."
 	  (#\r (toggle-option raw-output))
 	  (#\p (toggle-option pass-special))
 	  (#\c (toggle-option color-bytes))
-	  (#\b
+	  ((#\b #\B)
 	   (let ((is-binary (getf options :binary)))
 	     (cond
 	       ((and (not is-binary)
@@ -1438,7 +1439,7 @@ list containing strings and lists."
 		 "Sorry, I can't switch to binary on an un-seekable stream."))
 	       (t
 		 (setf (getf options :binary) (not is-binary))
-		 (throw 'do-over 'do-over)))))
+		 (throw 'do-over `(do-over :options ,options))))))
 	  (otherwise
 	   (message pager "Unknown option '~a'" (nice-char char))))))))
 
@@ -2322,16 +2323,20 @@ q - Abort")
 	      (tt-finish-output)))))))
   suspended)
 
+;; This seems like a dumb way to toggle binary mode.
 (defun page (files &key pager close-me suspended options)
   "View a stream with the pager. Return whether we were suspended or not."
   (let (result)
-    (loop :while (eq 'do-over
-		     (setf result
-			   (catch 'do-over
-			     (%page files :pager pager
-					  :close-me close-me
-					  :suspended suspended
-					  :options options)))))
+    (loop
+      :do
+      (setf result (catch 'do-over
+		     (%page files :pager pager
+				  :close-me close-me
+				  :suspended suspended
+				  :options options)))
+      :while (and (listp result) (eq (car result) 'do-over))
+      :do
+      (setf options (getf (cdr result) :options)))
     result))
 
 (defun resume (suspended)
@@ -2446,6 +2451,7 @@ compatible with 'less', 'vi' and 'emacs'.
     l L				  Show line numbers.
     c C				  Color bytes in binary mode.
     m M				  Show the mode line.
+    b B                           Binary mode.
 
 Press 'q' to exit this help.
 " output)))
