@@ -29,6 +29,7 @@ EVENT-LOOP with an INATOR sub-class instance.")
    #:inator-quit-flag
    #:inator-command
    #:inator-last-command
+   #:inator-event-sequence
    #:inator-views
    #:multi-inator-mixin
    #:multi-inator
@@ -179,6 +180,10 @@ EVENT-LOOP with an INATOR sub-class instance.")
    (last-command
     :initarg :last-command :accessor inator-last-command :initform nil
     :documentation "The last command.")
+   (event-sequence
+    :initarg :event-sequence :accessor inator-event-sequence
+    :type list :initform nil
+    :documentation "The sequence of events that invoked the command.")
    (views
     :initarg :views :accessor inator-views
     :documentation "A set of views of the inator."))
@@ -311,8 +316,9 @@ list ‘args’ as the subsequent arguments."
 (defmethod process-event ((inator inator) event &optional keymap-in)
   "Default way to process an event. If KEYMAP-IN is specified, use it instead
 of the inator's keymap."
-  (with-slots (command last-command keymap) inator
-    (setf last-command command)
+  (with-slots (command last-command event-sequence keymap) inator
+    (setf last-command command
+	  event-sequence nil)
     (let ((outer-map (or keymap-in keymap))
 	  event-list result saved-list use-default)
       (labels
@@ -340,6 +346,7 @@ of the inator's keymap."
 	   (invoke ()
 	     "Try to invoke command."
 	     (dbugf :event "invoke ~s ~s~%" saved-list command)
+	     (setf event-sequence (append (list event) event-list))
 	     (cond
 	       ;; a list to apply
 	       ((consp command)
