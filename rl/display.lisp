@@ -737,17 +737,8 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
   (redraw-display e))
 
 (defun tmp-prompt (e fmt &rest args)
-  ;; (declare (ignore e))
-  ;; (tt-move-to-col 0)
-  ;; (tt-erase-to-eol)
-  ;; ;; (setf (screen-col e) 0)
-  ;; ;; (do-prefix e (apply #'format `(nil ,fmt ,@args)))
-  ;; (tt-write-string (apply #'format `(nil ,fmt ,@args)))
-  ;; (tt-finish-output)
   (apply #'tmp-message e fmt args)
-  ;; (setf (did-under-complete e) t)
-  ;; (setf (keep-message e) t)
-  )
+  (redraw-display e))
 
 #|
 (defun tmp-message (e fmt &rest args)
