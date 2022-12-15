@@ -69,7 +69,7 @@
 	 (tt-beginning-of-line)
 	 (tt-forward ,old-col)
 	 (setf (screen-relative-row ,e) ,old-row
-	       (screen-col ,e) ,old-col)))))a
+	       (screen-col ,e) ,old-col)))))
 
 (defgeneric draw-mode-line (editor)
   (:documentation "Draw the mode line."))
