@@ -78,7 +78,9 @@ than space, and delete."
 
 (defun meta-char-p (c)
   "Is the given number a meta character as a char code?"
-  (> (logand (ash 1 7) c) 0))
+  ;; (and (<= #xff c) (logbitp 7 c))
+  (logbitp 7 c)
+  )
 
 ;; perhaps: one for chars, one for numbers (as char codes)
 ; (defmethod meta-char-p ((c @@@))
