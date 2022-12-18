@@ -26,8 +26,8 @@ are in proper condition."
 
   (defmacro defmulti (name args &body body)
     "Define a command that should be called for each editing context.
-The slots of the editing context are bound in the body, as in with-context.
-A clause starting with :pre or :post at the beginning of the body are run
+The slots of the editing context are bound in the body, as in ‘with-context’.
+A clause starting with :pre or :post at the beginning of the ‘body’ are run
 before and after the body, respectively."
     (with-decls-and-body (body)
       (let (pre post)
