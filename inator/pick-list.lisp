@@ -25,6 +25,9 @@ menu without having to make closures, and the ‘do-menu*’ function which can'
   (:import-from :inator #:mark #:point #:quit-flag)
   (:export
    #:pick
+   #:full-pick
+   #:popup-pick
+   #:file-picker
    #:pick-list
    #:!pick-list
    #:pick-file
@@ -720,23 +723,25 @@ The function receives a 'pick' as an argument."))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-(defun pick-list (the-list &key message by-index sort-p default-value
-			     selected-item (typing-searches t) keymap multiple
-			     popup (x 0) (y 0) height before-hook)
-  "Have the user pick a value from THE-LIST and return it. Arguments:
+(defun pick-list (list &key message by-index sort-p default-value
+			 selected-item (typing-searches t) keymap multiple
+			 popup (x 0) (y 0) height before-hook type)
+  "Have the user pick a value from ‘list’ and return it. Arguments are:
 
- - MESSAGE         A string to be displayed before the list.
- - BY-INDEX        If true, return the index number of the item picked.
- - SORT-P          If true sort the list before displaying it.
- - DEFAULT-VALUE   Return if no item is selected.
- - SELECTED-ITEM   Item to have initially selected.
- - TYPING-SEARCHES True to have alphanumeric input search for the item.
- - KEYMAP          Add a custom keymap.
- - MULTIPLE        True to allow multiple items to be selected.
- - POPUP           True to use a pop-up window, in which case provide X and Y.
+ ‘message’         A string to be displayed before the list.
+ ‘by-index’        If true, return the index number of the item picked.
+ ‘sort-p’          If true sort the list before displaying it.
+ ‘default-value’   Return if no item is selected.
+ ‘selected-item’   Item to have initially selected.
+ ‘typing-searches’ True to have alphanumeric input search for the item.
+ ‘keymap’          Add a custom keymap.
+ ‘multiple’        True to allow multiple items to be selected.
+ ‘popup’           True to use a pop-up window, in which case provide X and Y.
+ ‘before-hook’     A function to call before entering the event loop.
+ ‘type’            Class of the list picker.
 "
   (let ((*pick* (make-instance
-		 (if popup 'popup-pick 'full-pick)
+		 (or type (if popup 'popup-pick 'full-pick))
 		 :message         message
 		 :by-index        by-index
 		 :sort-p          sort-p
@@ -753,7 +758,7 @@ The function receives a 'pick' as an argument."))
 		 :y               y
 		 :height          height
 		 :before-hook     before-hook)))
-    (run *pick* :list the-list)))
+    (run *pick* :list list)))
 
 #| Figure out where something like this should go in the event loop:
 (when (not (pick-typing-search))
@@ -965,33 +970,19 @@ The function receives a 'pick' as an argument."))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Menus
 
-;; Has problems because the eval'd code can't reference local variables.
-;; More evidence that use of eval is usually a problem.
-(defmacro old-do-menu (menu &key message selected-item)
-  "Perform an action from a menu. Menu is an alist of (item . action)."
-  (multiple-value-bind (items funcs)
-      (loop :for (i . f) :in menu
-	 :collect i :into items
-	 :collect f :into funcs
-	 :finally (return (values items funcs)))
-    `(block menu
-      (let* ((n (pick-list ',items :by-index t
-			   :message ,message
-			   :selected-item ,selected-item))
-	     (code (if n (elt ',funcs n))))
-	(if code
-	    (eval code)
-	    :quit)))))
-
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defparameter *menu-doc*
-"Perform an action from a menu.
- - MENU is an alist of (item . action) where ITEM is something to print,
-   as with princ, and ACTION is a function to call.
- - MESSAGE is some text to display before the menu.
- - SELECTED-ITEM is the item that is initially selected."))
+"Perform an action from a menu. Arguments are:
+ ‘menu’           An alist of (item . action) where ‘item’ is something to
+                  print, as with princ, and ‘action’ is a function to call.
+ ‘message’        Some text to display before the menu.
+ ‘selected-item’  The item that is initially selected.
+ ‘popup’          True to make it a pop-up menu, in which case X and Y can be
+                  provided.
+ ‘keyamp’         A custom keymap.
+ ‘type’           Class of the menu."))
 
-(defun do-menu* (menu &key message selected-item popup (x 0) (y 0) keymap)
+(defun do-menu* (menu &key message selected-item popup (x 0) (y 0) keymap type)
   #.*menu-doc*
   (multiple-value-bind (items funcs)
       (loop :for (i . f) :in menu
@@ -1003,7 +994,8 @@ The function receives a 'pick' as an argument."))
 			       :selected-item selected-item
 			       :popup popup
 			       :keymap keymap
-			       :x x :y y))
+			       :x x :y y
+			       :type type))
 	   (code (if n (elt funcs n))))
       (if code
 	  (eval code)
