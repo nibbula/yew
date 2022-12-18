@@ -122,31 +122,39 @@ limited only by availabile memory. It's probably a bad idea to set it to T.")
 					    :fill-pointer t
 					    :adjustable (eq size t)))))
 
-(defmethod oelt ((o scrollback) n)
-  (with-slots (lines bottom) o
+(defun scrollback-index (scrollback n)
+  "Return the real index into scrollback for ‘n’."
+  (with-slots (lines bottom) scrollback
     (if (minusp bottom)
 	;; We're not full yet. Just index backward.
-	(aref (scrollback-lines o) n)
+	n
 	;; We're full, so we have to offset from the bottom.
-	(aref (scrollback-lines o)
-	      (if (< (+ bottom n) (length (scrollback-lines o)))
-		  (+ bottom n)
-		  (- n (- (length (scrollback-lines o)) bottom)))))))
+	(if (< (+ bottom n) (length lines))
+	    (+ bottom n)
+	    (- n (- (length lines) bottom))))))
+
+(defmethod oelt ((o scrollback) n)
+  (aref (scrollback-lines o) (scrollback-index o n)))
+
+(defmethod (setf oelt) (value (o scrollback) n)
+  (setf (aref o (scrollback-index o n)) value))
 
 (defmethod olength ((o scrollback))
   (length (scrollback-lines o)))
 
 (defun add-line (o item)
-  "Add the line ITEM to the scrollback."
+  "Add the line ‘item’ to the scrollback."
   (with-slots (lines bottom) o
     (cond
       ((minusp bottom)
        (when (not (vector-push item lines))
 	 (setf bottom 1
-	       (aref lines 0) item)))
+	       (oelt lines 0) item)))
       (t
-       (setf (aref lines bottom) item)
-       (incf bottom)))))
+       (setf (oelt lines bottom) item)
+       (incf bottom)
+       (when (>= bottom (length lines))
+	 (setf bottom 0))))))
 
 ;; (defvar *empty-fs* (make-fat-string :length 0))
 ;;
@@ -2307,7 +2315,7 @@ handler cases."
 	(:exposure
 	 (event-slots (slots x y width height xlib:window #|count|#)
 	   (when (eq xlib:window our-window)
-	     (format *trace-output* "exposure ~s ~s ~s ~s~%" x y width height)
+	     (dbugf :tx11 "exposure ~s ~s ~s ~s~%" x y width height)
 	     (force-output *trace-output*)
 	     (redraw-area tty x y width height)
 	     (display-finish-output display)
