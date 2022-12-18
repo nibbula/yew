@@ -83,6 +83,8 @@
     (,(ctrl #\R)		. isearch-backward)
     (,(ctrl #\Q)		. quoted-insert)
     (,(meta-char #\q)		. park-it)
+    (,(meta-char #\escape)	. eval-expression)
+    (,(meta-char #\])		. insert-expression)
 
     ;; key binding
     (,(meta-char #\=)		. describe-key-briefly)

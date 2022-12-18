@@ -998,13 +998,18 @@ just before the cursor."
 ;;  Return a key or sequence of keys."
 ;;   (get-key-sequence (λ () (get-a-char e)) (or keymap (inator-keymap e))))
 
-(defun ask-function-name (&optional (prompt "Function: "))
-  "Prompt for a function name and return symbol of a function."
+(defun ask-expr (&optional (prompt "Expression: "))
+  "Prompt for an thing and return it."
   (let* ((str (rl :prompt prompt :history-context :ask-function-name
 		  :recursive-p t :accept-does-newline nil))
-	 (cmd (and str (stringp str)
-		   (ignore-errors (safe-read-from-string str)))))
-    (and (symbolp cmd) (fboundp cmd) cmd)))
+	 (expr (and str (stringp str)
+		    (ignore-errors (safe-read-from-string str)))))
+    expr))
+
+(defun ask-function-name (&optional (prompt "Function: "))
+  "Prompt for a function name and return symbol of a function."
+  (let ((function (ask-expr prompt)))
+    (and (symbolp function) (fboundp function) function)))
 
 (defsingle set-key-command (e)
   "Bind a key interactively."
@@ -1378,5 +1383,14 @@ invoked."
     (freshen e)
     (setf (screen-relative-row e) saved-relative-row)))
 
+(defsingle eval-expression (e)
+  "Evaluate an expression in the editor."
+  (let* ((expr (ask-expr)))
+    (tmp-message e "⇒ ~s" (eval expr))))
+
+(defmulti insert-expression (e)
+  "Read and evaluate an expression in the editor and insert it in the buffer."
+  (let* ((expr (ask-expr)))
+    (insert e (prin1-to-string (eval expr)))))
 
 ;; EOF
