@@ -21,6 +21,8 @@ directory or a list of directories.")
    (as-list boolean :short-arg #\l
     :help "Show as a flat list, instead of a tree.")
    (non-human-size boolean :short-arg #\h :help "Show sizes in bytes.")
+   (apparent-size boolean :short-arg #\A
+    :help "Show the apparent size, instead of the more accurate size.")
    (directories directory :repeating t
     :help "Directory to show usage for."))
   :keys-as keys

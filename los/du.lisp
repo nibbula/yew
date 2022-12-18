@@ -98,13 +98,18 @@ the starting one.")
     :initarg :track-hard-links :accessor track-hard-links
     :initform t :type boolean
     :documentation "True to track hard links.")
-   (inodes
-    :initarg :inodes :accessor inodes
-    :documentation "File system identity table.")
+   (devices
+    :initarg :devices :accessor devices
+    :initform (make-hash-table) :type hash-table
+    :documentation "File system device table.")
    (size-format
     :initarg :size-format :accessor du-app-size-format :initform :human
     :type (member :human :bytes)
-    :documentation "The format for file sizes. Of of :human or :bytes."))
+    :documentation "The format for file sizes. Of of :human or :bytes.")
+   (apparent-size
+    :initarg :apparent-size :accessor apparent-size
+    :type boolean :initform nil
+    :documentation "Show the apparent size, instead of the more accurate size."))
   (:documentation "Disk usage viewer."))
 
 (defvar *du* nil "The current disk us inator.")
@@ -342,7 +347,7 @@ use ‘*default-ouput-file*’."
 		    (equal starting-device (get-device full-name)))
 	    (get-dirs full-name))
 	  (when dirs
-	    (loop :with new :and type
+	    (loop :with new :and type :and my-size :of-type integer = 0
 	       :for f :in dirs :do
 	       (setf path (nos:path-append full-name (nos:dir-entry-name f))
 		     info nil
@@ -357,17 +362,15 @@ use ‘*default-ouput-file*’."
 		      (eq type :link)
 		      (and #| (eq (dir-entry-type f) :directory) |#
 		       (equal (dir-entry-name f) ".")))
-		  (when (setf info (get-info path))
-		    (let ((my-size (file-info-size info)))
-		      (declare (integer my-size))
-		      (incf size my-size)
-		      (when show-all
-			(push (make-instance
-			       'du-file-node
-			       :name (to-small-string (dir-entry-name f))
-			       :parent o
-			       :size my-size)
-			      (node-branches o))))))
+		  (when (setf my-size (item-size path))
+		    (incf size my-size)
+		    (when show-all
+		      (push (make-instance
+			     'du-file-node
+			     :name (to-small-string (dir-entry-name f))
+			     :parent o
+			     :size my-size)
+			    (node-branches o)))))
 		 ((and (eq type :directory)
 		       (not (equal (dir-entry-name f) ".."))
 		       (or (null exclude)
@@ -466,10 +469,45 @@ use ‘*default-ouput-file*’."
 	    (not (slot-value o 'package)))
     (setf (slot-value o 'package) (make-package (gensym "DU-TEMP")))))
 
+(defparameter *block-size* 512)
+
+(defun file-seen (info)
+  "Return true if the file in ‘info’ has already been seen, otherwise mark the
+file as seen if and return NIL."
+  (let ((device-table (gethash (uos:file-status-device info) (devices *du*))))
+    (when (not device-table)
+      (setf device-table (make-hash-table)
+	    (gethash (uos:file-status-device info) (devices *du*)) device-table))
+    (if (gethash (uos:file-status-inode info) device-table)
+	t
+	(progn
+	  (setf (gethash (uos:file-status-inode info) device-table) t)
+	  nil))))
+
+(defun item-size (file)
+  #+unix (let ((info (ignore-errors (uos:stat file))))
+	   (flet ((get-size ()
+		    (if (apparent-size *du*)
+			(uos:file-status-size info)
+			(* (uos:file-status-blocks info) *block-size*))))
+	     (cond
+	       ((null info)
+		0)
+	       ((> (uos:file-status-links info) 1)
+		(if (file-seen info)
+		    0
+		    (get-size)))
+	       (t
+		(get-size)))))
+  #-unix (let ((info (ignore-errors (nos:file-info file))))
+	   (if info
+	       (nos:file-info-size info)
+	       0)))
+
 (defun gather-item (file data)
-  (let ((info (ignore-errors (nos:file-info file))))
-    (when info
-      (cons (nos:file-info-size info)
+  (let ((size (item-size file)))
+    (when size
+      (cons size
 	    (list
 	     (mapcar
 	      (_ (intern _ (table-container-package data)))
@@ -657,19 +695,20 @@ use ‘*default-ouput-file*’."
 
 (defun du (&key (directories '(".")) #|follow-links tree |#
 	     (show-progress nil) (all t) resume file exclude as-list
-	     non-human-size one-file-system)
-  "Show disk usage.
- DIRECTORIES    - A list of directories to start from, which defaults to the
-                  current directory.
- TREE           - A previously constructed tree to use.
- SHOW-PROGRESS  - True to show the progress while gathering data.
- ALL            - True to show sizes for all files. Otherwise it just shows
-                  directory totals. This can take much more memory.
- RESUME         - True to resume from the last time it was run.
- FILE           - Is a file to load data from.
- EXCLUDE        - Sub-tree(s) to exclude.
- AS-LIST        - Show as a flat list, instead of a tree.
- NON-HUMAN-SIZE - Show sizes in bytes.
+	     non-human-size one-file-system apparent-size)
+  "Show disk usage. Arguments are:
+ ‘directories’     A list of directories to start from, which defaults to the
+                   current directory.
+ ‘tree’            A previously constructed tree to use.
+ ‘show-progress’   True to show the progress while gathering data.
+ ‘all’             True to show sizes for all files. Otherwise it just shows
+                   directory totals. This can take much more memory.
+ ‘resume’          True to resume from the last time it was run.
+ ‘file’            Is a file to load data from.
+ ‘exclude’         Sub-tree(s) to exclude.
+ ‘as-list’         Show as a flat list, instead of a tree.
+ ‘non-human-size’  Show sizes in bytes.
+ ‘apparent-size’   Show the apparent size, instead of the more accurate size.
 "  
   (let* ((*du*
 	  (make-instance 'du-app
@@ -682,7 +721,8 @@ use ‘*default-ouput-file*’."
 	   :one-file-system one-file-system
 	   :data (make-instance (if as-list 'table-container 'tree-container))
 	   :directories directories
-	   :size-format (if non-human-size :bytes :human))))
+	   :size-format (if non-human-size :bytes :human)
+	   :apparent-size apparent-size)))
     ;; (format t "exclude = ~s~%" (exclude *du*))
     ;; (format t "show-progress = ~s~%" (show-progress *du*))
     ;; (force-output)
