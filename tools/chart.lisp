@@ -82,17 +82,22 @@
 ;; @@@ Specialize for output device? This is only for terminals.
 (defmethod draw-chart ((chart horizontal-bar))
   (with-slots (labels values bar-fill horizontal-separator) chart
-    (let* ((labels-width (loop :for l :in labels :maximize (display-length l)))
-	   (max-value    (loop :for v :in values :maximize v))
-	   (width (- (tt-width) (display-length horizontal-separator)
-		     labels-width)))
-      (do-bars (label value chart)
-	(tt-format "~v@a" labels-width (or label ""))
-	(tt-write-string horizontal-separator)
-	(when (not (zerop max-value))
-	  (tt-format "~v,,,va"
-		     (round (* value width) max-value) bar-fill bar-fill))
-	(tt-fresh-line)))))
+    (flet ((label-string (label)
+	     (princ-to-string (or label ""))))
+      (let* ((labels-width
+	       (loop :for l :in labels
+		     :maximize (display-length (label-string l))))
+	     (max-value
+	       (loop :for v :in values :maximize v))
+	     (width (- (tt-width) (display-length horizontal-separator)
+		       labels-width)))
+	(do-bars (label value chart)
+	  (tt-write-string (label-string label))
+	  (tt-write-string horizontal-separator)
+	  (when (not (zerop max-value))
+	    (tt-format "~v,,,va"
+		       (round (* value width) max-value) bar-fill bar-fill))
+	  (tt-fresh-line))))))
 
 (defmethod draw-chart ((chart vertical-bar))
   (with-slots (labels values bar-fill horizontal-separator vertical-separator)
