@@ -80,7 +80,7 @@ strings should be alble to be prepended with ~* to ignore the width argument."
 Table cell formmating functions should accept ‘cell’ and ‘width’, and should be
 able accept ‘width’ as NIL, to indicate no width limitation. Formmating strings
 should be alble to be prepended with \"~*\" to ignore the width argument.
-See print-table:table-format-cell.")
+See table-print:table-format-cell.")
    (align :initarg :align :accessor column-align :initform nil
     :documentation
     "An alignment such as :left or :right. If NIL, it means the printer can make
