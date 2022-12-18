@@ -477,8 +477,8 @@ know."))
 
 (defgeneric terminal-output-line (terminal n)
   (:documentation
-   "Return output line ‘n’ of ‘terminal’ as a fat-string. Works on retained
-terminals."))
+   "Return output line ‘n’ of ‘terminal’ as a fat-string. Probably only works
+on retained terminals."))
 
 ;; (defmacro with-terminal-stream ((var stream) &body body)
 ;;   "Evaluate the body with VAR set to a new terminal-stream."
