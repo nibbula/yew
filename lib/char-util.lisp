@@ -98,14 +98,15 @@ than space, and delete."
       ((and cc (meta-char-p cc))
        (format nil "M-~a" (nice-char (un-meta cc))))
       ((and cc (= cc 27))
-       (format nil "ESC"))
+       (format nil "Esc"))
       ((and cc (= cc (char-code #\space)))
-       (format nil "SPACE"))
+       (format nil "Space"))
       ((and cc (< cc (char-code #\space)))
        (format nil "~:[C-~(~c~)~;^~c~]" caret
 	       (code-char (+ cc (char-code #\@)))))
       ((and cc (= cc 127)
        (format nil (if caret "^?" "C-?"))))
+      ((keywordp c) (format nil "~a" c))
       (cc (format nil "~a" c))
       (t (format nil "~s" c)))))
 
