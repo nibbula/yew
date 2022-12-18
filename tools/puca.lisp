@@ -41,7 +41,7 @@
     :documentation "The tag string if the backend thinks it's modified.")
    (filename
     :initarg :filename :accessor item-filename :initform nil
-    :documentation "Name of the file?")
+    :documentation "Name of the file.")
    (extra-lines
     :initarg :extra-lines :accessor item-extra-lines :initform nil
     :documentation "Extra lines output from the backend command."))
@@ -857,17 +857,23 @@ If CONFIRM is true, ask the user for confirmation first."
                                      for ~s." command (puca-backend *puca*))))))
   (values))
 
-(defun selected-files ()
+(defun selected-files (&key relative-p)
   "Return the selected files or the current line, if there's no selections.
-If the universal-argument is set, just return the current line."
+If the ‘universal-argument’ is set, just return the current line.
+If ‘relative-p’ is true, return file names relative to the git directory,
+instead of the default of absolute paths."
   (with-slots (item-count items (point inator::point) backend
 	       universal-argument) *puca*
-    (let* ((files
-	    (loop :for i :from 0 :below item-count
-	       :when (item-selected (svref items i))
-	       :collect (item-path-name backend (svref items i)))))
-      (or (and (not universal-argument) files)
-	  (and items (list (item-path-name backend (svref items point))))))))
+    (flet ((item-name (item)
+	     (if relative-p
+		 (item-filename item)
+		 (item-path-name backend item))))
+      (let* ((files
+	       (loop :for i :from 0 :below item-count
+		     :when (item-selected (svref items i))
+		     :collect (item-name (svref items i)))))
+	(or (and (not universal-argument) files)
+	    (and items (list (item-name (svref items point)))))))))
 
 (defun select-all ()
   (with-slots (item-count items) *puca*
@@ -1063,7 +1069,7 @@ for the command-function).")
 
 (defun add-ignore-command (p)
   "Ignore"
-  (loop :for f :in (selected-files)
+  (loop :for f :in (selected-files :relative-p t)
      :do (add-ignore (puca-backend p) f)))
 
 (defun amend-command (p)
