@@ -10,7 +10,7 @@
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Show free memory."
-    :depends-on (:dlib :opsys :dlib-misc :table :grout :lish)
+    :depends-on (:dlib :opsys :dlib-misc :table :grout)
     :components
     ((:file "free")
      (:module "cmds"

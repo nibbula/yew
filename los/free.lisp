@@ -4,10 +4,11 @@
 
 (defpackage :free
   (:documentation "Show free memory.")
-  (:use :cl :dlib :opsys :dlib-misc :table :grout :lish)
+  (:use :cl :dlib :opsys :dlib-misc :table :grout)
   (:export
-   #:!free
    #:*bar-char*
+   #:describe-free-memory
+   #:!free
    ))
 (in-package :free)
 
@@ -161,7 +162,7 @@ Swap:    ~11d ~11d ~11d~%"
      (let ((table (free-memory-table :in-bytes bytes)))
        (with-grout ()
          (grout-print-table table))
-       (setf *output* table)))
+       table))
     (t
     ;; Like htop
     (with-grout ()
@@ -237,6 +238,7 @@ Swap:    ~11d ~11d ~11d~%"
 	   (:bold :fg-black
 		  ,(make-string swap-unused-bar
 				:initial-element *bar-char*))
-	   (:bold :fg-green #\]) #\newline)))))))
+	   (:bold :fg-green #\]) #\newline))))
+    (values))))
 
 ;; End
