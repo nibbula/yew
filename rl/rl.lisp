@@ -118,6 +118,9 @@
     (#\=		. what-cursor-position)
     (#\T	        . toggle-debugging) ; @@@ temporary?
     (#\m	        . toggle-mode-line)
+    (#\(		. start-recording)
+    (#\)		. stop-recording)
+    (#\e		. replay-recording)
     (,(ctrl #\C)	. exit-editor)
     (,(ctrl #\X)	. exchange-point-and-mark)))
 ;  :default-binding #| (beep e "C-x ~a is unbound." command |#

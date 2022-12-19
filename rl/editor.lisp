@@ -387,12 +387,12 @@ not to print one.")
     :documentation "True to keep the region active after the command is done.
 Otherwise the region is deactivated every command loop.")
    (matching-char-pos
-    :initarg :matching-char-pos :accessor line-editor-matching-char-pos
+    :initarg :matching-char-pos :accessor matching-char-pos
     :initform nil :type (or null fixnum)
     :documentation
     "Position of a currently highlighted matching character, or NIL for none.")
    (saved-matching-char
-    :initarg :saved-matching-char :accessor line-editor-saved-matching-char
+    :initarg :saved-matching-char :accessor saved-matching-char
     :initform nil
     :documentation
     "Copy of the matching highlighted character to restore, or NIL for none.")
@@ -417,6 +417,16 @@ Otherwise the region is deactivated every command loop.")
    (last-search
     :initarg :last-search :accessor last-search :initform nil
     :documentation "The last string searched for.")
+   (recording-p
+    :initarg :recording :accessor recording-p
+    :type boolean :initform nil
+    :documentation "Tro to record input events.")
+   (recording
+    :initarg :recording :accessor recording :initform nil
+    :documentation "Record of input events.")
+   (replay-count
+    :initarg :replay-count :accessor replay-count :type integer :initform 0
+    :documentation "Count of replays of a recording.")
    (pushed-buffers
     :initarg :pushed-buffers :accessor pushed-buffers
     :initform nil :type list
@@ -425,6 +435,7 @@ Otherwise the region is deactivated every command loop.")
     :initarg :line-ending-cache :accessor line-ending-cache
     :initform nil
     :documentation "Cache of the results of calculate-line-endings.")
+
    (package
     :initarg :package :accessor line-editor-package :initform nil
     :documentation "Package for buffer local variables."))
@@ -768,7 +779,7 @@ but perhaps reuse some resources."))
       (funcall (line-editor-input-callback e) c))
     c))
 
-(defmethod await-input ((e line-editor))
+(defmethod await-event ((e line-editor))
   (setf (last-event e) (get-a-char e)))
 
 ;; @@@ What was the idea?

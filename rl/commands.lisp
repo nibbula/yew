@@ -81,6 +81,7 @@ The slots of the editing context are bound in the body."
 
 (defmethod call-command ((e line-editor) function args)
   "Command invoker that handles calling commands for multiple editing contexts."
+  (maybe-record-command e function args)
   (if (get function 'multiple)
       (progn
 	(when (get function 'pre)
@@ -783,6 +784,111 @@ Don't do anything with less than 2 characters."
 	;; Adjust the point to be at the end of the replacement.
 	(when (= point end)
 	  (incf point (- (length new) (- end start))))))))
+
+(defmethod maybe-record-command ((e line-editor) function args)
+  "Record ‘event’ if we have event recording turned on."
+  (with-slots (recording-p recording) e
+    (when recording-p
+      (when (not recording)
+	(setf recording (make-stretchy-vector 80)))
+      ;; (message e "Recorded ~s" event)
+      (when (and (not (equal function #'stop-recording))
+		 (not (equal function 'stop-recording)))
+	(stretchy-append recording (list (list* function args)
+					 (last-event e)))))))
+
+(defsingle start-recording (e)
+  "Start recording events."
+  ;; Discard the old one and make a new one.
+  (if (recording-p e)
+      (tmp-message e "Recording already started.")
+      (progn
+	(setf (recording e) (make-stretchy-vector 80)
+	      (recording-p e) t)
+	(message e "Starting recording..."))))
+
+(defsingle stop-recording (e)
+  "Stop recording events."
+  (with-slots (recording-p recording) e
+    (if recording-p
+	(progn
+	  (message e "Stopping recording.")
+	  (compile-recording e))
+	(message e "Recording wasn't in progress."))
+    (setf recording-p nil)))
+
+(defsingle input-counter (e)
+  "Use the replay counter as input."
+  (loop :for c :across (format nil "~d" (replay-count e))
+	:do (push c (queued-input e))))
+
+(defmulti replay-recording (e)
+  "Replay recorded events."
+  (typecase (recording e)
+    (null
+      (message e "There isn't anything recorded."))
+    (function
+     (funcall (recording e) e))
+    (t
+     (message e "The recording is an unknown type: ~s."
+	      (type-of (recording e)))))
+  (incf (replay-count e)))
+
+(defsingle name-last-recording (e)
+  "Name the last recording."
+  (typecase (recording e)
+    (null
+     (message e "There isn't anything recorded."))
+    (function
+     (setf (fdefinition (ask-expr "Name: ")) (recording e)))
+    (t
+     (set (ask-expr "Name: ") (recording e)))))
+
+(defmacro with-input ((e event) &body body)
+  `(progn (setf (last-event ,e) ,event) ,@body))
+
+(defmacro playback ((e recording) &body body)
+  "A dumb hack to get self-insert to work right."
+  (with-names (rec)
+    `(let ((,rec ,recording))
+       ,@(loop
+	   :for expr :in body
+	   :for i :from 0
+	   :collect `(with-input (,e (oelt ,rec ,i))
+		       ,expr)))))
+
+(defun recording-to-expr (e recording &key (editor-name '*line-editor*))
+  (declare (ignore e))
+  (let ((events (loop :for c :across recording :collect (second c)))
+	(commands (loop :for c :across recording :collect (first c))))
+    `(let ((e ,editor-name))
+       (playback (e ',events)
+         ,@(loop :for c :in commands
+		 :collect `(,(car c) e ,@(cdr c)))))))
+
+(defsingle compile-recording (e)
+  "Replace the recording with a function that performs the recordings actions
+with the current keymaps."
+  (typecase (recording e)
+    (null
+     (message e "There is no recording to compile."))
+    (function
+     (message e "The recording is already compiled."))
+    (t
+     (multiple-value-bind (func warns fails)
+	 (compile nil `(lambda (e)
+			 ,(recording-to-expr e (recording e) :editor-name 'e)))
+       (declare (ignore warns))
+       (when (or (not func) fails)
+	 (error "Failed to compile a recording: ~s~%" (recording e)))
+       ;; @@@ I feel like it's not cool that we lose the original recording, but
+       ;; do we really want to make it more complicated? To make it a true
+       ;; recording of all interaction, we'd probably have to do it at the
+       ;; terminal level anyway.
+       (setf (recording e) func)))))
+
+;; (defmulti dabbrev-expand ()
+;;   )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Hacks for typing Lisp.
