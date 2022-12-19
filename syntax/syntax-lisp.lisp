@@ -594,6 +594,24 @@ accordingly. Case can be :upper :lower :mixed or :none."
 	  (print-paragraph))))))
 |#
 
+(defun output-stylized (text)
+  "Output ‘text’ with using grout with some stylization. Currently it only
+stylizes the normal text and things in blaanced directed single quotes: ‘’."
+  (with-grout ()
+    (let ((code-style (theme:value '(:syntax :docstring :code :style)))
+	  (text-style (theme:value '(:syntax :docstring :style)))
+          (start 0))
+      (loop :with s :and e
+        :do
+          (multiple-value-setq (s e) (ppcre:scan "‘[^’]+’" text :start start))
+	  (when s
+	    (grout-princ (styled-string text-style (subseq text start (1+ s))))
+	    (grout-princ (styled-string code-style (subseq text (1+ s) (1- e))))
+	    (setf start (1- e)))
+	:while s)
+      (when (< start (length text))
+	(grout-princ (styled-string text-style (subseq text start)))))))
+
 ;; @@@ This needs a lot of improvement.
 (defun format-lisp-comment (comment-string stream &key columns)
   "Output ‘comment-string’ to ‘stream’ in some way which we hope is better than
@@ -606,10 +624,9 @@ the verbatim string." ;; @@@ really describe when fixed
       (declare (ignorable s e))
       ;;(dbugf :poo "2 *grout* = ~s stream = ~s~%" *grout* stream)
       (labels ((print-it (string-list &key prefix verbatim)
-		 "Print the STRING-LIST with word wrap justification."
+		 "Print the ‘string-list’ with word wrap justification."
 		 ;; (dbugf :poo "print-it ~s~%" string-list)
-		 (grout-color
-		  :white :default
+		 (output-stylized
 		  (if verbatim
 		      (s+ (or prefix "") string-list)
 		      (justify-text
@@ -618,7 +635,7 @@ the verbatim string." ;; @@@ really describe when fixed
 		       :stream nil
 		       :cols (or columns (grout-width))))))
 	       (print-paragraph ()
-		 "Print the paragraph that has accumulated in PAR."
+		 "Print the paragraph that has accumulated in ‘par’."
 		 (when par
 		   (print-it (nreverse par))
 		   (grout-princ #\newline)

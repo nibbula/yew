@@ -52,7 +52,6 @@ Something like the default setting of typical GNU tools."))))
        ;; Syntax
        (:syntax :comment :line :semicolon  :style) (:fg-cyan)
        (:syntax :comment :block            :style) (:fg-cyan)
-       (:syntax :comment :block            :style) (:fg-cyan)
        (:syntax :constant :character       :style) (:fg-white)
        (:syntax :constant :language        :style) (:fg-white)
        (:syntax :constant :other           :style) (:fg-white)
@@ -66,6 +65,9 @@ Something like the default setting of typical GNU tools."))))
        (:syntax :support :variable         :style) (:fg-green)
        (:syntax :support :function         :style) (:fg-magenta)
        (:syntax :variable :other           :style) (:fg-green)
+       ;; Non-standard syntax things
+       (:syntax :docstring :code :style) (:fg :color #(:rgb8 #x7f #xff #xd4))
+       (:syntax :docstring :style)       (:white)
        ;; Commands
        (:command :not-found	    :style) (:red)
        (:command :found		    :style) (:bold :blue)
