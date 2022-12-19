@@ -669,28 +669,47 @@ but perhaps reuse some resources."))
   (when (line-editor-package e)
     (delete-package (line-editor-package e)))
 
-  (setf (inator-command e)	nil
-	(inator-last-command e) nil
-	(last-event e)          nil
+  (setf (fill-pointer (buf e))	0
+	(exit-flag e)		nil
 	(queued-input e)	nil
-	;;(inator-point e)	#(0)
-	;;(inator-mark e)		nil
-	;;(inator-clipboard e)	nil	; should we really?
-	(inator-contexts e)     (make-contexts)
-	(inator-quit-flag e)	nil
-	(fill-pointer (buf e))	0
-;;;	(screen-row e) (terminal-get-cursor-position (line-editor-terminal e))
 	(screen-relative-row e) 0
 	(screen-col e)		0
 	(start-col e)		0
 	(start-row e)		0
+	(last-line e)		nil
+	(need-to-redraw e)	nil
+	(need-to-recolor e)	nil
+	(match-element e)	nil
 	(undo-history e)	nil
 	(undo-current e)	nil
-	(need-to-redraw e)	nil
-	;; (show-mode-line e)	nil
-	(exit-flag e)		nil
+	(undo-recent-count e)	0
+	(line-editor-suggestion e) nil
+	(did-complete e)	nil
 	(did-under-complete e)	nil
-	(line-editor-package e) nil))
+	(last-command-was-completion e)	nil
+	(last-completion-not-unique-count e) 0
+	(temporary-message e)	nil
+	(max-message-lines e)	0
+	(message-lines e)	0
+	(message-endings e)	nil
+	(message-top e)		0
+	(keep-message e)	nil
+	(line-editor-debug-log e) nil
+	(line-editor-region-active e) nil
+	(matching-char-pos e)	nil
+	(saved-matching-char e) nil
+	(recording-p e)		nil
+	(replay-count e)	0
+	(pushed-buffers e)	nil
+	(line-ending-cache e)	nil
+	(line-editor-package e) nil
+
+	;; inator
+	(inator-command e)	nil
+	(inator-last-command e) nil
+	(last-event e)          nil
+	(inator-contexts e)     (make-contexts)
+	(inator-quit-flag e)	nil))
 
 #| old-way without contexts
 (defmacro save-excursion ((e) &body body)
