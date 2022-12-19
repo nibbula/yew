@@ -30,6 +30,7 @@
 ;; If you were expecting an actually tiny repl:
 (defun actually-tiny-repl ()
   (loop (format t "~s~%" (eval (read))) (finish-output)))
+
 ;; Or even:
 (defun actually-tiny-but-comfy-repl ()
   (loop (restart-case (progn
@@ -39,8 +40,6 @@
 		       (when (plusp (length str)) (read-from-string str))))))
       (finish-output))
     (abort () :report "Return to REPL."))))
-
-;; (tiny-repl:actually-tiny-but-comfy-repl)
 
 (defparameter *repl-symbols*
   '(repl-real-eof repl-continue repl-empty repl-error repl-quit repl-exit)
@@ -225,13 +224,10 @@ The REPL also has a few commands:
 					       prompt))))
       (loop
 	 :do
-	 ;; (dbugf :repl "editor before = ~a~%" editor)
 	 (cond
 	   (more
 	    (setf str more)
-	    (setf more nil)
-	    ;; (dbugf :repl "Using MORE~%")
-	    )
+	    (setf more nil))
 	   (pre-str
 	    (setf pre-str nil
 		  (values str editor) (call-rl (or prompt-string
@@ -243,18 +239,14 @@ The REPL also has a few commands:
 		  (call-rl (or prompt-string
 			       prompt-func
 			       'repl-output-prompt) nil))))
-	 ;; (dbugf :repl "str = ~s~%editor after = ~a~%" str editor)
 	 (setf result
 	       (cond
 		 ((and (stringp str) (zerop (length str))) 'repl-empty)
 		 ((and (stringp str) (equal "." str)) 'repl-exit)
 		 ((equal str 'repl-real-eof)
-		  (dbugf :repl "You got a 'repl-real-eof~%")
 		  'repl-real-eof)
 		 ((equal str 'repl-quit) 'repl-quit)
 		 (t
-		  ;; (dbugf :repl "Before read: pre-str = ~w str = ~w~%"
-		  ;; 	 pre-str str)
 		  (let ((cat (or (and pre-str (s+ pre-str str)) str)))
 		    (multiple-value-bind (obj pos)
 			(block nil
@@ -273,27 +265,20 @@ The REPL also has a few commands:
 	 (setf pre-str
 	       (if (stringp pre-str)
 		   (s+ pre-str str +newline-string+)
-		   (s+ str +newline-string+)))
-	 ;; (dbugf :repl "set pre-str = ~w~%" pre-str)
-	 ;; (dbugf :repl "Do CONTINUE~%")
-	 )
+		   (s+ str +newline-string+))))
       result))))
 
 (defun repple-stepper (c)
   (when (find-package :deblarg)
-    (funcall (intern "STEPPER" (find-package :deblarg)) c)))
+    (symbol-call :deblarg :stepper c)))
 
 ;; Eval and print
 (defun repl-eval (form state)
   (with-slots (got-error error-count interceptor debug output quietly) state
-    ;; (when (not quietly)
-    ;;   (format t "~%")) ;; <<the newline>>
     (when (not quietly)
       (format output "~%")) ;; <<the newline>>
     (when (or (eq form 'repl-empty) (eq form 'repl-error))
-      (dbugf :repl "Do Nothing~%")
       (return-from repl-eval nil))
-    (dbugf :repl "Do Something~%")
     ;; If there is an interceptor, let it have a crack at it.
     ;; If interceptor returns nil, it didn't intercept and we should go on.
     ;; There might be some more arguments for the interceptor which it
@@ -357,49 +342,43 @@ The REPL also has a few commands:
 TERMINAL-NAME and TERMINAL-TYPE should be in the environment."
   (with-unique-names (thunk)
     `(progn
-       ;; (break)
        (flet ((,thunk () ,@body))
-       (if ,terminal
-	   (progn
-	     (dbugf :repl "We thought we didn't need a terminal ~s~%" ,terminal)
-	     (,thunk))
-	   (with-terminal (terminal-type *terminal*
-					 :device-name terminal-name
-					 :start-at-current-line t)
-	     (dbugf :repl "We made a terminal? ~s~%" *terminal*)
-	     (,thunk)))))))
-
-;; (defvar *default-terminal-type* :crunch)
+	 (if ,terminal
+	     (progn
+	       (,thunk))
+	     (with-terminal (terminal-type *terminal*
+					   :device-name terminal-name
+					   :start-at-current-line t)
+	       (,thunk)))))))
 
 (defun tiny-repl (&key prompt-func prompt-string
 		    (no-announce #+sbcl t #-sbcl nil no-announce-supplied-p)
 		    keymap
 		    terminal terminal-name
 		    (terminal-type (pick-a-terminal-type))
-		    ;;(terminal-type *default-terminal-type*)
 		    (output *standard-output*)
 		    (interceptor *default-interceptor*) (debug t)
 		    once quietly)
   "Keep reading and evaluating lisp, with line editing. Return true if we want
 to quit everything. Arguments are:
- PROMPT-FUNC    -- A RL prompt function, which is called with a with
-                   an instance of RL:LINE-EDITOR and a prompt string.
- PROMPT-STRING  -- A prompt to pass to RL.
- NO-ANNOUNCE    -- True to supress the announcement on starting.
- TERMINAL       -- An already created terminal to use.
- TERMINAL-NAME  -- Name of a system terminal device to read from.
- TERMINAL-TYPE  -- Type of terminal to read from. Defaults from
-                   pick-a-terminal-type and so from *default-terminal-type*.
- KEYMAP         -- A custom keymap to use for RL.
- OUTPUT         -- Stream to print output on.
- INTERCEPTOR    -- Function that's called with an object to be evaluated and a
-                   TINY-REPL:REPL-STATE. Allows interception of sepcial objects
-                   before they're evaluated, usually used for commands. The
-                   interceptor should return true if does not want evaluation
-                   to happen. Defaults to *DEFAULT-INTERCEPTOR*.
- DEBUG          -- True to install DeBLARG as the debugger. Default is T.
- ONCE           -- True to only be a REP, i.e. only do the loop once.
- QUIETLY        -- True to not print extraneous text on entry and exit.
+ ‘prompt-func’    An RL prompt function, which is called with a with
+                  an instance of RL:LINE-EDITOR and a prompt string.
+ ‘prompt-string’  A prompt to pass to RL.
+ ‘no-announce’    True to supress the announcement on starting.
+ ‘terminal’       An already created terminal to use.
+ ‘terminal-name’  Name of a system terminal device to read from.
+ ‘terminal-type’  Type of terminal to read from. Defaults from
+                  pick-a-terminal-type and so from *default-terminal-type*.
+ ‘keymap’         A custom keymap to use for RL.
+ ‘output’         Stream to print output on.
+ ‘interceptor’    Function that's called with an object to be evaluated and a
+                  TINY-REPL:REPL-STATE. Allows interception of sepcial objects
+                  before they're evaluated, usually used for commands. The
+                  interceptor should return true if does not want evaluation
+                  to happen. Defaults to *DEFAULT-INTERCEPTOR*.
+ ‘debug’          True to install DeBLARG as the debugger. Default is T.
+ ‘once’           True to only be a REP, i.e. only do the loop once.
+ ‘quietly’        True to not print extraneous text on entry and exit.
 "
   ;; Annouce the implemtation and version on systems that don't always do it.
   (when (and (not no-announce) (not quietly))
@@ -432,11 +411,11 @@ to quit everything. Arguments are:
 
       ;; Activate the debugger if it's loaded.
       (when (and debug (find-package :deblarg))
-	(funcall (intern "ACTIVATE" (find-package :deblarg))
-		 :quietly (or quietly
-			      (if no-announce-supplied-p
-				  no-announce
-				  nil))))
+	(symbol-call :deblarg :activate
+		     :quietly (or quietly
+				  (if no-announce-supplied-p
+				      no-announce
+				      nil))))
 
       (unwind-protect
 	   (progn
@@ -461,9 +440,6 @@ to quit everything. Arguments are:
 			    :until (or (equal result 'repl-real-eof)
 				       (equal result 'repl-exit))
 			    :do
-			    (dbugf :repl "~s (~a) ~s~%"
-				   result (type-of result)
-				   (eq result 'repl-empty))
 			    (if (equal result 'repl-quit)
 				(when (confirm-quit state *repl-level*)
 				  (return result))
@@ -477,8 +453,8 @@ to quit everything. Arguments are:
 			     (format stream "Return to command loop ~d."
 				     start-level)))
 		       (setf result nil)))
-		   (dbugf :repl "main result = ~s~%" result)
-		   (when (not result) (go TOP))))))
+		   (when (not result)
+		     (go TOP))))))
 
 	;; Let's hope that this will clear an EOF on *standard-input*
 	(ignore-errors (clear-input *standard-input*))
@@ -492,7 +468,7 @@ to quit everything. Arguments are:
 		  ((eq result 'repl-real-eof) (format output "*EOF*~%") t)
 		  ((eq result 'repl-quit) (format output "*Quit*~%")    t)
 		  ((eq result 'repl-exit) (format output "*Exit*~%")    nil)
-		  (t (dbugf :repl "~s ~a~%" result (type-of result))    t))))
+		  (t t))))
 	(setf *debugger-hook* old-debugger-hook)
 	(decf *repl-level*))
       want-to-quit)))
