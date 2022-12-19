@@ -2155,9 +2155,9 @@ defaults to 'error."
 ;; @@@ Perhaps we should also have a version that separates doc and decls?
 
 (defmacro with-decls-and-body ((your-body) &body my-body)
-  "Pull the documentation and declarations out of YOUR-BODY, and bind them to
-DOC-AND-DECLS. The body without DOC-AND-DECLS is bound to FIXED-BODY.
-Evaluate MY-BODY. This is useful for making a macro that wraps a standard
+  "Pull the documentation and declarations out of ‘your-body’, and bind them to
+‘doc-and-decls’. The body without ‘doc-and-decls’ is bound to ‘fixed-body’.
+Evaluate ‘my-body’. This is useful for making a macro that wraps a standard
 definition form, like defun. For example:
 
   (defmacro defoo (name args &body body)
@@ -2172,8 +2172,8 @@ definition form, like defun. For example:
 	      :for form = ,your-body :then (cdr form)
 	      :while form
 	        :if (and (stringp (car form))
-		       (not (and first (not (cdr form)))) ; a single string
-		       (not doc))
+			 (not (and first (not (cdr form)))) ; a single string
+			 (not doc))
 	          :collect (setf doc (car form))
 	        :else :if (and (consp (car form))
 			       (eq (caar form) 'declare))
