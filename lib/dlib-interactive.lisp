@@ -581,7 +581,7 @@ symbols, :all to show internal symbols too."
 	       :collect (list (slot-definition-name s)
 			      (slot-definition-type s)
 			      (slot-definition-initform s)))
-	    :columns '((:anem "Name") (:name "Type")
+	    :columns '((:name "Name") (:name "Type")
 		       (:name "Default" :align :left))))
 	 (:condition
 	   (make-table-from
