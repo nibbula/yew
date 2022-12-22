@@ -509,10 +509,12 @@
 		    level)))
     ;; (display-object node str level)))
 
+(defparameter *class-tree-root* t)
+
 (defclass classes-node (cached-dynamic-node) ())
 (defun classes-contents (node)
   (declare (ignore node))
-  (loop :for sc :in (sort (copy-list (subclasses (find-class 'standard-object)))
+  (loop :for sc :in (sort (copy-list (subclasses (find-class *class-tree-root*)))
 			  #'string< :key (_ (string-downcase
 					     (prin1-to-string (class-name _)))))
      :collect (make-instance 'class-node :object sc :open nil)))
