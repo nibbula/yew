@@ -11,7 +11,8 @@
 (lish:defcommand ls
   ((files pathname :repeating t :help "The file(s) to list.")
    (long boolean :short-arg #\l :help "True to list in long format.")
-   (1-column boolean :short-arg #\1 :help "True to list one file per line.")
+   (1-column boolean :short-arg #\1 :use-supplied-flag t
+    :help "True to list one file per line.")
    (wide boolean :short-arg #\w
     :help "True to not truncate the output to the terminal width.")
    (hidden boolean :short-arg #\a :help "True to list hidden files.")
@@ -77,6 +78,11 @@ traditional ‘ls’ command."
       (setf (getf args :nice-table) t)))
   (when nice-table
     (setf args (append args '(:collect t))))
+  ;; @@@ Testing for 'string-stream is bogus. Maybe we should add pipe-p or
+  ;; something.
+  (when (and (not 1-column-supplied-p) (typep *standard-output* 'string-stream))
+    ;; Default to 1 column output when piping.
+    (setf (getf args :1-column) t))
   (flet ((thunk ()
 	   (lish:with-files-or-input (files)
 	     (apply #'list-files :files files args))))
