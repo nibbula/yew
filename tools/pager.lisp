@@ -36,7 +36,8 @@ The shell command takes any number of file names.
   (:use :cl :dlib :opsys :dlib-misc :table-print :stretchy
 	:keymap :char-util :fatchar #+use-regex :regex #-use-regex :ppcre
 	:terminal :fatchar-io :pick-list :table-print :fui :inator :file-inator
-	:terminal-inator :collections :ochar :theme :terminal-table :completion)
+	:terminal-inator :collections :ochar :theme :terminal-table :completion
+	:result)
   (:export
    #:*pager-prompt*
    #:*empty-indicator*
@@ -1564,6 +1565,7 @@ Returns the the open stream or NIL."
   (typecase location
     ((or string stream) location)
     ((or list vector) (elt location 0))
+    (file-result (os-pathname-namestring (file-result-os-pathname location)))
     ((or structure-object standard-object) (oelt location 'file))
     (t location)))
 
@@ -1577,7 +1579,9 @@ location doesn't have an offset part."
 	      (numberp (elt location 1)))
 	 (elt location 1)
 	 0))
-    ((or structure-object standard-object) (oelt location 'line-number))
+    (file-line-result (file-result-line location))
+    (file-result 0)
+    ;; ((or structure-object standard-object) (oelt location 'line-number))
     (t 0)))
 
 (defun advance-file-index (pager &optional (dir :forward))
