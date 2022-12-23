@@ -12,4 +12,9 @@
     :long-description   "Basically like the Linux/BSD stat command."
     :depends-on (:dlib :opsys :dtime :grout :los-config)
     :components
-    ((:file "finfo")))
+    ((:file "finfo")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "finfo-cmds"))
+      :depends-on ("finfo"))))
