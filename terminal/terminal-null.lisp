@@ -10,7 +10,7 @@ Consider it the /dev/null of terminals.
 
 For a practical example, see
 terminal-crunch:with-terminal-output-to-fat-string.")
-  (:use :cl :dlib :terminal :trivial-gray-streams)
+  (:use :cl :dlib :terminal :dgray)
   (:export
    #:terminal-null
    ))

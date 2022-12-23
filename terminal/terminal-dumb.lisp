@@ -4,7 +4,7 @@
 
 (defpackage :terminal-dumb
   (:documentation "Dumb terminal")
-  (:use :cl :dlib :terminal :char-util :trivial-gray-streams :fatchar)
+  (:use :cl :dlib :terminal :char-util :dgray :fatchar)
   (:export
    #:terminal-dumb-stream-mixin
    #:terminal-fake-column

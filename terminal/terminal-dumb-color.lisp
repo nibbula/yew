@@ -4,8 +4,8 @@
 
 (defpackage :terminal-dumb-color
   (:documentation "Dumb color terminal")
-  (:use :cl :dlib :terminal :char-util :trivial-gray-streams :fatchar
-	:terminal-dumb :terminal-ansi)
+  (:use :cl :dlib :terminal :char-util :dgray :fatchar :terminal-dumb
+        :terminal-ansi)
   (:export
    #:terminal-dumb-color-stream
    #:terminal-dumb-color

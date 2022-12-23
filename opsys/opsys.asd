@@ -15,7 +15,7 @@
 		 :dlib :opsys-config :unicode
 		 (:feature (:and (:or :windows :win32) (:not :unix) (:not :ccl))
 			   :cffi-libffi)
-		 :trivial-gray-streams
+		 :dgray
 		 ;; (:feature (:not :use-fake-dlib) :dlib)
 		 ;; (:feature :use-fake-dlib :fake-dlib)
 		 )

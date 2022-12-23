@@ -11,7 +11,7 @@ terminal protocol calls. You can write to the stream and it will operate the
 terminal. Keys pressed on the terminal will be available to be read as
 appropriate xterm escape sequences.")
   (:use :cl :dlib :collections :terminal :ansi :fatchar :stretchy :dcolor
-        :trivial-gray-streams)
+        :dgray)
   (:export
    #:ansi-stream
    #:make-stream

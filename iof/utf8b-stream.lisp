@@ -38,7 +38,7 @@ could be solved, like with the performance issue, by having in the normal set
 of encodings for the implementation. Usually there is a way for the user to
 pick the encoding. There are probably more problems but I forgot what they
 are.")
-  (:use :cl :dlib :char-util :trivial-gray-streams :unicode)
+  (:use :cl :dlib :char-util :dgray :unicode)
   (:export
    #:utf8b-input-stream
    #:utf8b-stream-stream

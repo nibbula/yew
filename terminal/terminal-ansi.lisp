@@ -13,8 +13,7 @@
 (defpackage :terminal-ansi
   (:documentation "Standard terminal (ANSI).")
   (:use :cl :cffi :dlib :dlib-misc :terminal :char-util :opsys
-	:trivial-gray-streams :fatchar :dcolor :ansi :terminal-dumb
-	:terminal-crunch
+	:dgray :fatchar :dcolor :ansi :terminal-dumb :terminal-crunch
 	#+unix :opsys-unix
 	#+windows :opsys-ms)
   (:export

@@ -10,7 +10,7 @@
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "very dumb color"
-    :depends-on (:dlib :terminal :char-util :trivial-gray-streams :fatchar
-		 :terminal-dumb :terminal-ansi)
+    :depends-on (:dlib :terminal :char-util :dgray :fatchar :terminal-dumb
+		 :terminal-ansi)
     :components
     ((:file "terminal-dumb-color")))

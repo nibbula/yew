@@ -5,7 +5,7 @@
 
 (defpackage :opsys-base
   (:documentation "Helper functions and setup which are not system specific.")
-  (:use :cl :cffi :trivial-gray-streams :fake-dlib)
+  (:use :cl :cffi :dgray :fake-dlib)
   (:export
    ;; Stuff in this file:
    #:*directory-separator*

@@ -10,6 +10,6 @@
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Manipulate an imaginary thing once called a terminal."
-    :depends-on (:dlib :opsys :trivial-gray-streams :fatchar :terminal-config)
+    :depends-on (:dlib :opsys :dgray :fatchar :terminal-config)
     :components
     ((:file "terminal")))

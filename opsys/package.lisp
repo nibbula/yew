@@ -13,8 +13,8 @@
 (defpackage :opsys
   (:documentation "Generic interface to operating system functionality.")
   (:nicknames :nos)
-  (:use :cl :cffi :fake-dlib :opsys-base :opsys-generic
-        :trivial-gray-streams :libc
+  (:use :cl :cffi :fake-dlib :dgray :opsys-base :opsys-generic
+        :libc
 	#+unix :os-unix
 	#+(and windows (not unix)) :os-ms)
   (:export

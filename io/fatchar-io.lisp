@@ -4,8 +4,7 @@
 
 (defpackage :fatchar-io
   (:documentation "Outputing fat characters and fat strings as streams.")
-  (:use :cl :dlib :stretchy :char-util :ochar :fatchar :terminal
-        :trivial-gray-streams)
+  (:use :cl :dlib :stretchy :char-util :ochar :fatchar :terminal :dgray)
   (:export
    #:render-fat-string
    #:render-fatchar

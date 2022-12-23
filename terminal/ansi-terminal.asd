@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description   "ANSI terminal emulation"
     :depends-on (:dlib :collections :fatchar :fatchar-io :terminal :ansi :dcolor
-		 :stretchy :trivial-gray-streams)
+		 :stretchy :dgray)
     :components
     ((:file "ansi-terminal")))

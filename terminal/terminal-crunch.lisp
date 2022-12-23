@@ -21,7 +21,7 @@ Other terminal types should help terminal-crunch work by providing cost metrics
 for various operations through the OUTPUT-COST methods.
 ")
   (:use :cl :dlib :collections :char-util :dcolor :fatchar :terminal
-	:trivial-gray-streams :fatchar-io :ostring)
+	:dgray :fatchar-io :ostring)
   (:import-from :terminal #:wrapped-terminal)
   (:export
    #:terminal-crunch

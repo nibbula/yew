@@ -3,7 +3,7 @@
 ;;;
 
 (defpackage :terminal
-  (:use :cl :dlib :opsys :trivial-gray-streams :fatchar)
+  (:use :cl :dlib :opsys :dgray :fatchar)
   (:export
    #:*standard-output-has-terminal-attributes*
    #:*terminal*
