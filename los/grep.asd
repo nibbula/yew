@@ -11,7 +11,8 @@
     :source-control	:git
     :long-description   "Regular expression search in streams."
     :depends-on (:cl-ppcre :dlib :opsys :stretchy :grout :los-config :fatchar
-		 :char-util :collections :table :theme :style :view-generic)
+		 :char-util :collections :table :theme :style :view-generic
+		 :result)
     :components
     ((:file "grep")
      (:module "cmds"

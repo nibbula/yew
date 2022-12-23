@@ -5,7 +5,7 @@
 (defpackage :grep
   (:documentation "Regular expression search in streams.")
   (:use :cl :cl-ppcre :opsys :dlib :grout :fatchar :stretchy
-	:char-util :collections :table :theme :style :view-generic)
+	:char-util :collections :table :theme :style :view-generic :result)
   (:export
    #:grep
    #:grep-files
@@ -115,10 +115,34 @@ removeed."
      (or (and unicode-remove-combining #'remove-combining-filter)
 	 (and unicode-normalize #'normalize-filter)))))
 
-(defstruct grep-result
-  file
-  line-number
-  line)
+(defclass grep-result (file-line-result)
+  ((file
+    :initarg :file :accessor grep-result-file  :initform nil
+    :documentation "File name.")
+   (line-number
+    :initarg :line-number :accessor grep-result-line-number
+    :type integer :initform 0
+    :documentation "Line number of the result in the file.")
+   (line
+    :initarg :line :accessor grep-result-line :initform nil
+    :documentation "Text of the line."))
+  (:documentation "Result of grepping."))
+
+(defmethod print-object ((object grep-result) stream)
+  "Print a file-item to ‘stream’."
+  (with-slots (file line-number) object
+    (print-unreadable-object (object stream :type t)
+      (format stream "~a:~a" file line-number))))
+
+(defun make-grep-result (&rest keys &key file line-number line)
+  (declare (ignorable file line-number line))
+  (apply #'make-instance 'grep-result keys))
+
+(defmethod file-result-os-pathname ((result grep-result))
+  (os-pathname (grep-result-file result)))
+
+(defmethod file-result-line ((result grep-result))
+  (grep-result-line-number result))
 
 (defparameter *grep-theme*
   (let ((tt (make-theme 'grep-default
