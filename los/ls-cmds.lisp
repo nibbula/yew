@@ -87,11 +87,7 @@ traditional ‘ls’ command."
 	   (lish:with-files-or-input (files)
 	     (apply #'list-files :files files args))))
     (if (or collect nice-table)
-	(setf lish:*output*
-	      (let ((result (thunk)))
-		(etypecase result
-		  (list (nreverse result))
-		  (table result))))
+	(setf lish:*output* (thunk))
 	(thunk))))
 
 ;; End
