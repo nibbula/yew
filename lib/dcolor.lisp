@@ -153,6 +153,7 @@ support. And finally:
    #:color-model-name
    #:structured-color-p
    #:copy-color
+   #:known-color-name-p
    #:known-color-p
    #:lookup-color
    #:color-model-components
@@ -221,12 +222,16 @@ support. And finally:
     (sequence (copy-seq color))
     (t color)))
 
-(defun known-color-p (x)
-  "True if x is a color or kind of color that we know about."
-  (or (structured-color-p x)
-      (find x *simple-colors*)
+(defun known-color-name-p (x)
+  "True if ‘x’ is a color symbol that we know about."
+  (or (find x *simple-colors*)
       (and (find-package :color-names)
 	   (find-symbol (symbol-name x) :color-names))))
+
+(defun known-color-p (x)
+  "True if ‘x’ is a color or kind of color that we know about."
+  (or (structured-color-p x)
+      (known-color-name-p x)))
 
 (defun lookup-color (color)
   "Find the color values for a color name, or just return it."
