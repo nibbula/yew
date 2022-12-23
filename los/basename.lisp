@@ -12,7 +12,7 @@
 
 (defcommand basename
   ((all boolean :short-arg #\a :long-arg "multiple"
-    :help "All arguments are filenames.")
+    :help "All arguments are file names.")
    (suffix string :short-arg #\s :help "Suffix to remove.")
    (collect boolean :short-arg #\c :help "Collect output as a sequence.")
    (files pathname :help "Path(s) to get the base name of." :rest t))
