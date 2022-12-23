@@ -1177,31 +1177,37 @@ i.e. the terminal is 'line buffered'."
 (defun %terminal-color (tty fg bg &key unwrapped)
   (let (ncolors did-intro did-one)
     (when fg
-      (let ((fg-pos (and (keywordp fg) (position fg *colors*)))
-	    (structured-fg-p (structured-color-p fg)))
-	(when (and (keywordp fg) (not fg-pos))
+      (let ((keyword-p (keywordp fg))
+	    (nfg fg)
+	    fg-pos structured-fg-p)
+	(when (and keyword-p
+		   (not (setf fg-pos (position fg *colors*))))
+	  (setf nfg (lookup-color fg)
+		structured-fg-p (structured-color-p nfg)))
+	(when (not keyword-p)
+	  (setf structured-fg-p (structured-color-p nfg)))
+	(when (not (or fg-pos structured-fg-p))
 	  (error "Forground ~a is not a known color." fg))
-	(when (or structured-fg-p)
-	  (setf ncolors (terminal-colors tty)))
 	(when (not unwrapped)
 	  (terminal-raw-format tty +csi+)
 	  (setf did-intro t))
 	(when structured-fg-p
+	  (setf ncolors (terminal-colors tty))
 	  (case ncolors
 	    (#.(* 256 256 256)
-	     (let ((c (convert-color-to fg :rgb8)))
+	     (let ((c (convert-color-to nfg :rgb8)))
 	       (terminal-raw-format tty "38;2;~d;~d;~d"
 				    (color-component c :red)
 				    (color-component c :green)
 				    (color-component c :blue))
 	       (setf did-one t)))
 	    (256
-	     (let ((c (convert-color-to fg :rgb8)))
+	     (let ((c (convert-color-to nfg :rgb8)))
 	       (terminal-raw-format tty "38;5;~d"
 				    (get-nearest-xterm-color-index c))
 	       (setf did-one t)))
 	    (88
-	     (let ((c (convert-color-to fg :rgb8)))
+	     (let ((c (convert-color-to nfg :rgb8)))
 	       (terminal-raw-format tty "38;5;~d"
 				    (get-nearest-xterm-color-index c))
 	       (setf did-one t)))
@@ -1212,31 +1218,38 @@ i.e. the terminal is 'line buffered'."
 	  (terminal-raw-format tty "~d" (+ 30 fg-pos))
 	  (setf did-one t))))
     (when bg
-      (let ((bg-pos (and (keywordp bg) (position bg *colors*)))
-	    (structured-bg-p (structured-color-p bg)))
-	(when (and (keywordp bg) (not bg-pos))
+      (let ((keyword-p (keywordp bg))
+	    (nbg bg)
+	    bg-pos structured-bg-p)
+	(when (and keyword-p
+		   (not (setf bg-pos (position bg *colors*))))
+	  (setf nbg (lookup-color bg)
+		structured-bg-p (structured-color-p nbg)))
+	(when (not keyword-p)
+	  (setf structured-bg-p (structured-color-p nbg)))
+	(when (not (or bg-pos structured-bg-p))
 	  (error "Background ~a is not a known color." bg))
-	(when (and structured-bg-p (null ncolors))
-	  (setf ncolors (terminal-colors tty)))
 	(when (and (not unwrapped) (not did-intro))
 	  (terminal-raw-format tty +csi+))
 	(when structured-bg-p
+	  (when (null ncolors)
+	    (setf ncolors (terminal-colors tty)))
 	  (when did-one (write-char #\; (terminal-output-stream tty)))
 	  (case ncolors
 	    (#.(* 256 256 256)
-	     (let ((c (convert-color-to bg :rgb8)))
+	     (let ((c (convert-color-to nbg :rgb8)))
 	       (terminal-raw-format tty "48;2;~d;~d;~d"
 				    (color-component c :red)
 				    (color-component c :green)
 				    (color-component c :blue))
 	       (setf did-one t)))
 	    (256
-	     (let ((c (convert-color-to bg :rgb8)))
+	     (let ((c (convert-color-to nbg :rgb8)))
 	       (terminal-raw-format tty "48;5;~d"
 				    (get-nearest-xterm-color-index c))
 	       (setf did-one t)))
 	    (88
-	     (let ((c (convert-color-to bg :rgb8)))
+	     (let ((c (convert-color-to nbg :rgb8)))
 	       (terminal-raw-format tty "48;5;~d"
 				    (get-nearest-xterm-color-index c))
 	       (setf did-one t)))

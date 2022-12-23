@@ -2,27 +2,27 @@
 ;;; color-names.lisp - Names for your sensations.
 ;;;
 
-;; (let (#+sbcl (sb-ext:*on-package-variance* '(:warn t :error nil)))
-;;   (dlib:without-warning ; STFU
-      (defpackage :color-names
-	(:documentation "Names for your sensations.")
-	(:use :cl :dlib)
-	;; (:shadow cl:tan)
-	)
-;; ))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defpackage :color-name-setup
+    (:documentation "Set up for color names.")
+    (:export #:define-colors)
+    (:use :cl :dlib)))
 
 ;; tan -> tan-color
 
-(in-package :color-names)
+(in-package :color-name-setup)
 
 ;; I hope this way of doing it won't keep multiple copies around.
-(defmacro define-colors (colors)
-  (let ((defs
-	 (loop :for x :in colors
-	    :collect `(define-constant ,(car x) ,(cdr x))
-	    :collect `(export ',(car x)))))
-    `(progn
-       ,@defs)))
+;; Note we have to prefix everything in the expansion, because the ‘color-names’
+;; package can't use the ‘CL’ package.
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro define-colors (colors)
+    (let ((defs
+	    (loop :for x :in colors
+		  :collect `(dlib:define-constant ,(car x) ,(cdr x))
+		  :collect `(cl:export ',(car x)))))
+      `(progn
+	 ,@defs))))
 
 ;; Keep this around in case we ever want to regenerate this file.
 #+nil-sometimes-gets-pushed-on-features
@@ -55,7 +55,12 @@
 ;; these poorly chosen color points. Although perhaps one would have to find a
 ;; resonable way to exclude the background from certain subjects.
 
-(define-colors (
+(defpackage :color-names
+  (:documentation "Names for your sensations."))
+
+(in-package :color-names)
+
+(color-name-setup:define-colors (
 (snow                     . #(:rgb 1 50/51 50/51))
 (ghost-white              . #(:rgb 248/255 248/255 1))
 (GhostWhite               . #(:rgb 248/255 248/255 1))
