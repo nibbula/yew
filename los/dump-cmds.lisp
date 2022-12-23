@@ -16,16 +16,17 @@
   "Dump data bytes."
   (when (and (not line-length) *terminal*)
     (setf line-length (terminal-window-columns *terminal*)))
-  (if (not files)
-      (dump *standard-input*
-	    :line-length line-length
-	    :show-offset show-offset
-	    :start start :end end
-	    :style (keywordify style))
-      (loop :for f :in files :do
-	 (dump f :line-length line-length
-	       :show-offset show-offset
-	       :start start :end end
-	       :style (keywordify style)))))
+  (lish:with-files-or-input (files)
+    (if (not files)
+	(dump *standard-input*
+	      :line-length line-length
+	      :show-offset show-offset
+	      :start start :end end
+	      :style (keywordify style))
+	(loop :for f :in files :do
+	  (dump f :line-length line-length
+		  :show-offset show-offset
+		  :start start :end end
+		  :style (keywordify style))))))
 
 ;; End

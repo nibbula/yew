@@ -77,27 +77,9 @@ traditional ‘ls’ command."
       (setf (getf args :nice-table) t)))
   (when nice-table
     (setf args (append args '(:collect t))))
-  ;; Default to collecting if the receiver accepts
-  ;; (when (and (not collect-supplied-p)
-  ;; 	     (not nice-table-supplied-p))
-  ;;   (cond
-  ;;     ((lish:accepts 'sequence)
-  ;;      (setf (getf args :collect) t))
-  ;;     ((lish:accepts 'table:table)
-  ;;      (setf (getf args :nice-table) t))))
   (flet ((thunk ()
-	   (typecase lish:*input*
-	     (null
-	      (apply #'list-files args))
-	     ;; @@@ It might be nice if we could say collection of
-	     ;; nos:path-designator, but I think the only way to do it
-	     ;; efficiently, would be as typed containers.
-	     (nos:path-designator
-	      (apply #'list-files :files (list lish:*input*) args))
-	     (cons
-	      (apply #'list-files :files lish:*input* args))
-	     (t ;; just pretend we can handle it?
-	      (apply #'list-files :files lish:*input* args)))))
+	   (lish:with-files-or-input (files)
+	     (apply #'list-files :files files args))))
     (if (or collect nice-table)
 	(setf lish:*output*
 	      (let ((result (thunk)))

@@ -17,8 +17,11 @@
     :help "File systems to report on."))
   "Show how much disk is free. Lists mounted filesystems and shows usage
 statisics for each one."
+  :accepts '(or string pathname list)
   (setf lish:*output*
-	(df :files files :include-dummies include-dummies :show-type show-type
-	    :omit-header omit-header :visual visual)))
+	(lish:with-files-or-input (files)
+	  (df :files files
+	      :include-dummies include-dummies :show-type show-type
+	      :omit-header omit-header :visual visual))))
 
 ;; End
