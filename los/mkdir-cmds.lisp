@@ -11,8 +11,9 @@
     :help "True to make any needed parent directories.")
    (verbose boolean :short-arg #\v :help "Describe what we're doing.")
    (directories pathname :repeating t :help "Directory to create."))
-  :keys-as keys
+  :args-as args
   "Make directories."
-  (apply #'mkdir keys))
+  (lish:with-files-or-input (directories :arg-list args))
+    (apply #'mkdir args))
 
 ;; End
