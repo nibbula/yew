@@ -1565,7 +1565,7 @@ The grammar is something like:
 			  ((and (> (length tag-str) 3)
 				(string= (subseq tag-str 0 3) "BG-"))
 			   (push (keywordify (subseq (string tag) 3)) bg))
-			  ((member tag *simple-colors*)
+			  ((known-color-name-p tag)
 			   ;; An un-prefixed color is a foreground color.
 			   (push tag fg))
 			  ((member tag *known-attrs*)
