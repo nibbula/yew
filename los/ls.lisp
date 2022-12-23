@@ -6,7 +6,7 @@
   (:documentation "This is a command I type too much.")
   (:use :cl :dlib :dlib-misc :opsys :dtime :terminal :terminal-ansi :grout
 	:table :table-print :terminal-table :ochar :fatchar :fatchar-io :theme
-        :style :magic :collections)
+        :style :magic :collections :result)
   (:export
    #:!ls
    #:ls
@@ -83,7 +83,7 @@ regarding ‘ls-state-signal-errors’."
   nice-table)		; Keep the result table around
 (defparameter *ls-state* nil)
 
-(defclass file-item ()
+(defclass file-item (file-result)
   ((name
     :initarg :name #| :accessor file-item-name |#
     :documentation "Name of the file, likely without a directory.")
@@ -97,6 +97,10 @@ regarding ‘ls-state-signal-errors’."
   (with-slots (name directory) object
     (print-unreadable-object (object stream :type t)
       (format stream "~a ~a" directory name))))
+
+(defmethod file-result-os-pathname ((result file-item))
+  (os-pathname (path-append (file-item-directory result)
+			    (file-item-name result))))
 
 (defclass file-item-with-info (file-item)
   ((info
