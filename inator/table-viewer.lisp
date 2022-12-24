@@ -536,15 +536,16 @@ This can be quicker for large tables.")
 		(tt-move-to-col (+ x 2))
 		(setf output-x 2))
 
-	      ;; Output the column separator
-	      (when (not first-col)
-		(when (in-view renderer)
-		  (incf (output-x renderer) sep-len)
-		  (tt-write-string separator)))
-
 	      ;; Output the cell
 	      (when (and (>= col-num (table-point-col start))
 			 (< output-x (- *max-width* 1 sep-len)))
+
+		;; Output the column separator
+		(when (/= col-num (table-point-col start))
+		  (when (in-view renderer)
+		    (incf (output-x renderer) sep-len)
+		    (tt-write-string separator)))
+
 		(table-output-cell renderer table cell
 				   nil ;; bogus width
 				   nil ;; bogus justification
