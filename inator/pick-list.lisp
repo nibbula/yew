@@ -193,7 +193,7 @@ The function receives a 'pick' as an argument."))
 	  (list *pick-list-keymap* *default-inator-keymap*))))
 
 (defmethod run ((pick pick) &rest keys &key list &allow-other-keys)
-  (declare (ignore keys))
+  (declare (ignorable keys))
   (when (not list)
     (return-from run nil))
   (with-terminal ()
@@ -587,7 +587,7 @@ The function receives a 'pick' as an argument."))
   (:documentation "Delete the picker."))
 
 (defmethod delete-pick ((pick pick))
-  (declare (ignore pick))
+  (declare (ignorable pick))
   ;; Don't do anything.
   (tt-move-to (- (tt-height) 2) 0))
 
