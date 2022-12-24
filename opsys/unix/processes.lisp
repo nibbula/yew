@@ -521,7 +521,7 @@ OUT-STREAM. See pipe-program. Return an output stream and a process ID."
   (nice-level	   0 :type integer)
   usage
   command
-  (args #() :type vector))
+  (args #() #|:type vector |#))
 
 (defvar *system-process-type* 'unix-process
   "Type of system specific process information.")
