@@ -572,7 +572,7 @@ symbols, :all to show internal symbols too."
 	;; For the most part this shouldn't be a problem, but it could be weird
 	;; if we call describe-class from inside a compilation which is building
 	;; that class. I wonder how we could detect if that could be so.
-	(finalize-inheritance class))
+	(ignore-errors (finalize-inheritance class)))
       (grout-print-table
        (case type
 	 (:struct
