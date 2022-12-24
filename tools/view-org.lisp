@@ -336,12 +336,12 @@ dashes (a.k.a. #\\hyphen-minus), convert it to the symbol |-|."
 			       0 (1- (olength trimmed-line)))))
 	      (read-table-line (table current) trimmed-line))))
       (when line
-	(when (not (table current))
-	  (setf (table current)
-		(make-table-from nil :column-names line))
-	  (setf (container-data (table current))
-		;; (nconc (container-data table) line)
-		(append (container-data (table current)) (list line))))))))
+	(if (not (table current))
+	    (setf (table current)
+		  (make-table-from nil :column-names line))
+	    (setf (container-data (table current))
+		  ;; (nconc (container-data table) line)
+		  (append (container-data (table current)) (list line))))))))
 
 #|
 (defun maybe-add-table (state)
