@@ -2,13 +2,14 @@
 ;;; dgray.lisp - Thinnest portability wrapper around Gray streams.
 ;;;
 
-#-(or sbcl allegro cmu clisp ecl mocl clasp openmcl lispworks abcl genera
-      mezzano)
+ #-(or sbcl clisp ecl openmcl allegro cmu)
 (error "We don't know how to use gray streams on ~s." (lisp-implementation-type))
 
-#+(or ecl clasp)
 (eval-when (:compile-toplevel :load-toplevel :execute)
-  (gray::redefine-cl-functions))
+  #+(or cmu genera) (require :gray-streams)
+  #+allegro (unless (fboundp 'excl:stream-write-string)
+	      (require "streamc.fasl"))
+  #+(or ecl clasp) (gray::redefine-cl-functions))
 
 (macrolet
     ((stupid ()
