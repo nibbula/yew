@@ -460,7 +460,7 @@
 
 (defun class-node-contents (class)
   (when (not (mop-call "class-finalized-p" class))
-    (mop-call "finalize-inheritance" class))
+    (ignore-errors (mop-call "finalize-inheritance" class)))
   (list
    (make-instance
     'object-node
