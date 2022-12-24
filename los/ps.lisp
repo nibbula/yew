@@ -344,7 +344,30 @@ owned by ‘user’."
 				:key #'unix-process-text-size)))
 	   (out-list (filter proc-list matching user))
 	   table)
-      (setf table (make-table-from out-list))
+      (setf table (make-table-from
+		   #-linux out-list
+		   #+linux
+		   (progn
+		     (omapn (_ (setf (uos:unix-process-args _)
+				     (coerce (uos:unix-process-args _) 'list)))
+			    out-list)
+		     out-list)
+		   #+linux
+		   :columns
+		   `((:name "PID"  :type number)
+		     (:name "PPID" :type number)
+		     (:name "GID"  :type number)
+		     (:name "UID"  :type number)
+		     (:name "TTY")
+		     (:name "Text" :type number
+		      :format ,#'ps-print-size-with-width)
+		     (:name "RSS" :type number
+		      :format ,#'ps-print-size-with-width)
+		     (:name "CPU%" :type number)
+		     (:name "Nice" :type number)
+		     (:name "Usage")
+		     (:name "Command")
+		     (:name "Args" :format "~*~{~a~^ ~}"))))
       #+unix
       (progn
 	(let ((i 0))
