@@ -87,6 +87,12 @@ See table-print:table-format-cell.")
 the decision. Format can override this."))
   (:documentation "A description of a table column."))
 
+(defmethod print-object ((object column) stream)
+  "Print a column to ‘stream’."
+  (with-slots (name type) object
+    (print-unreadable-object (object stream :type t)
+      (format stream "~s ~a" name type))))
+
 (defun make-column (&rest initargs)
   "Make a column instance."
   (apply #'make-instance 'column initargs))
