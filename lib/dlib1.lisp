@@ -51,6 +51,8 @@
    #:with-lines
    #:get-lines
    #:file-lines
+   #:read-binary-ilne
+   #:get-binary-lines
    #:copy-package
    #:fancy-read-from-string
    #:safe-read-from-string
@@ -2462,6 +2464,42 @@ FILE-OR-STREAM can be a stream or a pathname or namestring."
 	  (stream-loop stream)))))
 
 (defalias 'file-lines 'get-lines)
+
+(defun read-binary-line (stream &key eof-error-p eof-value
+				  buffer (code (char-code #\newline)))
+  "Read a line from a binary stream and return it. ‘code’ is the byte value of
+the newline which defaults to the char-code of #\newline. If given, ‘buffer’ is
+an adjustable array of '(unsigned-byte 8) which is returned. When passing the
+return value back as the buffer, remember to make a copy first. If no characters
+are read before the end of file, return ‘eof-value’ or signal an end-of-file
+error based on ‘eof-error-p’."
+  (let ((line (or (and buffer (prog1 buffer (setf (fill-pointer buffer) 0)))
+		  (make-array 80 :element-type '(unsigned-byte 8)
+				 :fill-pointer 0
+				 :adjustable t))))
+    ;; @@@ This probably foolishly relies on the streams buffering, so ends up
+    ;; potentially doing a double, triple, or quadruple copy.
+    (loop :with b
+	  :while (and (setf b (read-byte stream nil))
+		      (not (eql b code)))
+	  :do (vector-push-extend b line))
+    (if (plusp (length line))
+	line
+	(if eof-error-p
+	    (error 'end-of-file :stream stream)
+	    eof-value))))
+
+(defun get-binary-lines (file-or-stream)
+  "Return a list of the lines read from ‘file-or-stream’. If ‘file-or-stream’ is
+a stream, it must have an element-type of (unsigned-byte 8)."
+  (flet ((stream-loop (stream)
+	   (loop :with l
+	      :while (setf l (read-binary-line stream :buffer l))
+	      :collect (copy-seq l))))
+    (if (streamp file-or-stream)
+	(stream-loop file-or-stream)
+	(with-open-file (stream file-or-stream :element-type '(unsigned-byte 8))
+	  (stream-loop stream)))))
 
 (defun package-copy-name (package &optional (prefix "COPY-OF-"))
   "Pick a stupid name for a copied package."
