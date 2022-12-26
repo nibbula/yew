@@ -288,23 +288,41 @@ user, pid, ppid, size, command."
   "Filter out processes from ‘list’ which don't match ‘matching’ and are not
 owned by ‘user’."
   #+windows (declare (ignore user)) ;; @@@ fix opsys to get the user
-  (let ((matching-num (or (and (integerp matching) matching)
-			  (ignore-errors (parse-integer matching)))))
-    #+unix
-    (when user
-      (let ((uid (if (numberp user) user (user-id :name user))))
-	(setf list (remove-if-not (_ (= uid _)) list :key #'process-uid))))
-    (if matching
-	(remove-if-not
-	 (lambda (p)
-	   (or (and matching-num
-		    (= matching-num (process-id p)))
-	       (and (stringp matching)
-		    (some (_ (search matching _ :test #'equalp))
-			  (append (list (process-user p))
-				  (list (process-name p)))))))
-	 list)
-	list)))
+  (labels ((matching-one (p match)
+	     (typecase match
+	       (integer
+		(= match (process-id p)))
+	       (string
+		(some (_ (search match _ :test #'equalp))
+		      (append (list (process-user p))
+			      (list (process-name p)))))))
+	   (matching-p (p)
+	     (typecase matching
+	       (list
+		(some (_ (matching-one p _)) matching))
+	       ((or string integer)
+		(matching-one p matching))
+	       (t
+		(matching-one p (princ-to-string matching))))))
+      #+unix
+      (when user
+	(let ((uid (if (numberp user) user (user-id :name user))))
+	  (setf list (remove-if-not (_ (= uid _)) list :key #'process-uid))))
+
+      (if matching
+	  (progn
+	    (let ((as-int
+		    (typecase matching
+		      (string (ignore-errors (parse-integer matching)))
+		      (list
+		       (let ((m (mapcar
+				 (_ (ignore-errors (parse-integer _)))
+				 matching)))
+			 (and (every #'integerp m) m))))))
+	      (when as-int
+		(setf matching as-int))
+	      (remove-if-not #'matching-p list)))
+	  list)))
 
 (defun ps-short (&key matching show-kernel-processes (print t) user)
   "Process status: Reformat the output of the \"ps\" command."

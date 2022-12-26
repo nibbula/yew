@@ -19,7 +19,7 @@
    (quiet boolean :short-arg #\q :help "True to suppress printing output."))
   "Process status."
   (setf lish:*output* (describe-processes
-		       :matching matching
+		       :matching (or matching lish:*input*)
 		       :show-kernel-processes show-kernel-processes
 		       :user user :quiet quiet :long long)))
 
