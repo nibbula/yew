@@ -22,9 +22,15 @@
 (lish:defcommand slurp
   ((files pathname :repeating t :help "Name of a file to slurp.")
    (binary boolean :short-arg #\b
-   :help "Slurp as bytes. Return an array of (unsigned-byte 8)."))
+   :help "Slurp as bytes. Return an array of (unsigned-byte 8).")
+   (lines boolean :short-arg #\l :help "Slurp as lines."))
   "Convert input to return values. If no files are given read *standard-input*."
-  (let* ((slurp-func (if binary #'slurp-binary #'slurp))
+  (let* ((slurp-func
+	   (cond
+	     ((and lines binary) #'get-binary-lines)
+	     ((and lines) #'get-lines)
+	     (binary #'slurp-binary)
+	     (t #'slurp)))
 	 (count 0)
 	 (result
 	   (if files
