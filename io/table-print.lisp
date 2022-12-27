@@ -79,15 +79,16 @@ make the table in the first place. For that you want the TABLE package.")
 
 (defgeneric table-format-cell (renderer table cell row column
 			       &key width justification use-given-format)
-  (:documentation "Return cell with any formatting applied. If use-given-format
-is NIL, don't use the formatting given in the table. USE-GIVEN-FORMAT should
-default to T. If width is given, use that as the field width. If justification
+  (:documentation
+   "Return ‘cell’ with any formatting applied. If ‘use-given-format’ is NIL,
+don't use the formatting given in the table. ‘use-given-format’ should default
+to T. If ‘width’ is given, use that as the field width. If ‘justification’
 is given, try to use that as the justification.
 
-Table cell formmating functions should accept CELL and WIDTH, and should be
-able accept WIDTH as NIL, to indicate no width limitation. Also, formmating
+Table cell formmating functions should accept ‘cell’ and ‘width’, and should be
+able accept ‘width’ as NIL, to indicate no width limitation. Also, formmating
 strings should be alble to be prepended with ~* to ignore the width argument.
-These are given in the FORMAT slot of a TABLE:COLUMN."))
+These are given in the ‘format’ slot of a ‘table:column’."))
 
 (defgeneric table-output-column-titles (renderer table titles
 					&key sizes &allow-other-keys)
@@ -215,11 +216,6 @@ function."
         :do
         (setf size (elt sizes i))
         (assert (not (consp size)) () "Size shouldn't be a list anymore.")
-        ;; (setf width (if (listp size) (car size) size)
-        ;; 	     justification (if (listp size)
-        ;; 			       (cadr size)
-        ;; 			       (table-output-column-type-justification
-        ;; 				renderer table (column-type col))))
         (setf width size
 	      justification (or (column-align col)
 				(table-output-column-type-justification
@@ -242,7 +238,6 @@ function."
   ;; probably shouldn't be used anymore, and can be removed eventually.
   ;; (assert (not (consp cell)) () "Cell shouldn't be a list anymore.")
   (display-length (table-format-cell renderer table
-				     ;; (if (listp cell) (car cell) cell)
 				     cell
 				     nil column
 				     :use-given-format use-given-format)))
@@ -265,14 +260,9 @@ sizes."
 			 :use-given-format nil)
 			0))
 	       sizes)
-	 ;; (dbugf :tv "col ~s ~s ~s~%" (column-name col)
-	 ;; 	(table-output-cell-display-width
-	 ;; 	 renderer table (column-name col) col-num
-	 ;; 	 :use-given-format nil))
 	 (incf col-num))
        (table-columns table))
       (setf sizes (nreverse sizes))
-      ;; (dbugf :tv "zeroth round  ~s~%" sizes)
       (when (zerop col-num)
 	(return #()))
 
@@ -282,7 +272,6 @@ sizes."
 			      :fill-pointer (length sizes)
 			      :adjustable t
 			      :initial-contents sizes))
-      ;; (dbugf :tv "first round  ~s~%" sizes)
       (omapn
        (lambda (row)
 	 (setf col-num 0)
@@ -300,11 +289,9 @@ sizes."
 	      (incf col-num))
 	    row)))
        table)
-      ;; (dbugf :tv "second round ~s~%" sizes)
       sizes)))
 
 (defmethod table-output-sizes (renderer table)
-  ;;(dbugf :tv "Default table-output-sizes~%")
   (default-table-output-sizes renderer table))
 
 ;; Default method which does nothing.
@@ -340,7 +327,7 @@ sizes."
 ;; This is just one possible way of many.
 (defmethod output-table (table renderer destination
 			 &key long-titles print-titles max-width
-			   &allow-other-keys)
+			 &allow-other-keys)
   "Output a table."
   (let* ((*long-titles* long-titles)
 	 (*print-titles* print-titles)
@@ -353,30 +340,6 @@ sizes."
 				(mapcar #'column-name (table-columns table))
 				:sizes sizes)
     (omapn (lambda (row)
-	     ;; (table-output-start-row renderer table)
-	     ;; (setf col-num 0)
-	     ;; (omapn (lambda (cell)
-	     ;; 	      (when (not (zerop col-num))
-	     ;; 		(table-output-column-separator renderer table))
-	     ;; 	      (table-output-cell
-	     ;; 	       renderer table cell
-	     ;; 	       ;;(table-output-cell-display-width renderer table cell)
-	     ;; 	       ;; Just in case the row size changed.
-	     ;; 	       (if (< col-num (length sizes))
-	     ;; 		   (aref sizes col-num)
-	     ;; 		   (olength cell))
-	     ;; 	       (if (< col-num (length (table-columns table)))
-	     ;; 		   (table-output-column-type-justification
-	     ;; 		    renderer table
-	     ;; 		    (column-type
-	     ;; 		     (elt (table-columns table) col-num)))
-	     ;; 		   :left)
-	     ;; 	       row-num col-num)
-	     ;; 	      (incf col-num))
-	     ;; 	    row)
-	     ;; (table-output-end-row renderer table row-num)
-	     ;; (table-output-row-separator renderer table row-num :sizes sizes)
-	     ;; (incf row-num))
 	     (table-output-row renderer table row row-num :sizes sizes))
 	   table)
     (table-output-footer renderer table :sizes sizes)))
@@ -404,18 +367,9 @@ sizes."
      :do
      (setf size (aref sizes i)
 	   just (or (column-align (oelt (table-columns table) i)) :left))
+     ;; @@@ Someday we can get rid of these asserts here and the rest
      (assert (not (consp size)) () "Size shouldn't be a list anymore.")
-     ;; (if (listp (aref sizes i))
-     ;; 	 (setf size (car (aref sizes i))
-     ;; 	       just (cadr (aref sizes i)))
-     ;; 	 (setf size (aref sizes i)
-     ;; 	       just :left))
      (assert (not (consp title)) () "Title shouldn't be a list anymore.")
-     ;; (if (listp title)
-     ;; 	 (setf str (first title)
-     ;; 	       fmt (if (eql just :right) "~v@a" "~va"))
-     ;; 	 (setf str title
-     ;; 	       fmt "~va"))
      (setf str title
 	   fmt (if (eql just :right) "~v@a" "~va"))
      (format t (s+ fmt " | ")
@@ -461,9 +415,7 @@ sizes."
     (loop
        :for s :across sizes :do
        (assert (not (consp s)) () "Size shouldn't be a list anymore.")
-       (format t "~v,,,va+" (+ 2 #| one space of padding on either side |#
-			       ;; (if (listp s) (car s) s))
-			       s)
+       (format t "~v,,,va+" (+ 2 s) ;; One space of padding on either side
 	       #\- #\-))
     (terpri)))
 
@@ -472,22 +424,11 @@ sizes."
   "Output the bottom of the table."
   (table-output-row-separator renderer table nil :width width :sizes sizes))
 
-;; @@@ or should it be called table-output, to be orthogonal?
-;; (defmethod output-table (table renderer destination
-;; 			  &key long-titles print-titles max-width
-;; 			  &allow-other-keys)
-;;   "Output a table."
-;;   (declare (ignore long-titles print-titles max-width)))
-
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Plain text table
 
 (defclass text-table-renderer (table-renderer)
-  (
-   ;; (stream
-   ;;  :initarg :stream :accessor text-table-renderer-stream
-   ;;  :documentation "The stream to output to.")
-   (prefix
+  ((prefix
     :initarg :prefix :accessor text-table-renderer-prefix
     :initform "" :type string
     :documentation "Prefix for rows.")
@@ -516,7 +457,6 @@ sizes."
 (defmethod table-output-column-titles ((renderer text-table-renderer)
 				       table titles &key sizes)
   "Output all the column titles."
-  ;; (declare (ignore table))
   (with-slots (separator cursor horizontal-line-char) renderer
     (setf cursor 0)
     (let ((sep-len (display-length separator))
@@ -530,16 +470,9 @@ sizes."
 	 :do
 	 (assert (not (consp (aref sizes i))) ()
 		 "Size shouldn't be a list anymore")
-	 ;; (setf size (car (aref sizes i))
-	 ;;       just (cadr (aref sizes i)))
 	 (setf size (aref sizes i)
 	       just (column-align (oelt (table-columns table) i)))
 	 (assert (not (consp col)) () "Column title shouldn't be a list anymore")
-	 ;; (if (listp col)
-	 ;;     (setf str (first col)
-	 ;; 	   fmt (if (eql just :right) "~v@a" "~va"))
-	 ;;     (setf str col
-	 ;; 	   fmt "~va"))
 	 (setf str col
 	       fmt (if (eql just :right) "~v@a" "~va"))
 	 (format stream fmt size
@@ -557,9 +490,7 @@ sizes."
       (loop :with len = (length sizes) :and size
 	 :for i :from 0 :below len
 	 :do
-	 ;; (setf size (car (aref sizes i)))
 	 (setf size (aref sizes i))
-	 ;; (format stream "~v,,,va" size #\- #\-)
 	 (format stream "~v,,,va" size horizontal-line-char
 		 horizontal-line-char)
 	 (incf cursor size)
@@ -589,14 +520,7 @@ column number."
 		;; @@@ We shouldn't hit this case anymore, so eventually get rid
 		;; of it.
 		(list
-		 (assert nil () "We shouldn't have hit this case.")
-		 ;; (let ((width (find-if #'numberp field)))
-		 ;;   (if long-titles
-		 ;;       (if width
-		 ;; 	   (- (max (length (car field)) width 0))
-		 ;; 	   (length (car field)))
-		 ;;       (and width (- width))))
-		 )
+		 (assert nil () "We shouldn't have hit this case."))
 		(t nil))))
 
 ;; This is just for text-table-renderer based things.
@@ -705,21 +629,15 @@ to MAX-WIDTH."
       (if (and (eq justification :overflow)
 	       (> len width))
 	  (progn
-	    ;;(write-string field *destination*)
-	    ;;(format *destination* "~%~v,,,va" width #\space #\space)
 	    (write-string field stream)
 	    (format stream "~%~v,,,va" width #\space #\space)
 	    (setf cursor width))
 	  (typecase field
 	    (standard-object
-	     ;; (princ (osubseq field 0 (min width (olength field)))
-	     ;; 	    stream)
 	     (write (osubseq field 0 (min width (olength field)))
 		    :stream stream :escape nil :readably nil :pretty nil)
 	     (incf cursor (min width (olength field))))
 	    (t
-	     ;; (write-string (osubseq field 0 (min width (olength field)))
-	     ;; 		   stream)
 	     (write (osubseq field 0 (min width (olength field)))
 		    :stream stream :escape nil :readably nil :pretty nil)
 	     (incf cursor (min width (olength field)))))))))
@@ -736,8 +654,6 @@ PRINT-TITLES can be nil, to make the columns headings not print.
 
 MAX-WIDTH is the maximum width of the table. If necessary, the last column is
 resized to fit in this, and the whole row is trimmed to this."
-  ;; @@@ Setting the stream here is somewhat wrongish.
-  ;; (setf (text-table-renderer-stream renderer) destination)
   (let* ((column-names (and print-titles (column-name-list table)))
 	 (sizes (if column-names
 		    (coerce (column-name-sizes column-names long-titles)
@@ -754,7 +670,6 @@ resized to fit in this, and the whole row is trimmed to this."
 
     ;; Adjust column sizes by field data
     (text-table-adjust-sizes table renderer sizes max-width)
-    ;; (dbugf :tv "ttr sizes ~s~%" sizes)
 
     ;; Flip pre-set sizes, and force unset sizes to zero.
     ;; (format t "sizes = ~s~%" sizes) (finish-output)
@@ -773,27 +688,9 @@ resized to fit in this, and the whole row is trimmed to this."
        :do
        (assert (not (consp (car col))) ()
 	       "Column names shouldn't be lists anymore")
-       ;; (if (listp (car col))
-       ;; 	   (progn
-       ;; 	     (setf justification
-       ;; 		   (if (member (second (car col))
-       ;; 			       '(:right :wrap :overflow))
-       ;; 		       (second (car col))
-       ;; 		       ;; default to left justification
-       ;; 		       :left)
-       ;; 		   name (first (car col))))
-       ;; 	   (setf justification :left
-       ;; 		 name (car col)))
-       (setf #| justification
-             (or (column-align (oelt (table-columns table) i)) :left) |#
-	     name (car col))
+       (setf name (car col))
        (setf (aref sizes i)
-	     ;; (list (if all-zero
-	     ;; 	       (display-length name)
-	     ;; 	       (aref sizes i))
-	     ;; 	   justification)
-	     (if all-zero (display-length name) (aref sizes i))
-	     ))
+	     (if all-zero (display-length name) (aref sizes i))))
 
     (table-output-header renderer table)
 
@@ -803,18 +700,16 @@ resized to fit in this, and the whole row is trimmed to this."
 
     ;; Values
     (with-slots (cursor) renderer
-      (let (#|fmt|# cell-lines cell-col cell-width (row-num 0))
+      (let (cell-lines cell-col cell-width (row-num 0))
 	(omap
 	 #'(lambda (row)
 	     (let ((row-len (olength row))
 		   (column-num 0)
-		   #|cell|# size just)
+		   size just)
 	       (setf cursor 0)
 	       (table-output-start-row renderer table)
 	       (omap
 		#'(lambda (field)
-		    ;; (setf size (car (aref sizes column-num))
-		    ;; 	  just (cadr (aref sizes column-num)))
 		    (setf size (aref sizes column-num)
 			  just (or (column-align
 				    (oelt (table-columns table) column-num))
@@ -825,21 +720,14 @@ resized to fit in this, and the whole row is trimmed to this."
 						   (1+ size))
 			    cell-col cursor
 			    cell-width size
-			    field (car cell-lines))
-		      ;;(dbugf :tp "cell-col 0 ~s ~s~%" cell-col cell-lines)
-		      )
+			    field (car cell-lines)))
 		    (table-output-cell renderer table field size just
 				       row-num column-num)
-		    ;; (incf cursor (table-output-cell-display-width
-		    ;;  		  renderer table field column-num))
-		    ;; (incf cursor size)
-		    ;; (dbugf :tp "cursor ~s~%" cursor)
 		    (when (and (< column-num (1- row-len))
 			       (or (not max-width)
 				   (< cursor (1- max-width))))
 		      (write-string separator stream)
 		      (incf cursor (display-length separator)))
-		    ;; (dbugf :tp "cursor ~s~%" cursor)
 		    (incf column-num))
 		row)
 	       (when cell-lines
@@ -966,13 +854,8 @@ resized to fit in this, and the whole row is trimmed to this."
 
 (defmethod table-output-column-title ((renderer text-box-table-renderer)
 				      table title width justification column)
-  ;;(format *destination* "~va" width title)
-  ;; (table-format-cell renderer table title nil column
-  ;; 		     :width width :justification justification)
-  (table-output-cell renderer table
-		     (oelt title 0)
-		     width justification nil column)
-  )
+  (table-output-cell renderer table title
+		     width justification nil column))
 
 ;; @@@ resolve overlap between this and the text-table-renderer version
 (defmethod table-output-cell ((renderer text-box-table-renderer)
@@ -984,31 +867,18 @@ resized to fit in this, and the whole row is trimmed to this."
 				   :justification justification))
 	 (len (display-length field))
 	 (stream *destination*))
-    ;;(incf cursor len)
     (if (and (eq justification :overflow)
 	     (> len width))
 	(progn
-	  ;;(write-string field *destination*)
-	  ;;(format *destination* "~%~v,,,va" width #\space #\space)
 	  (write-string field stream)
-	  (format stream "~%~v,,,va" width #\space #\space)
-	  ;;(setf cursor width)
-	  )
+	  (format stream "~%~v,,,va" width #\space #\space))
 	(typecase field
 	  (standard-object
-	   ;; (princ (osubseq field 0 (min width (olength field)))
-	   ;; 	    stream)
 	   (write (osubseq field 0 (min width (olength field)))
-		  :stream stream :escape nil :readably nil :pretty nil)
-	   ;; (incf cursor (min width (olength field)))
-	   )
+		  :stream stream :escape nil :readably nil :pretty nil))
 	  (t
-	   ;; (write-string (osubseq field 0 (min width (olength field)))
-	   ;; 		   stream)
 	   (write (osubseq field 0 (min width (olength field)))
-		  :stream stream :escape nil :readably nil :pretty nil)
-	   ;; (incf cursor (min width (olength field)))
-	   )))))
+		  :stream stream :escape nil :readably nil :pretty nil))))))
 
 ;; (defmethod table-output-cell ((renderer text-box-table-renderer)
 ;; 			      table cell width justification row column)
@@ -1034,8 +904,6 @@ resized to fit in this, and the whole row is trimmed to this."
 
 (defmethod table-output-end-row ((renderer text-box-table-renderer) table n)
   (declare (ignore table n))
-  ;; (with-slots (box-style) renderer
-  ;;   (write-string (box-line-right box-style) *destination*))
   (with-slots (box-style) renderer
     (format *destination* "~a~%" (box-line-right (box-style-data box-style)))))
 
@@ -1145,9 +1013,47 @@ this row."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; @@@ This should eventually go away in favor of the object oriented code
-;; above. But we have to convert everything that uses it.
+(defun print-table (table &key (stream *standard-output*)
+			    (renderer (table-renderer))
+			    (long-titles t) (print-titles t) max-width)
+  "Print the table, defaulting to the text-table-renderer on *standard-output*."
+  (output-table table renderer stream
+		:long-titles long-titles
+		:print-titles print-titles
+		:max-width max-width)
+  (fresh-line stream)) ;; @@@ Is this right?
 
+(defun print-as-table (thing &key column-names table-type
+			       (stream *standard-output*)
+			       (renderer (table-renderer))
+			       (long-titles t) (print-titles t) max-width)
+  "Make a table from thing and print it like print-table."
+  (output-table (apply #'make-table-from thing
+		       `(,@(when column-names `(:column-names ,column-names))
+			 ,@(when table-type `(:type ,table-type))))
+		renderer stream
+		:long-titles long-titles
+		:print-titles print-titles
+		:max-width max-width))
+
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+;; @@@ This is deprecated and we should eventually get rid of it when there's
+;; no more old code that uses it.
+
+(defun nice-print-table (rows column-names
+			 &key (long-titles t) (print-titles t)
+			   (stream *standard-output*)
+			   (trailing-spaces t) max-width
+			   (separator " "))
+  (declare (ignore trailing-spaces separator))
+  (print-as-table rows :column-names column-names
+		       :long-titles long-titles
+		       :print-titles print-titles
+		       :stream stream
+		       :max-width max-width))
+
+#|
 ;; This is quite inefficient since it gets the whole data set in
 ;; one shot and then goes thru every datum twice. But it's nice for
 ;; small queries since it displays in a somewhat compact form.
@@ -1306,30 +1212,6 @@ resized to fit in this, and the whole row is trimmed to this."
 	 (setf cell-lines nil))
        (terpri stream)))
     (length rows))
-
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-(defun print-table (table &key (stream *standard-output*)
-			    (renderer (table-renderer))
-			    (long-titles t) (print-titles t) max-width)
-  "Print the table, defaulting to the text-table-renderer on *standard-output*."
-  (output-table table renderer stream
-		:long-titles long-titles
-		:print-titles print-titles
-		:max-width max-width)
-  (fresh-line stream)) ;; @@@ Is this right?
-
-(defun print-as-table (thing &key column-names table-type
-			       (stream *standard-output*)
-			       (renderer (table-renderer))
-			       (long-titles t) (print-titles t) max-width)
-  "Make a table from thing and print it like print-table."
-  (output-table (apply #'make-table-from thing
-		       `(,@(when column-names `(:column-names ,column-names))
-			 ,@(when table-type `(:type ,table-type))))
-		renderer stream
-		:long-titles long-titles
-		:print-titles print-titles
-		:max-width max-width))
+|#
 
 ;; EOF
