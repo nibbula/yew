@@ -205,7 +205,7 @@
 		       width justification nil column)
     |#
     (let* ((*trailing-spaces* t)
-	   (field (table-format-cell renderer table (oelt title 0) nil column
+	   (field (table-format-cell renderer table title nil column
 				     :width width
 				     :justification justification))
 	   ;; (len (display-length field))
