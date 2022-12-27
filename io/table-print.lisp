@@ -342,12 +342,12 @@ sizes."
 			 &key long-titles print-titles max-width
 			   &allow-other-keys)
   "Output a table."
-  (let ((*long-titles* long-titles)
-	(*print-titles* print-titles)
-	(*max-width* max-width)
-	(*destination* destination)
-	(row-num 0) #| (col-num 0) |#
-	(sizes (table-output-sizes renderer table)))
+  (let* ((*long-titles* long-titles)
+	 (*print-titles* print-titles)
+	 (*max-width* max-width)
+	 (*destination* destination)
+	 (row-num 0) #| (col-num 0) |#
+	 (sizes (table-output-sizes renderer table)))
     (table-output-header renderer table :sizes sizes)
     (table-output-column-titles renderer table
 				(mapcar #'column-name (table-columns table))
