@@ -44,18 +44,11 @@
 	 :for col :in titles
 	 :and i :from 0 :below (length sizes)
 	 :do
-	 ;; (setf size (car (aref sizes i))
-	 ;;       just (cadr (aref sizes i)))
 	 (assert (not (listp (aref sizes i))) ()
 		 "Size shouldn't be a list anymore")
 	 (setf size (aref sizes i)
 	       just (column-align (oelt (table-columns table) i)))
 	 (assert (not (listp col)) () "Column title shouldn't be a list anymore")
-	 ;; (if (listp col)
-	 ;;     (setf str (first col)
-	 ;; 	   fmt (if (eql just :right) "~v@a" "~va"))
-	 ;;     (setf str col
-	 ;; 	   fmt "~va"))
 	 (setf str col
 	       fmt (if (eql just :right) "~v@a" "~va"))
 	 (when has-underline
@@ -71,9 +64,7 @@
 		      (or (not *max-width*) (< cursor *max-width*)))
 	     (terminal-write-string stream separator)
 	     (incf cursor sep-len)))
-      ;; (when (or (not *max-width*) (< cursor (1- *max-width*)))
       (when (or (not *max-width*) (< cursor *max-width*))
-	;;(dbugf :termtab "Fuckler--- ~s ~s~%" cursor *max-width*)
 	(terminal-write-char stream #\newline))
 
       ;; Lines
@@ -82,15 +73,12 @@
 	(loop :with len = (length sizes) :and size
 	   :for i :from 0 :below len
 	   :do
-	   ;; (setf size (car (aref sizes i)))
 	   (setf size (aref sizes i))
-	   ;; (terminal-format stream "~v,,,va" size #\- #\-)
 	   (terminal-format stream "~v,,,va" size horizontal-line-char
 			    horizontal-line-char)
 	   (incf cursor size)
 	   (when (< i (1- len))
 	     (terminal-write-string stream separator)))
-	;; (when (or (not *max-width*) (< cursor (1- *max-width*)))
 	(when (or (not *max-width*) (< cursor *max-width*))
 	  (terminal-write-char stream #\newline))))))
 
@@ -161,7 +149,7 @@
   (declare (ignorable table cell width justification column))
   (with-slots (alternate-row-bg) renderer
     (terminal-color *destination*
-		    :default ;; nil
+		    :default
 		    (if (and row (zerop (mod row 2)))
 			nil
 			alternate-row-bg))
@@ -180,9 +168,7 @@
   (declare (ignore table width))
   (with-slots (box-color) renderer
     (terminal-color *destination* box-color nil)
-    (call-next-method)
-    ;;(write-string (box-style-separator box-style) *destination*)
-    ))
+    (call-next-method)))
 
 (defmethod table-output-end-row ((renderer terminal-box-table-renderer) table n)
   (declare (ignore table n))
@@ -192,27 +178,14 @@
 
 (defmethod table-output-column-title ((renderer terminal-box-table-renderer)
 				      table title width justification column)
-  ;;(format *destination* "~va" width title)
-  ;; (table-format-cell renderer table title nil column
-  ;; 		     :width width :justification justification)
   (with-slots (title-color) renderer
-    ;; (call-next-method)
-    #|
-    (table-output-cell renderer table
-		       ;; (span-to-fat-string
-		       ;; 	`(:fg :color ,title-color ,(oelt title 0)))
-		       (oelt title 0)
-		       width justification nil column)
-    |#
     (let* ((*trailing-spaces* t)
 	   (field (table-format-cell renderer table title nil column
 				     :width width
-				     :justification justification))
-	   ;; (len (display-length field))
-	   )
+				     :justification justification)))
       (terminal-color *destination* title-color nil)
       (write (char-util:simplify-string
 	      (osubseq field 0 (min width (olength field))))
 	     :stream *destination* :escape nil :readably nil :pretty nil))))
 
-;; EOF
+;; End
