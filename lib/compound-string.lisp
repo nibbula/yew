@@ -597,8 +597,53 @@ that has START and START-P and END and END-P."
 ;; @@@ This seems like it should be somewhere else.
 ;; Currently only RL uses this, or compound string at all.
 (defmethod terminal-write-string (tty (string compound-string) &key start end)
-  (when (or start end)
-    (error "I'm so very sorry but I don't support start or end yet!"))
-  (omapn (_ (terminal-write-string tty _)) (compound-string-pieces string)))
+  (cond
+    ((and start end)
+     (when (>= start end)
+       (return-from terminal-write-string nil))
+     (loop :with i = 0 :and len = 0
+       :for piece :in (compound-string-pieces string)
+       :do
+       (setf len (olength piece))
+       (cond
+	 ((and (< start i) (> end (+ i len)))
+	  (terminal-write-string tty piece))
+	 ((and (>= start i) (< start (+ i len)))
+	  (cond
+	    ((and (> end i) (<= end (+ i len)))
+	     (terminal-write-string tty piece
+				     :start (- start i)
+				     :end (- end i)))
+	    (t
+	     (terminal-write-string tty piece
+				    :start (- start i)))))
+	 ((and (> end i) (<= end (+ i len)))
+	  (terminal-write-string tty piece
+				 :end (- end i))))
+       (incf i len)))
+    (start
+     (loop :with i = 0 :and len = 0
+       :for piece :in (compound-string-pieces string)
+       :do
+       (setf len (olength piece))
+       (cond
+	 ((>= i start)
+	  (terminal-write-string tty piece))
+	 ((< start (+ i len))
+	  (terminal-write-string tty piece :start (- start i))))
+       (incf i len)))
+    (end
+     (loop :with i = 0 :and len = 0
+       :for piece :in (compound-string-pieces string)
+       :do
+       (setf len (olength piece))
+       (cond
+	 ((> end (+ i len))
+	  (terminal-write-string tty piece))
+	 ((and (> end i) (<= end (+ i len)))
+	  (terminal-write-string tty piece :end (- end i))))
+       (incf i len)))
+    (t
+     (omapn (_ (terminal-write-string tty _)) (compound-string-pieces string)))))
 
 ;; End
