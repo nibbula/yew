@@ -355,6 +355,7 @@
    #:signal-description
    #:signal-action
    #:set-signal-action
+   #:with-signal-handler
    #:with-signal-handlers
    #:with-signal-handlers*
    #:with-blocked-signals
