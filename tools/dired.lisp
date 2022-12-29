@@ -208,6 +208,7 @@
 		  (equal (nos:path-to-absolute full)
 			 (dired-directory last)))
 	     (quit o))
+	    #| This shouldn't be on a view command!!
 	    ;; Try to execute regular executable files?
 	    ((and (is-executable full)
 		  (eq :regular (file-info-type (file-info full))))
@@ -215,7 +216,7 @@
 	     (lish:shell-eval (lish::expr-from-args (list full))
 			      :no-expansions t)
 	     (tt-clear)
-	     (redraw o))
+	     (redraw o)) |#
 	    (t
 	     ;; Otherwise, make a new one.
 	     (if raw
