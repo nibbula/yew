@@ -87,6 +87,7 @@ traditional ‘ls’ command."
 	   (lish:with-files-or-input (files)
 	     (apply #'list-files :files files args))))
     (if (or collect nice-table)
+	;; @@@ maybe we should flatten the results
 	(setf lish:*output* (thunk))
 	(thunk))))
 
