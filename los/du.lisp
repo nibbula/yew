@@ -294,6 +294,7 @@ use ‘*default-ouput-file*’."
     (apply #'nos:path-append path)))
 
 (defun get-path-device (path)
+  #-unix (declare (ignore path))
   #-unix nil
   ;; @@@ This is bad. We shouldn't have to do 2 ‘stat’ calls.
   ;; Figure out a way to do it cleanly.
@@ -471,6 +472,7 @@ use ‘*default-ouput-file*’."
 
 (defparameter *block-size* 512)
 
+#+unix
 (defun file-seen (info)
   "Return true if the file in ‘info’ has already been seen, otherwise mark the
 file as seen if and return NIL."
