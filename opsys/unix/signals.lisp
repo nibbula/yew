@@ -282,12 +282,12 @@ nearly want to put in in separate file.
     ))
   
 (defun handler-to-action (handler)
-  "Return the action keyword for the posix HANDLER value."
+  "Return the action keyword for the POSIX ‘handler’ value."
   (let ((h (assoc handler *handler-actions*)))
     (if h (cdr h) handler)))
 
 (defun signal-action (signal)
-  "Return the action that given SIGNAL triggers."
+  "Return the action that ‘signal’ triggers."
   (with-foreign-object (old-action '(:struct foreign-sigaction))
     (syscall (sigaction signal (null-pointer) old-action))
     (let* ((ptr (foreign-slot-value
@@ -314,10 +314,19 @@ nearly want to put in in separate file.
 ;; 				     (:pointer (:struct ucontext_t))
 ;; 	     )
 
-(defun set-signal-action (signal action)
-  "Set the ACTION that given SIGNAL triggers. SIGNAL is a unix signal number
-and ACTION is C callback, as would be defined by cffi:defcallback, or one of
-the keywords: :DEFAULT :IGNORE :HOLD."
+(defun set-action-mask (foreign-action masked)
+  "Set the masked signal set in ‘foreign-action’ to the list in ‘masked’."
+  (let ((mask (foreign-slot-pointer foreign-action
+				    '(:struct foreign-sigaction) 'sa_mask)))
+    (sigemptyset mask)
+    (loop :for sig :in masked
+	  :do (sigaddset mask sig))))
+
+(defun set-signal-action (signal action &key masked)
+  "Set the ‘action’ that given ‘signal’ triggers. ‘signal’ is a unix signal
+number and ‘action’ is C callback, as would be defined by cffi:defcallback,
+or one of the keywords: :DEFAULT :IGNORE :HOLD. ‘masked’ is a list of signals
+to block in the signal handler."
   (let ((handler (action-to-handler action)))
     (with-foreign-object (act '(:struct foreign-sigaction))
       (with-foreign-slots ((sa_handler sa_mask sa_flags)
@@ -326,23 +335,40 @@ the keywords: :DEFAULT :IGNORE :HOLD."
 			     (make-pointer handler)
 			     handler)
 	      sa_flags 0)
-	(sigemptyset (foreign-slot-pointer
-		      act
-		      '(:struct foreign-sigaction) 'sa_mask)))
+	(set-action-mask act masked))
       (syscall (sigaction signal act (null-pointer))))))
 
 (defsetf signal-action set-signal-action
   "Set the ACTION that given SIGNAL triggers.")
+
+(defmacro with-signal-handler ((signal action &key masked) &body body)
+  "Evaluate the ‘body’ with the handler for ‘signal’ set to ‘action’,
+with the handler restored to their orignal values on return. ‘mask’ is a list
+of signals to block while in the handler. ‘action’ is as would be passed
+to ‘set-signal-action’. This preserves the mask and flags of the old action."
+  (with-names (old-action %signal %action %masked)
+    `(let* ((,%signal ,signal)
+	    (,%action ,action)
+	    (,%masked ,masked))
+       (with-foreign-objects ((,old-action '(:struct foreign-sigaction)))
+	 (syscall (sigaction ,%signal (null-pointer) ,old-action))
+	 (unwind-protect
+              (progn
+		(set-signal-action ,%signal ,%action :masked ,%masked)
+		,@body)
+	   (syscall (sigaction ,%signal ,old-action (null-pointer))))))))
 
 (defun set-handlers (handler-list)
   (loop :for (signal . action) :in handler-list :do
      ;;(format t "set-handler ~s ~s~%" signal action)
      (set-signal-action signal action)))
 
+;; @@@ This and the other with-signal-handlers don't allow specifying the
+;; mask and flags, but _worse_ lose the mask and flags of the old handlers.
 (defmacro with-signal-handlers-from-value ((handler-list) &body body)
-  "Evaluate the BODY with the signal handlers set as in HANDLER-LIST, with the
-handers restored to their orignal values on return. HANDLER-LIST is a list
-of (signal . action), as would be passed to SET-SIGNAL-ACTION."
+  "Evaluate the ‘body’ with the signal handlers set as in ‘handler-list’,
+with the handlers restored to their orignal values on return. ‘handler-list’
+is a list of (signal . action), as would be passed to ‘set-signal-action’."
   (with-names (saved-list)
     `(let ((,saved-list
 	    (loop
@@ -361,9 +387,9 @@ of (signal . action), as would be passed to SET-SIGNAL-ACTION."
 	   (set-handlers ,saved-list))))))
 
 (defmacro with-signal-handlers (handler-list &body body)
-  "Evaluate the BODY with the signal handlers set as in HANDLER-LIST, with the
-handers restored to their orignal values on return. HANDLER-LIST is a list
-of (signal . action), as would be passed to SET-SIGNAL-ACTION."
+  "Evaluate the ‘body’ with the signal handlers set as in ‘handler-list’,
+with the handlers restored to their orignal values on return. ‘handler-list’
+is a list of (signal . action), as would be passed to ‘set-signal-action’."
   (with-names (evaled-list)
     `(let ((,evaled-list
 	    ;; fake eval the list
@@ -376,9 +402,9 @@ of (signal . action), as would be passed to SET-SIGNAL-ACTION."
 	 ,@body))))
 
 (defmacro with-signal-handlers* (handler-list &body body)
-  "Evaluate the BODY with the signal handlers set as in HANDLER-LIST, with the
-handers restored to their orignal values on return. HANDLER-LIST is a list
-of (signal . action), as would be passed to SET-SIGNAL-ACTION."
+  "Evaluate the ‘body’ with the signal handlers set as in ‘handler-list’,
+with the handlers restored to their orignal values on return. ‘handler-list’
+is a list of (signal . action), as would be passed to ‘set-signal-action’."
   `(with-signal-handlers-from-value (,handler-list)
      ,@body))
 
