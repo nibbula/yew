@@ -15,7 +15,7 @@
 ;; This is a horrible situation. The Lisp ecosystem mostly sucks donkey ass.
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (when (find-package :png-read)
-    (add-feature :t-png-read)))
+    (d-add-feature :t-png-read)))
 
 #+t-png-read
 (defun png-load-stream (stream &key decode)
@@ -217,6 +217,6 @@
 (defmethod read-image-synopsis-format (file (format png-image-format))
   (read-png file :synopsis t))
 
-#+t-png-read (remove-feature :t-png-read)
+#+t-png-read (d-remove-feature :t-png-read)
 
 ;; EOF
