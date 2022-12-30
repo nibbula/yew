@@ -743,25 +743,26 @@ the current process."
 ;; Warning: very un-hygenic.
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defmacro with-priority-args ((user pid group) &body body)
-    `(let* ((args `((,,user  . ,+PRIO-USER+)
-		    (,,pid   . ,+PRIO-PROCESS+)
-		    (,,group . ,+PRIO-PGRP+)))
-	    (val (count-if-not #'null args :key #'car))
-	    who which)
-       (cond
-	((> val 1)
-	 (error "Please only supply one of USER, PID, or GROUP."))
-	((< val 1)
-	 (setf who (uos:getpid)
-	       which +PRIO-PROCESS+)
-	 ;;(error "Plese supply one of USER, PID, or GROUP.")
-	 )
-	(t
-	 (let* ((ww (find-if-not #'null args :key #'car)))
-	   (setf who (car ww)
-		 which (cdr ww)))))
-       ;; (format t "args = ~s~%who = ~s which = ~s~%" args who which)
-       ,@body)))
+    (with-names (args val)
+      `(let* ((,args `((,,user  . ,+PRIO-USER+)
+		       (,,pid   . ,+PRIO-PROCESS+)
+		       (,,group . ,+PRIO-PGRP+)))
+	      (,val (count-if-not #'null ,args :key #'car))
+	      who which)
+	 (cond
+	   ((> ,val 1)
+	    (error "Please only supply one of USER, PID, or GROUP."))
+	   ((< ,val 1)
+	    (setf who (uos:getpid)
+		  which +PRIO-PROCESS+)
+	    ;;(error "Plese supply one of USER, PID, or GROUP.")
+	    )
+	   (t
+	    (let* ((ww (find-if-not #'null ,args :key #'car)))
+	      (setf who (car ww)
+		    which (cdr ww)))))
+	 ;; (format t "args = ~s~%who = ~s which = ~s~%" args who which)
+	 ,@body))))
 
 (defun os-process-priority (&key user pid group)
   (let (result)
@@ -779,7 +780,8 @@ the current process."
 (defsetf os-process-priority (&rest args &key user pid group &allow-other-keys)
   (value)
   (declare (ignorable user pid group))
-  `(apply #'set-os-process-priority ,value (list ,@args)))
+;;  `(apply #'set-os-process-priority ,value (list ,@args)))
+  `(apply #'set-os-process-priority ,value ,args))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; job control thingys
