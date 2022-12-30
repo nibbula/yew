@@ -331,13 +331,21 @@ and move forward a character."
     (history-prev (history-context e))
     (use-hist e)))
 
-;; see also point-coords
+;; @@@ This is stupid. We should actually blow this thing up.
+(defun point-coords (e point)
+  "Return the line and column of ‘point’."
+  (let* ((spots `((,point . ())))
+	 (endings (editor-calculate-line-endings e :spots spots)))
+    ;;(dbugf :roo "in point-coords:~%spots = ~s endings = ~s~%" spots endings)
+    (values (cdr (assoc point spots))
+	    endings)))
 
 (defun index-of-coords (e line col)
+  "Return the buffer index of ‘line’ and ‘col’."
   (let* ((pair `(,line ,col))
 	 (spots `((,pair . ())))
 	 (endings (editor-calculate-line-endings e :column-spots spots)))
-    (dbugf :roo "in index-of-coords:~%spots = ~s endings = ~s~%" spots endings)
+    ;;(dbugf :roo "in index-of-coords:~%spots = ~s endings = ~s~%" spots endings)
     (values (cdr (assoc pair spots :test #'equal))
 	    endings)))
 
@@ -1145,15 +1153,6 @@ just before the cursor."
 	   (tmp-message e "~w is not bound"
 			(key-sequence-string key-seq)))))
     (setf (line-editor-keep-region-active e) t)))
-
-;; @@@ This is stupid. We should actually blow this thing up.
-(defun point-coords (e a-point)
-  "Return the line and column of point."
-  (let* ((spots `((,a-point . ())))
-	 (endings (editor-calculate-line-endings e :spots spots)))
-    (dbugf :roo "in point-coords:~%spots = ~s endings = ~s~%" spots endings)
-    (values (cdr (assoc a-point spots))
-	    endings)))
 
 (defsingle what-cursor-position (e)
   "Describe the cursor position."
