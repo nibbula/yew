@@ -164,6 +164,12 @@ anything important.")
    (mode-line
     :initarg :mode-line :accessor line-editor-mode-line :initform nil
     :documentation "ostring to show as a modeline.")
+   (gutter-char
+    :initarg :gutter-char :accessor gutter-char
+    ;; :initform (make-fatchar :c #\… :fg :black :attrs '(:bold :inverse))
+    :initform #\space
+    :documentation
+    "Character to fill the prompt gutter with, or NIL for no gutter.")
 
    ;; History
    ;;

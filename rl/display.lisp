@@ -118,90 +118,6 @@
 	(replace-buffer e (history-current (history-context e)))
 	(replace-buffer e ""))))
 
-#|
-;; Perhaps we could consider caching or memoizing this? Espeically when
-;; the buffer hasn't changed.
-
-(defun %calculate-line-endings (buffer start-column end-column spots
-				column-spots autowrap-delay)
-  "The real guts of it. See the generic function for documentation."
-  (let (endings
-	(col start-column)		; Start after the prompt
-	(char-width 0)
-	(last-col start-column)
-	(line 0)
-	(i 0)
-	c cc spot)
-    (dbugf :rl "endings start-column ~s~%" start-column)
-    ;; (if-dbugf (:rl)
-    ;; 	      (symbol-call :deblarg :debugger-wacktrace 20))
-    (flet ((set-spot (x)
-	     (when (and spots (setf spot (assoc i spots)))
-	       (dbugf :rl "set-spot ~a~%" x)
-	       (rplacd spot (cons line col)))
-	     (when (and column-spots
-			(setf spot (assoc `(,line ,col) column-spots
-					  :test #'equal)))
-	       (rplacd spot i))))
-      (loop :while (< i (olength buffer))
-	 :do
-	   (setf c (oelt buffer i)
-		 cc (if (fatchar-p c) (fatchar-c c) c))
-	   (if (char= cc #\newline)
-	       (progn
-		 (when (and (not autowrap-delay)
-			    (> (+ col char-width) end-column))
-		   (push (cons (1- i) last-col) endings)
-		   (setf last-col col)
-		   (setf col 0) ;; @@@ left-margin
-		   (incf line)
-		   (set-spot "newline wrap")
-		   )
-		 (push (cons (1- i) last-col) endings)
-		 (setf last-col col)
-		 ;; (when (< col (1- end-column))
-		 ;;   (incf col))		; just for the cursor?
-		 (set-spot "NL")
-		 (incf line)
-		 (setf col 0) ;; @@@ left-margin
-		 ;;(set-spot "NL")
-		 )
-	       (progn
-		 (setf char-width (display-length (oelt buffer i)))
-		 (if (> (+ col char-width) end-column)
-		     (progn
-		       (push (cons (1- i) last-col) endings)
-		       (when autowrap-delay
-			 (set-spot "wrap"))
-		       (setf last-col col)
-		       (setf col 0)
-		       (incf line)
-		       (when (not autowrap-delay)
-			 (set-spot "wrap"))
-		       (setf col char-width)
-		       )
-		     (progn
-		       (set-spot "normal")
-		       (setf last-col col)
-		       (incf col char-width)))))
-	   (incf i))
-
-      ;; Make sure we get the last one
-      (when (> (+ col char-width) end-column)
-	(push (cons (1- i) last-col) endings))
-
-      ;; Spot in empty buffer
-      (when (and spots (zerop (olength buffer)) (setf spot (assoc 0 spots)))
-	(rplacd spot (cons line col)))
-
-      ;; Spot after end
-      (when (> (+ col char-width) end-column)
-	(incf line)
-	(setf col 0)) ;; @@@ left-margin
-      (set-spot "End")
-      endings)))
-|#
-
 (defgeneric editor-calculate-line-endings (editor &key
 						    buffer
 						    start-column
@@ -224,9 +140,13 @@ buffer.
     ((editor line-editor)
      &key
        (buffer (buf editor))
-       (start-column (start-col editor))
-       (end-column (terminal-window-columns
-		    (line-editor-terminal editor)))
+       (start-column
+	;; With gutters, start at zero, otherwise the end of the prompt.
+	(if (gutter-char editor) 0 (start-col editor)))
+       (end-column
+	(- (terminal-window-columns (line-editor-terminal editor))
+	   ;; With gutters, the end is shortened by the gutter i.e. start-col.
+	   (if (gutter-char editor) (start-col editor) 0)))
        spots column-spots
        (autowrap-delay
 	(terminal-has-autowrap-delay
@@ -376,6 +296,7 @@ If style isn't given it uses the theme value: (:rl :selection :style)"
   "Return true if =string= end with a newline."
   (and (ochar-equal #\newline (ochar string (1- (olength string)))) t))
 
+;; @@@ currently unused
 (defun write-multiline-string (e string endings)
   "Write the STRING to the terminal given the line ENDINGS. Properly account
 for multi-line strings which end exactly on the right side on terminals with
@@ -419,6 +340,30 @@ auto-wrap and no autowrap delay."
        (dbugf :zarp "no edge lines~%")
        (tt-write-string string)))))
 
+(defun write-with-gutter (string endings gutter-char width cols)
+  "Write the ‘string’ to the terminal with a gutter of ‘gutter-char’.
+‘endings’ are the line endings. ‘width’ is the width of the gutter.
+‘cols’ are the number of columns in the window."
+  (tt-move-to-col width)
+  (let ((start 0))
+    (flet ((write-gutter ()
+	     (when (not (zerop start))
+	       (dotimes (i width) (tt-write-char gutter-char)))))
+      ;; Write the pieces of the string.
+      (loop
+        :for (char-pos . col) :in (reverse endings)
+        :do
+        (write-gutter)
+        (tt-write-string string :start start :end (1+ char-pos))
+        (setf start (+ char-pos 1))
+        (when (< col (- cols width 1))
+          (tt-write-char #\newline)
+	  (incf start))) ;; skip over the newline
+      ;; Do the last piece
+      (when (< start (olength string))
+	(write-gutter)
+	(tt-write-string string :start start)))))
+
 ;; This is an horrible, horrible thing.
 (defun pre-read (e)
   "When prompt-start-at-left is true, output a real #\return to get to the
@@ -453,14 +398,13 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 ;; An update that probably requires an optimizing terminal to be at all
 ;; efficient.
 
-;; Now with even more ploof!
 (defun redraw-display (e &key erase)
   (declare (ignore erase)) ; @@@
   (with-slots ((contexts inator::contexts)
 	       buf-str buf prompt-height start-row start-col
 	       screen-relative-row last-line temporary-message region-active
 	       max-message-lines message-lines message-top message-endings
-	       auto-suggest-p suggestion auto-suggest-style) e
+	       auto-suggest-p suggestion auto-suggest-style gutter-char) e
     ;; (dbugf :rl "----------------~%")
     ;; Make sure buf-str uses buf.
     (when (not (eq (fat-string-string buf-str) buf))
@@ -491,23 +435,12 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	   (prompt-lines (length prompt-endings))
 	   (prompt-last-col (cddr (assoc prompt-end prompt-spots)))
 	   ;; Line figuring
-	   line-end
-	   first-point
-	   spots
-	   endings
-	   buf-lines
+	   line-end first-point spots endings buf-lines
 	   ;; message
-	   actual-message
-	   total-lines
-	   last-displayed-message-line
-	   message-lines-displayed
-	   more-lines
+	   actual-message total-lines last-displayed-message-line
+	   message-lines-displayed more-lines
 	   ;; point
-	   line-last-col
-	   spot
-	   point-line
-	   point-col
-	   point-offset
+	   line-last-col spot point-line point-col point-offset
 	   right-prompt-start
 	   new-last-line
 	   erase-lines
@@ -519,19 +452,27 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
       ;; Line figuring
       (setf suggest-p (and auto-suggest-p suggestion
 			   (eobp e) (not (zerop (olength buf))))
-	    buffer (if suggest-p
-		       (make-compound-string buf-str suggestion)
+	    ;; First highlight the regions
+	    buffer (if (or (and (regions-p e) region-active)
+			   (> (length contexts) 1))
+		       (make-fat-string :string (highlightify e buf))
 		       buf-str)
+	    ;; Then add the suggestion
+	    buffer (if suggest-p
+		       (make-compound-string buffer
+					     (styled-string auto-suggest-style
+							    suggestion))
+		       buffer)
+	    ;; Set up some spots that we'd like to know the location of.
             line-end (max 0 (1- (olength buffer)))
 	    first-point (inator-point (aref contexts 0))
 	    spots (list `(,first-point . ()) `(,line-end . ()))
 	    start-col (if (>= (1+ prompt-last-col) (fake-width e))
 			  0
-			(1+ prompt-last-col))
-	    endings (editor-calculate-line-endings
-		     e :start-column start-col
-		     :spots spots
-		     :buffer buffer)
+			  (1+ prompt-last-col))
+	    ;; Figure out where things are
+	    endings
+	    (editor-calculate-line-endings e :spots spots :buffer buffer)
 	    buf-lines (length endings))
       ;; Message figuring
       (setf
@@ -551,14 +492,13 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	    spot          (assoc first-point spots)
 	    point-line    (cadr spot)
 	    point-col     (cddr spot)
-	    ;; (quaqua (and (dbugf :rl "FLooP FLooP ~s ~s ~s ~s ~s~%"
-	    ;; 		       buf-lines point-line first-point spots
-	    ;; 		       contexts) 2/3))
 	    ;; @@@ Maybe we should ensure point-line isn't NIL???
 	    point-offset (- buf-lines (or point-line 0))
 	    right-prompt-start (and right-prompt
 				    (- (fake-width e)
 				       (display-length right-prompt))))
+      (when gutter-char
+	(incf point-col start-col))
       (flet (#|
 	     (eol-compensate () ;; @@@ This is bullcrap. Maybe "fix" ansi?
 	       (when (and endings
@@ -571,32 +511,17 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	     |# )
 
 	(relative-move-to-row screen-relative-row 0)
-	#|(setf relative-top (- screen-relative-row))|#
-	;; (dbugf :rl "start-row = ~s~%~
-        ;;             screen-relative-row = ~s~%~
-        ;;             spots = ~s~%"
-	;;        start-row screen-relative-row spots)
-	;; (dbugf :rl "-> prompt-spots ~s~%" prompt-spots)
-	;; (dbugf :rl "-> prompt-last-col ~s~%" prompt-last-col)
-	;; (dbugf :rl "-> line-last-col ~s~%" line-last-col)
-
-	;; (dbugf :rl "-> spot ~s~%" spot)
-	;; (dbugf :rl "-> point-line ~s~%" point-line)
-	;; (dbugf :rl "-> point-col ~s~%" point-col)
-	;; (dbugf :rl "-> point-offset ~s~%" point-offset)
-
-	;; (multiple-value-setq (start-row old-col)
-	;;   (terminal-get-cursor-position (line-editor-terminal e)))
 	(setf start-row screen-relative-row old-col 0)
 
 	;; If there's not enough room to display the lines, make some.
 	;; (when (> (+ start-row relative-top total-lines) (tt-height))
-	;;   (let ((offset (- (+ start-row relative-top total-lines) (tt-height))))
+	;;   (let ((offset (- (+ start-row relative-top total-lines)
+	;; 		   (tt-height))))
 	;;     (dbugf :rl "scroll down ~s~%" offset)
 	;;     (tt-scroll-down offset)
 	;;     (decf relative-top offset)))
 	(setf max-message-lines
-	      (- (fake-height e) 1 prompt-lines buf-lines #|1|# #|2|#)
+	      (- (fake-height e) 1 prompt-lines buf-lines)
 
 	      last-displayed-message-line
 	      (max (min (+ message-top (1- max-message-lines)) message-lines) 0)
@@ -612,10 +537,7 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	      (+ prompt-lines buf-lines
 		 (- last-displayed-message-line message-top)
 		 (if (plusp more-lines) 1 0)))
-	;; (dbugf :rlp "message-top ~s message-lines ~s more-lines ~s~%~
-	;; 	     last-displayed-message-line ~s max-message-lines ~s~%"
-	;;        message-top message-lines more-lines
-	;;        last-displayed-message-line max-message-lines)
+
 	(let* (start end)
 	  (when (and (plusp message-top) message-endings)
 	    (setf start (car (nth
@@ -637,59 +559,30 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 			     ;; +1 for the newline
 			     (or (and end (1+ end))
 				 (olength temporary-message)))
-		    temporary-message))
-	  ;;(dbugf :rlp "start ~s end ~s~%" start end)
-	  )
+		    temporary-message)))
+
 	;; Write the prompt
 	(tt-move-to-col 0)
 	(tt-erase-below)
-	;; (tt-erase-to-eol)
 	(tt-write-string prompt)
 	(tt-erase-to-eol)
 	(setf prompt-height prompt-lines
 	      new-last-line total-lines
 	      start-col prompt-last-col)
 
-	;; (dbugf :rlp "buf-lines ~s prompt-lines ~s last-line ~s start-col ~s~%~
-        ;;             buf = ~s~%"
-	;;        buf-lines prompt-lines last-line start-col (buf-str e))
 	;; Write the line
-	;;(if (or (and (regions-p e) region-active) (> (length contexts) 1))
-	(if (or (and (regions-p e) region-active) (> (length contexts) 1))
-	    (progn
-	      (let ((s (make-fat-string :string (highlightify e buf))))
-		;; (tt-write-string s)
-		(fatchar-io:write-fat-string s :stream *terminal*)
-		;; (write-multiline-string e s endings)
-		;; (dbugf :rl "highlighted = ~a~%" s)
-		))
-	    (progn
-	      ;; (tt-write-string buf-str)
-	      (fatchar-io:write-fat-string buf-str :stream *terminal*)
-	      (when suggest-p
-		(tt-write-string
-		 (styled-string auto-suggest-style suggestion))
-		;; (setf (fatchar-c auto-suggest-rendition) #\x)
-		;; (tt-write-span
-		;;  (substitute suggestion "x"
-		;; 	     (car (fatchar:fatchar-string-to-span
-		;; 		   (vector auto-suggest-rendition)))
-		;; 	     :test #'equal))
-		)
-	      ;; (tt-write-string buffer)
-	      ;; (tt-write-string (buf-str e))
-	      ;; (write-multiline-string e (buf-str e) endings)
-	      ))
+	(if gutter-char
+	    (write-with-gutter buffer endings gutter-char (1+ start-col) cols)
+	    (tt-write-string buffer))
 	;; (eol-compensate)
 	(tt-erase-to-eol)
-	;;(dbugf :rl "right-prompt ~s ~s~%" right-prompt-start right-prompt)
+
+	;; Write out the right prompt
 	(if (and right-prompt
-		   (< point-col right-prompt-start)
-		   (not endings)
-		   (and (< line-last-col right-prompt-start)))
+		 (< point-col right-prompt-start)
+		 (not endings)
+		 (and (< line-last-col right-prompt-start)))
 	    (progn
-	      ;; (dbugf :rl "right-prompt again ~s ~s~%" right-prompt-start
-	      ;; 	 prompt-last-col)
 	      (tt-move-to-col (1- right-prompt-start))
 	      (tt-write-string right-prompt)
 	      (tt-move-to-col (1- right-prompt-start))
@@ -698,6 +591,8 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	      )
 	    ;; Erase when no right prompt
 	    (tt-erase-to-eol))
+
+	;; Write out the message
 	(when actual-message
 	  (tt-write-char #\newline)
 	  (tt-write-string actual-message)
@@ -706,6 +601,7 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	    (tt-erase-to-eol)
 	    (tt-format "[~d more lines]" more-lines))
 	  (tt-erase-to-eol))
+
 	;; Erase junk after the line
 	(when last-line
 	  (setf erase-lines (max 0 (- last-line new-last-line)))
@@ -718,20 +614,16 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	  (when (not (zerop erase-lines))
 	    (tt-up erase-lines)))
 
-	;; Move to the point.
+	;; Move the cursor to the point.
 	(when (not (zerop (+ point-offset message-lines)))
 	  (tt-up (+ point-offset message-lines-displayed
 		    (if (not (zerop more-lines)) 1 0))))
-	;; (dbugf :rlp "going up ~s message-lines-displayed ~s~%"
-	;;        (+ point-offset message-lines-displayed
-	;; 	  (if (not (zerop more-lines)) 1 0))
-	;;        message-lines-displayed)
 	(tt-move-to-col point-col)
 	(draw-mode-line e)
+
+	;; Adjust the relative row and save the last-line
 	(setf screen-relative-row (+ prompt-lines point-line)
-	      last-line new-last-line)
-	;; (dbugf :rl "new screen-relative-row ~s~%" screen-relative-row)
-	))))
+	      last-line new-last-line)))))
 
 (defmethod update-display ((e line-editor))
   (redraw-display e))
