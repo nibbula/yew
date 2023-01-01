@@ -2,6 +2,12 @@
 ;;; dgray.lisp - Thinnest portability wrapper around Gray streams.
 ;;;
 
+;; Because I don't like having another bogus stream class hierarchy.
+;; I'm also not fond of possibly extra method calls. Of course it's pointless
+;; because if other shit uses trival-gray-streams then the the bogus stuff is
+;; back, and this is yet another useless package. In a world where CL wasn't
+;; dead, and all this shit would have been fixed long long ago.
+
  #-(or sbcl clisp ecl openmcl allegro cmu)
 (error "We don't know how to use gray streams on ~s." (lisp-implementation-type))
 
@@ -31,20 +37,34 @@
 		 #:stream-fresh-line #:stream-finish-output
 		 #:stream-force-output
 		 #:stream-clear-output #:stream-advance-to-column
-		 #:stream-read-byte #:stream-write-byte)))
+		 #:stream-read-byte #:stream-write-byte
+		 #:stream-file-position))
+	     (package
+	       #+sbcl :sb-gray
+	       #+allegro :excl
+	       #+cmu :ext
+	       #+(or clisp ecl mocl clasp) :gray
+	       #+openmcl :ccl
+	       #+lispworks :stream
+	       #+(or abcl genera) :gray-streams
+	       #+mezzano :mezzano.gray))
+	 ;; We can't use CL because of stupid shit like clashing with ‘close’.
 	 `(defpackage :dgray
-	    (:import-from #+sbcl :sb-gray
-	     #+allegro :excl
-	     #+cmu :ext
-	     #+(or clisp ecl mocl clasp) :gray
-	     #+openmcl :ccl
-	     #+lispworks :stream
-	     #+(or abcl genera) :gray-streams
-	     #+mezzano :mezzano.gray
+	    (:import-from ,package
 	     ,@symbols)
 	    (:export ,@symbols)
 	    (:documentation
 	     "Thinnest portability wrapper around Gray streams.")))))
   (stupid))
+
+
+(defpackage :dgray-defaults
+  (:use :cl :dgray)
+  (:documentation "Make some missing default Gray stream methods."))
+
+(in-package :dgray-defaults)
+
+(defmethod stream-file-position (stream &optional position)
+  nil)
 
 ;; End
