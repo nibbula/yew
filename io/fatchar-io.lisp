@@ -248,17 +248,19 @@ colinc, and the space character for padchar.
 ;; (defmethod close ((stream fat-string-output-stream) &key abort)
 ;;   )
 
-(defmethod stream-file-position ((stream fat-string-output-stream))
-  ;;&optional position-spec)
-  "Used by‘file-position’. Returns or changes the current position within
+(defmethod stream-file-position ((stream fat-string-output-stream)
+				 &optional position-spec)
+  "Used by ‘file-position’. Returns or changes the current position within
 ‘stream’."
+  (declare (ignore position-spec))
   (fill-pointer (fat-string-string stream)))
 
-(defmethod (setf stream-file-position)
-    ((stream fat-string-output-stream) position-spec)
-  "Used by‘file-position’. Returns or changes the current position within
-‘stream’."
-  (setf (fill-pointer (fat-string-string stream)) position-spec))
+;; @@@ I don't think this is part of normal gray streams.
+;; (defmethod (setf stream-file-position)
+;;     ((stream fat-string-output-stream) position-spec)
+;;   "Used by ‘file-position’. Returns or changes the current position within
+;; ‘stream’."
+;;   (setf (fill-pointer (fat-string-string stream)) position-spec))
 
 (defmethod stream-clear-output ((stream fat-string-output-stream))
   "This is like ‘cl:clear-output’, but for Gray streams: clear the
