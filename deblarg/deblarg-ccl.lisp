@@ -38,10 +38,10 @@
 	  (or (and d (debugger-current-frame d))
 	      (debugger-internal-frame))))
     (loop :with i = 0
-       :for b :in (ccl::backtrace-as-list)
+       :for b :in (ignore-errors (ccl::backtrace-as-list))
        :if (>= i current-frame)
        ;; :collect (format nil "~(~3d ~a~)" i b)
-       :collect (cons i (string-downcase (princ-to-string b)))
+       :collect (cons i (string-downcase (ignore-errors (princ-to-string b))))
        :end
        :do
        (incf i)
@@ -51,28 +51,30 @@
   "Our own backtrace for CCL."
   (declare (ignore n))			; @@@
   (let ((frames '()) (*print-readably* nil))
-    (ccl:map-call-frames
-     #'(lambda (frame-ptr context)
-	 (push (list frame-ptr context) frames))
-     :origin ccl:*top-error-frame*
-     :start-frame-number 0
-     :count most-positive-fixnum)
+    (ignore-errors
+     (ccl:map-call-frames
+      #'(lambda (frame-ptr context)
+	  (push (list frame-ptr context) frames))
+      :origin ccl:*top-error-frame*
+      :start-frame-number 0
+      :count most-positive-fixnum))
     (setf frames (nreverse frames))
     (loop :with i = 0
        :for (f context) :in frames
        :do
-       ;; (format *debug-io* "~3a (~(~a~{ ~s~}~))~%" i
-       ;; 	       (or (ignore-errors
-       ;; 		     (ccl:function-name (ccl:frame-function f context))) "")
-       ;; 	       (or (ignore-errors
-       ;; 		     (ccl:frame-supplied-arguments f context)) '("")))
        (print-span `((:fg-yellow ,(format nil "~3a" i))
-		     ,(format nil " (~(~a~{ ~s~}~))~%"
-			      (or (ignore-errors
-				    (ccl:function-name
-				     (ccl:frame-function f context))) "")
-			      (or (ignore-errors
-				    (ccl:frame-supplied-arguments f context))))))
+		     ,(or
+		       (ignore-errors
+			(format nil " (~(~a~{ ~s~}~))~%"
+				(or (ignore-errors
+				     (ccl:function-name
+				      (ccl:frame-function f context))) "")
+				(or (ignore-errors
+				     (ccl:frame-supplied-arguments
+				      f context)))))
+		       `(:red
+			 ,(format
+			   nil " Error printing frame ~a~%" f)))))
        (incf i))))
 
 (defun OLD-get-frame (n)
