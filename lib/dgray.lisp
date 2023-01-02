@@ -38,7 +38,8 @@
 		 #:stream-force-output
 		 #:stream-clear-output #:stream-advance-to-column
 		 #:stream-read-byte #:stream-write-byte
-		 #:stream-file-position))
+		 #-(or ccl clisp) #:stream-file-position
+		 ))
 	     (package
 	       #+sbcl :sb-gray
 	       #+allegro :excl
@@ -64,7 +65,12 @@
 
 (in-package :dgray-defaults)
 
-(defmethod stream-file-position (stream &optional position)
+#+(or ccl clisp)
+(progn
+  (defgeneric stream-file-position (stream &optional position)))
+
+(defmethod stream-file-position (stream #-cmu &optional #-cmu position)
+  (declare (ignore position))
   nil)
 
 ;; End
