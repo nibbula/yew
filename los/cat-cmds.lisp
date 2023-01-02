@@ -12,10 +12,10 @@
   :accepts t
   "Concatenate files. Copy streams."
   (lish:with-files-or-input (files :on-unknown-input-type
-				   (progn
-				     (when (not (listen *standard-input*))
-				       (princ lish:*input*)
-				       (terpri))))
+				   (when (and lish:*input*
+					      (not (listen *standard-input*)))
+				     (princ lish:*input*)
+				     (terpri)))
     (apply #'cat files))
   (setf lish:*output* lish:*input*))
 

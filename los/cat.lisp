@@ -169,6 +169,7 @@ This allows interspersing standard input between other things."
 	 (with-open-file-or-stream (stream (quote-filename f)
 					   :element-type '(unsigned-byte 8))
 	   (funcall *copy-stream-function* stream *standard-output*))))
-  (finish-output *standard-output*))
+  (finish-output *standard-output*)
+  (values))
 
 ;; EOF
