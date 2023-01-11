@@ -8,6 +8,7 @@
   (:export
    #:terminal-inator
    #:terminal-inator-last-event
+   #:terminal-inator-last-event-untranslated
    #:with-terminal-inator
    ))
 (in-package :terminal-inator)
@@ -15,7 +16,12 @@
 (defclass terminal-inator (inator)
   ((last-event
     :initarg :last-event :accessor terminal-inator-last-event :initform nil
-    :documentation "The last event we got."))
+    :documentation "The last event we got.")
+   (last-event-untranslated
+    :initarg :last-event-untranslated
+    :accessor terminal-inator-last-event-untranslated
+    :initform nil
+    :documentation "The untranslated last event."))
   (:documentation "A terminal-inator."))
 
 (defmethod initialize-instance
@@ -43,28 +49,23 @@
 
 (defmethod await-event ((i terminal-inator))
   "Get an event from a TERMINAL-INATOR."
-  (with-slots (last-event) i
-    (let ((result (tt-get-key)))
-      ;; Translate some events
-      (typecase result
-	;; (tt-mouse-button-down
-	;;  )
-	(tt-mouse-button-event
-	 (case (tt-mouse-button result)
-	   (:button-4 (setf result :scroll-up))
-	   (:button-5 (setf result :scroll-down))
-	   ;; (t
-	   ;;  (setf result
-	   ;; 	  (keywordify
-	   ;; 	   (s+ (string (tt-mouse-button result))
-	   ;; 	       "-"
-	   ;; 	       (string
-	   ;; 		(if (typep result 'tt-mouse-button-release)
-	   ;; 		    :release
-	   ;; 		    :press))))))
-	   )))
-      (setf last-event result)
-      result)))
+  (with-slots (last-event (ev last-event-untranslated)) i
+    (setf ev (tt-get-key))
+    ;; Translate some events
+    (typecase ev
+      (tt-mouse-button-event
+       (case (tt-mouse-button ev)
+	 (:button-4 (setf last-event :scroll-up))
+	 (:button-5 (setf last-event :scroll-down))
+	 (t
+	  (setf last-event
+		(keywordify
+		 (if (typep ev 'tt-mouse-button-release)
+		     :button-release
+		     (s+ (string (tt-mouse-button ev))
+			 "-press")))))))
+      (t (setf last-event ev)))
+    last-event))
 
 (defmethod message ((i terminal-inator) format-string &rest args)
   "Display a short message."
