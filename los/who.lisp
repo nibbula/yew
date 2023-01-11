@@ -154,15 +154,20 @@ If FROM-DAYS-P is true, days are the biggest units to break SECONDS into."
        ,@body)))
 
 #+unix
-(defun print-uptime (&key pretty show-since (stream *standard-output*))
+(defun print-uptime (&key (stream *standard-output*) pretty show-since short)
   (let* ((info (get-system-info '(:uptime :load-averages)))
 	 (uptime (cdr (assoc :uptime info)))
 	 (one (elt (cdr (assoc :load-averages info)) 0))
 	 (five (elt (cdr (assoc :load-averages info)) 1))
-	 (fifteen (elt (cdr (assoc :load-averages info)) 2)))
+	 (fifteen (elt (cdr (assoc :load-averages info)) 2))
+	 to-string)
+    (when (null stream)
+      (setf stream (make-string-output-stream)
+	    to-string t))
     (cond
       (pretty
-       (write-string "up " stream)
+       (when (not short)
+	 (write-string "up " stream))
        ;; @@@ Maybe we could use date-string :format relative?
        (with-time-units (uptime)
 	 (when (not (zerop millennia))
@@ -181,7 +186,9 @@ If FROM-DAYS-P is true, days are the biggest units to break SECONDS into."
 	 (when (not (zerop hours))
 	   (format stream "~a hour~:p, " hours))
 	 (when (not (zerop minutes))
-	   (format stream "~a minute~:p~%" minutes))))
+	   (format stream "~a minute~:p" minutes))
+	 (when (not short)
+	   (terpri stream))))
       (show-since
        (format stream "~a~%"
 	       (date-string :time (- (get-universal-time) uptime))))
@@ -198,7 +205,9 @@ If FROM-DAYS-P is true, days are the biggest units to break SECONDS into."
 
 	 (format stream "~d user~:*~p,  " (length (users-logged-in)))
 	 (format stream
-		 "load average: ~4,2f, ~4,2f, ~4,2f~%" one five fifteen))))))
+		 "load average: ~4,2f, ~4,2f, ~4,2f~%" one five fifteen))))
+    (when to-string
+      (get-output-stream-string stream))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; w (or who-what)
