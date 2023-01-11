@@ -8,6 +8,16 @@
   (:export
    #:*bar-char*
    #:describe-free-memory
+   #:get-free
+   #:memory-total
+   #:memory-free
+   #:memory-shared
+   #:memory-buffer
+   #:memory-cached
+   #:memory-reclaimable
+   #:memory-avail
+   #:memory-total-swap
+   #:memory-free-swap
    #:!free
    ))
 (in-package :free)
