@@ -1108,7 +1108,10 @@ and indented properly for multi-line objects."
     (call-next-method)))
 
 (defun view-tree (tree &key viewer default-action)
-  "Look at a tree, with expandable and collapsible branches."
+  "Look at ‘tree’, with expandable and collapsible branches. ‘tree’ is a tree of
+tree-viewer:nodes, or something that can be converted to one by ‘convert-tree’,
+such as a normal tree of conses. ‘viewer’ if not nil, is a tree-viewer object to
+use. ‘default-action’ is function to call for the default ‘acccept’ method."
   (let (result)
     (with-terminal (#| :crunch |#)
       (let ((*viewer* viewer))
