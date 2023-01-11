@@ -287,6 +287,7 @@ innermost N contexts, if we can.")
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun command-name (symbol)
+    "Return the name of the function for the command named by ‘symbol’."
     (symbolify (s+ #\_ symbol) :package :deblarg)))
 
 (defmacro define-debugger-command (name aliases &body body)
@@ -479,6 +480,11 @@ keep the current automatic restarts set, otherwise clear them."
 	 "Delete breakpoints."
 	 (delete-breakpoint (read-arg repl-state))))))
   (define-commands *breakpoint-commands*))
+
+(defun invoke-command (s &rest args)
+  "Invoke the debugger command ‘s’ with arguments ‘args’."
+  (let ((state (tiny-repl::make-repl-state :more (join-by-string args " "))))
+    (funcall (command-name (string-upcase s)) state nil)))
 
 ;; Remember we have to return non-NIL if we want to tell the REPL that we
 ;; handled it.

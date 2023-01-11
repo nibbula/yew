@@ -28,6 +28,7 @@ least you can type things using RL.")
    #:with-debugger-io
    #:debugger-backtrace
    #:debugger-wacktrace
+   #:invoke-command
    ))
 (in-package :deblarg)
 
