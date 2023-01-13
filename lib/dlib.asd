@@ -9,7 +9,7 @@
     :author             "Nibby Nebbulous <nibbula -(. @ .)- gmail.com>"
     :licence            "GPL-3.0-only"
     :source-control	:git
-    :long-description   "A new pile of old tires."
+    :long-description   "A pile of old tires."
     ;; Don't ever add :depends-on
     :components
     ((:file "dlib1")
