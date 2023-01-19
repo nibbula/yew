@@ -55,6 +55,10 @@ Keymap stacks:
 ")
   (:use :cl :dlib :char-util)
   (:export
+   #:key-definition
+   #:key-definition-action
+   #:key-definition-category
+   #:key-definition-equal
    #:keymap
    #:keymap-map
    #:keymap-name
@@ -83,6 +87,25 @@ Keymap stacks:
 
 ;; (declaim (optimize (debug 3)))
 
+(defclass key-definition ()
+  ((action
+    :initarg :action :accessor key-definition-action  :initform nil
+    :documentation
+    "Ususally a function to call, or form to eval, or a keymap.")
+   (category
+    :initarg :category :accessor key-definition-category  :initform nil
+    :documentation "A descriptive category, mostly for documentation."))
+  (:documentation "The value of a key binding."))
+
+(defgeneric key-definition-equal (k1 k2)
+  (:documentation
+   "Return true if key-definitions ‘k1’ and ‘k2’ are considered equal. This
+ignores the category.")
+  (:method (k1 k2)
+    (let ((a1 (if (typep k1 'key-definition) (key-definition-action k1) k1))
+	  (a2 (if (typep k2 'key-definition) (key-definition-action k2) k2)))
+      (equal a1 a2))))
+
 (defclass keymap ()
   ((map
     :accessor		keymap-map
@@ -102,17 +125,39 @@ Keymap stacks:
   "Return true if OBJECT is a keymap."
   (typep object 'keymap))
 
+(defun binding-list-to-table (list)
+  "Take a list of items which can be either (key . action) or a category, and
+return a hash table of key-definitions. Items which are atoms set the category
+for subsequent definitions."
+  (let ((table (make-hash-table))
+	(category))
+    (loop :for item :in list
+	  :do
+	  (typecase item
+	    (cons
+	     (setf (gethash (car item) table)
+		   (make-instance 'key-definition
+				  :action (cdr item)
+				  :category category)))
+	    (t
+	     (setf category item))))
+    table))
+
 (defun set-keymap (keymap map)
-  "Initialize the map of KEYMAP from the alist MAP."
+  "Initialize the map of ‘keymap’ from the list ‘map’ as described in
+#'binding-list-to-table."
   (when (and map (consp map))
     (setf (keymap-map keymap)
-	  (alist-to-hash-table map :table (make-hash-table))))
+	  ;; (alist-to-hash-table map :table (make-hash-table))
+	  (binding-list-to-table map)
+	  ))
   keymap)
 
 ;; @@@ Make the map be an alist under a certain threshold of population, but
 ;; allow a hint to make a big one when creating.
 (defmethod initialize-instance :after ((k keymap) &rest initargs)
-  "Initialize a keymap. If the map is an alist convert it into a hash table."
+  "Initialize a keymap. If the map is a list convert it into a hash table,
+with binding-list-to-table."
   (declare (ignore initargs))
   (if (and (slot-boundp k 'map) (consp (slot-value k 'map)))
       (set-keymap k (keymap-map k))
@@ -122,18 +167,20 @@ Keymap stacks:
   "Print a KEYMAP on a STREAM."
   (print-unreadable-object (obj stream :type t #|:identity t|#)
     (format stream "~a [~d]" (keymap-name obj)
-	    (hash-table-count (keymap-map obj)))))
+	    (and (hash-table-p (keymap-map obj))
+		 (hash-table-count (keymap-map obj))))))
 
 (defmacro defkeymap (var-name (&key name default-binding) &body body)
   "Define a keymap.
-- VAR-NAME is a variable the keymap is bound to.
-- NAME is a descriptive name for printing. It defaults to VAR-NAME.
-- DEFAULT-BINDING is what keys that aren't defined are bound to.
-- BODY is of the form:
-    [docstring] ALIST
-  where ALIST is an alist of (KEY . BINDING).
-  KEY is a character or keyword.
-  BINDING is a symbol or a function to be called or a form to be evaluated."
+ ‘var-name’ is a variable the keymap is bound to.
+ ‘name’ is a descriptive name for printing. It defaults to ‘var-name’.
+ ‘default-binding’ is what keys that aren't defined are bound to.
+ ‘body’ is of the form:
+    [docstring] binding-list
+ where binding-list is an alist of (key . binding) or category.
+  ‘key’ is a character or keyword.
+  ‘binding’ is a symbol or a function to be called or a form to be evaluated.
+  ‘category’ describes the category of subsequent bindings."
   (let (docstring map)
     (when body
       ;; See if there's a docstring
@@ -153,14 +200,17 @@ Keymap stacks:
 			  `(:default-binding ,default-binding)))
        ,@(when docstring `(,docstring)))))
 
-(defun map-keymap (func keymap)
-  "Call FUNC on each binding in KEYMAP."
-  (maphash func (keymap-map keymap)))
+(defun map-keymap (function keymap)
+  "Call ‘function’ on each binding in ‘keymap’."
+  (maphash function (keymap-map keymap)))
 
 (defun define-key (keymap key definition)
-  "Define the KEY as DEFINITION in the KEYMAP. KEYMAP must be a keymap object.
-KEYs are compared with EQL. See also SET-KEY."
-  (setf (gethash key (keymap-map keymap)) definition))
+  "Define the ‘key’ as ‘definition’ in the ‘keymap’. ‘keymap’ must be a keymap
+object. ‘key's are compared with ‘eql’. See also #'set-key."
+  (setf (gethash key (keymap-map keymap))
+	(if (typep definition 'key-definition)
+	    definition
+	    (make-instance 'key-definition :action definition))))
 
 (defmacro push-keymap (new current)
   "Push a new keymap on the list of currently searched keymaps."
@@ -178,11 +228,11 @@ KEYs are compared with EQL. See also SET-KEY."
 
 (defun set-key (key-sequence definition keymap)
   "Define a key or sequence of keys in a keymap.
-  KEY-SEQUENCE    A single key, or a sequence of keys. Keys currently have
+  ‘key-sequence’  A single key, or a sequence of keys. Keys currently have
                   the restriction that they have to be EQL.
-  DEFINITION      Customarily a function designator or a list to be applied,
+  ‘definition’    Customarily a function designator or a list to be applied,
                   but has no formal restriction.
-  KEYMAP          A keymap object or keymap stack, which is a list of keymap
+  ‘keymap’        A keymap object or keymap stack, which is a list of keymap
                   objects. The keys are defined in the first keymap."
   (when (not (or (keymap-p keymap) (consp keymap)))
     (error "KEYMAP should be a keymap or a keymap list."))
@@ -217,14 +267,19 @@ KEYs are compared with EQL. See also SET-KEY."
   "Return the binding of single key in single keymap. Return the default
 binding if it is set and no other binding has been specified or NIL if
 there is no binding."
-  (or (gethash key (keymap-map keymap))
-      (and use-default
-	   (keymap-default-binding keymap))))
+  (let ((def (or (gethash key (keymap-map keymap))
+		 (and use-default
+		      (keymap-default-binding keymap)))))
+    (typecase def
+      (key-definition (key-definition-action def))
+      (t def))))
 
 ;; @@@ clean up keymap traversal code in here key-sequence-binding and
 ;; inator:process-event.
+;; @@@ This is confusing with the ‘key-definition’ class.
 (defun key-definition (key keymap-stack &key use-default)
-  "Return the definition of KEY in KEYMAP-STACK."
+  "Return the definition of ‘key’ in ‘keymap-stack’. If ‘use-default’ is true,
+use the default binding in keymaps."
   (cond
     ((typep keymap-stack 'sequence)
      (let (binding)
@@ -248,8 +303,8 @@ there is no binding."
  of keymaps."))))
 
 (defun key-sequence-binding (keyseq keymap-stack)
-  "Return the binding for the given key sequence, in MAP which can be a keymap
-or a keymap stack."
+  "Return the binding for the key sequence ‘keyseq’ in ‘keymap-stack’ which can
+be a keymap or a keymap stack."
   (labels ((try-map (keyseq map use-default)
 	     (if (and (or (vectorp keyseq) (listp keyseq))
 		      (not (zerop (length keyseq))))
@@ -298,8 +353,8 @@ or a keymap stack."
      (nice-char keyseq))))
 
 (defun get-key-sequence (get-key-function keymap)
-  "Read a sequence of keys returned by GET-KEY-FUNCTION, starting with keymap.
-Descend into keymaps. Return a key or sequence of keys."
+  "Read a sequence of keys returned by ‘get-key-function’, starting with
+‘keymap’. Descend into keymaps. Return a key or sequence of keys."
   (let* ((c (funcall get-key-function))
 	 (action (key-definition c keymap :use-default t)))
     (flet ((sub-map (map)
@@ -315,9 +370,9 @@ Descend into keymaps. Return a key or sequence of keys."
 	(t c)))))
 
 (defun add-keymap (source dest)
-  "Add all the key definitions from the SOURCE keymap to the DEST keymap.
-If there is already a binding for a key in DEST, it gets overwritten by the
-one in source."
+  "Add all the key definitions from the ‘source’ keymap to the ‘dest’ keymap.
+If there is already a binding for a key in ‘dest’, it gets overwritten by the
+one in ‘source’."
   (check-type source keymap)
   (check-type dest keymap)
   (loop :for k :being :the :hash-keys :of (keymap-map source)
@@ -326,23 +381,25 @@ one in source."
   dest)
 
 (defun describe-keymap (map &key (stream *standard-output*) prefix raw)
-  "Show the bindings of a keymap MAP on STREAM. If PREFIX is given it is
-assumed to be a prefix for all bindings in the keymap."
+  "Show the bindings of a keymap ‘map’ on ‘stream’. If ‘prefix’ is given it is
+assumed to be a prefix for all bindings in the keymap. ‘stream’ defaults to
+‘*standard-output*'."
 ;  (format stream "~:@(~a~):~%" (named-name map))
   (map-keymap
-   #'(lambda (key action)
-       (if raw
-	   (format stream "  ~@[~a ~]~5a ~3d ~3x~20t ~(~a~)~%"
-		   prefix (nice-char key)
-		   (or (and (characterp key) (char-code key)) "")
-		   (or (and (characterp key) (char-code key)) "")
-		   action)
-	   (format stream "  ~@[~a ~]~a~20t ~(~a~)~%"
-		   prefix (nice-char key) action))
-       (if (and (symbolp action) (boundp action)
-		(typep (symbol-value action) 'keymap))
-	   (describe-keymap (symbol-value action)
-			    :stream stream :prefix (nice-char key))))
+   #'(lambda (key def)
+       (let ((action (key-definition-action def)))
+	 (if raw
+	     (format stream "  ~@[~a ~]~5a ~3d ~3x~20t ~(~a~)~%"
+		     prefix (nice-char key)
+		     (or (and (characterp key) (char-code key)) "")
+		     (or (and (characterp key) (char-code key)) "")
+		     action)
+	     (format stream "  ~@[~a ~]~a~20t ~(~a~)~%"
+		     prefix (nice-char key) action))
+	 (if (and (symbolp action) (boundp action)
+		  (typep (symbol-value action) 'keymap))
+	     (describe-keymap (symbol-value action)
+			      :stream stream :prefix (nice-char key)))))
    map)
   (when (and (slot-boundp map 'default-binding)
 	     (keymap-default-binding map))
@@ -369,7 +426,7 @@ assumed to be a prefix for all bindings in the keymap."
 
 ;; This is very useful if you want Escape and Meta to be equivalent.
 (defun build-escape-map (keymap &key name)
-  "Return a new keymap containing only the meta character bindings in KEYMAP
+  "Return a new keymap containing only the meta character bindings in ‘keymap’
  converted to non-meta character bindings. This is useful for making a keymap
 to bind to the escape key, so you have escape key equivalents to meta keys."
   (check-type keymap keymap)
@@ -383,22 +440,24 @@ to bind to the escape key, so you have escape key equivalents to meta keys."
     new-keymap))
 
 (defun substitute-key-definition (new-definition old-definition keymap)
-  "Substitute NEW-DEFINITION for every binding of OLD-DEFINITION in KEYMAP."
+  "Substitute ‘new-definition’ for every binding of ‘old-definition’ in
+‘keymap’. Definitions are compared with ‘key-definition-equal’."
   (map-keymap #'(lambda (key def)
-		  (when (eq def old-definition)
+		  ;; (when (eq def old-definition)
+		  (when (key-definition-equal def old-definition)
 		    (define-key keymap key new-definition))) keymap)
   keymap)
 
 (defun keys-bound-to (definition keymap &key test)
-  "Return a list of keys bound to DEFINITION in KEYMAP. Definitions are
-compared with TEST, which defaults to EQ."
+  "Return a list of keys bound to ‘definition’ in ‘keymap’. Definitions are
+compared with ‘test’, which defaults to ‘key-definition-equal’."
   (let ((results))
     (map-keymap (if test
 		    #'(lambda (key def)
 			(when (funcall test def definition)
 			  (push key results)))
 		    #'(lambda (key def)
-			(when (eq def definition)
+			(when (key-definition-equal def definition)
 			  (push key results))))
 		    keymap)
     (remove-duplicates results)))
