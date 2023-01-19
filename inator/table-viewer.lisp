@@ -44,6 +44,8 @@
     (:left		. scroll-left)
     (:scroll-up		. scroll-up)
     (:scroll-down	. scroll-down)
+    (:button-1-press    . press-to-cell)
+    (:button-release    . ignore-event)
     ;;(,(meta-char #\i)	. table-info)
     (#\escape		. *table-viewer-escape-keymap*)
     ))
@@ -191,6 +193,11 @@ This can be quicker for large tables.")
    (start
     :initarg :start :accessor start
     :documentation "Point to view from.")
+   (data-offset
+    :initarg :data-offset :accessor data-offset :type fixnum :initform 0
+    :documentation
+    "Offset from ‘y’ of the first row of data. This helps calculate coodinates
+     of data cells, ignoring things like the height of the titles.")
    (rows
     :initarg :rows :accessor rows :type integer
     :documentation "Number of rows in the view.")
@@ -346,7 +353,7 @@ This can be quicker for large tables.")
   "Output all the column titles."
   (declare (ignorable titles))
   (with-slots (start last-displayed-col separator output-x output-y x y width
-	       columns) renderer
+	       columns data-offset) renderer
     (let ((has-underline (tt-has-attribute :underline)))
       (tt-move-to y (+ x 2))
       (setf output-x 2)
@@ -395,7 +402,8 @@ This can be quicker for large tables.")
       (when (<= output-x *max-width*)
 	;; (tt-write-char #\newline)
 	(tt-move-to (+ y (1+ output-y)) x))
-      (incf output-y))))
+      (incf output-y)
+      (incf data-offset))))
 
 (defvar *cell-box-recording* nil
   "Cell box coordinates to record.")
@@ -501,7 +509,7 @@ This can be quicker for large tables.")
   "Output a table."
   (declare (ignore print-titles max-width))
   (with-slots (output-x output-y separator width x y start rows
-	       last-displayed-col columns) renderer
+	       last-displayed-col columns data-offset) renderer
     (let* ((*long-titles* long-titles)
 	   (row-num (table-point-row start))
 	   (col-num (table-point-col start))
@@ -518,6 +526,7 @@ This can be quicker for large tables.")
       ;; (dbugf :tv "sizes ~s~%" sizes)
       (setf output-x 0
 	    output-y 0
+	    data-offset 0
 	    last-displayed-col nil)
 
       (table-output-column-titles renderer table
@@ -754,6 +763,41 @@ This can be quicker for large tables.")
 	  (setf (table-point-row start) 0))
 	(clampf (table-point-row point) (table-point-row start)
 		(+ (table-point-row start) (1- rows)))))))
+
+(defun column-at (o event-x)
+  "Return the closest column index of ‘event-x’."
+  (with-slots (start x width sizes separator) (table-viewer-renderer o)
+    (let ((col (table-point-col start))
+	  (sep-len (display-length separator))
+	  (max-col (1- (olength sizes))))
+      (loop
+	:with ix = (+ x 2) ;; @@@ the 2 should be a configurable gutter size
+	:while (< col (olength sizes))
+	:do
+	  (when (or (and (>= event-x ix)
+			 (< event-x (+ ix (oelt sizes col) sep-len)))
+		    (< event-x (+ x 2)))
+	    (return col))
+	  (incf ix (oelt sizes col))
+	  (incf col)
+	  (incf ix sep-len))
+      (min col max-col))))
+
+(defgeneric press-to-cell (table-viewer)
+  (:documentation "Go to the row indicated by the press event.")
+  (:method ((o table-viewer))
+    (with-slots ((point inator::point) renderer) o
+      (with-slots (start rows x y width height data-offset) renderer
+	(let* ((ev (terminal-inator-last-event-untranslated o)))
+	  (when (typep ev 'tt-mouse-event)
+	    (setf (table-point-row point)
+		  (+ (table-point-row start)
+		     (- (tt-mouse-event-y ev) y data-offset))
+		  (table-point-col point)
+		  (column-at o (tt-mouse-event-x ev)))))))))
+
+(defun ignore-event (table-viewer)
+  (declare (ignore table-viewer)))
 
 (defun ensure-point (o)
   "Make sure point is set to a specific row and column, which both default to 0."
