@@ -1660,8 +1660,7 @@ point in time (a.k.a. revision hash).")
 
 (defun history-command (p &optional all)
   "Show history."
-  (let ((files (selected-files)))
-    ;;(debug-msg "selected-files ~s" files)
+  (let ((files (unless all (selected-files))))
     (with-inator (*puca* 'puca-history
 			 :files (if all nil files)
 			 :keymap (list *puca-history-keymap*
