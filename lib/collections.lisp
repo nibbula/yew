@@ -119,6 +119,8 @@ Also we really need the MOP for stuff.")
       bi-directional-iterator
       container-data
       oitem
+      ofirst osecond othird ofourth ofifth osixth oseventh oeighth oninth otenth
+      oeleventh
       ofill-with
       ofill-range-with
       oslice
@@ -572,6 +574,23 @@ if the slot is not found in the object."
   "Return the element of COLLECTION specified by KEY. This is the same as OELT, 
 but with the arguments reversed for convenient use in pipelines."
   (oelt collection key))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defun define-ordinal-accessor (index)
+    (let* ((name (intern (format nil "O~@:(~:r~)" (1+ index))))
+	   (doc (format nil "Accessor for the ~(~a~) element of ‘collection’."
+			name)))
+      `(progn
+	 (defgeneric ,name (collection)
+	   (:documentation ,doc)
+	   (:method (collection) (oelt collection ,index)))
+	 (defgeneric (setf ,name) (value collection)
+	   (:documentation ,doc)
+	   (:method (value collection) (setf (oelt collection ,index) value))))))
+  (defmacro define-ordinal-accessors ()
+    `(progn ,@(loop :for i :from 0 :to 10
+		    :collect (define-ordinal-accessor i)))))
+(define-ordinal-accessors)
 
 ;; Palpable.
 (defgeneric olength (collection)
