@@ -789,7 +789,8 @@ This can be quicker for large tables.")
     (with-slots ((point inator::point) renderer) o
       (with-slots (start rows x y width height data-offset) renderer
 	(let* ((ev (terminal-inator-last-event-untranslated o)))
-	  (when (typep ev 'tt-mouse-event)
+	  (when (and (typep ev 'tt-mouse-event)
+		     (< 0 (tt-mouse-event-y ev) (+ y data-offset rows)))
 	    (setf (table-point-row point)
 		  (+ (table-point-row start)
 		     (- (tt-mouse-event-y ev) y data-offset))
