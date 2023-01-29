@@ -188,6 +188,13 @@
       (let ((row (oelt table (table-point-row table-viewer::current-position))))
 	(setf (mark-cell row) value)))))
 
+(defun marked-files (o)
+  (with-accessors ((table table-viewer-table)) o
+    (let (files)
+      (omapn (_ (when (mark-equal (mark-cell _) *select-mark*)
+		  (push (osimplify (file-cell _)) files))) table)
+      (setf files (nreverse files)))))
+
 (defun view-thing (o &key raw)
   (with-slots (directory last) o
     (with-simple-restart (continue "Continue with the directory editor.")
@@ -202,28 +209,45 @@
 			(continue c)))))
 	(let* ((name (osimplify (current-file-cell o)))
 	       (full (nos:path-append directory name)))
-	  (cond
-	    ;; If we're going back up to the previous editor, just quit.
-	    ((and last (equal name "..")
-		  (equal (nos:path-to-absolute full)
-			 (dired-directory last)))
-	     (quit o))
-	    #| This shouldn't be on a view command!!
-	    ;; Try to execute regular executable files?
-	    ((and (is-executable full)
-		  (eq :regular (file-info-type (file-info full))))
-	     ;; (!= full)
-	     (lish:shell-eval (lish::expr-from-args (list full))
-			      :no-expansions t)
-	     (tt-clear)
-	     (redraw o)) |#
-	    (t
-	     ;; Otherwise, make a new one.
-	     (if raw
-		 (view:view-raw full)
-		 (view:view full))
-	     (tt-clear)
-	     (redraw o))))))))
+	  (flet ((view-one (file)
+		   (if raw
+		       (view:view-raw file)
+		       (view:view file)))
+		 (view-multiple (files)
+		   ;; @@@@ Work this out
+		   ;; (let ((viewer (view:all-same-viewer files)))
+		   ;;   (if (and viewer (view:can-view-multiple-p viewer))
+		   ;; 	 (view:view-multiple files)
+		   ;; 	 (if raw
+		   ;; 	     (view:view-raw-things file)
+		   ;; 	     (view:view-things file))))
+		   (if raw
+		       (view:view-raw-things files)
+		       (view:view-things files))
+		   ))
+	    (cond
+	      ;; If we're going back up to the previous editor, just quit.
+	      ((and last (equal name "..")
+		    (equal (nos:path-to-absolute full)
+			   (dired-directory last)))
+	       (quit o))
+	      #| This shouldn't be on a view command!!
+	      ;; Try to execute regular executable files?
+	      ((and (is-executable full)
+		    (eq :regular (file-info-type (file-info full))))
+	        ;; (!= full)
+	        (lish:shell-eval (lish::expr-from-args (list full))
+	                         :no-expansions t)
+		(tt-clear)
+		(redraw o)) |#
+	      (t
+	       ;; Otherwise, make a new one.
+	       (let ((files (marked-files o)))
+		 (if files
+		     (view-multiple files)
+		     (view-one full))
+		 (tt-clear)
+		 (redraw o))))))))))
 
 (defmethod view-cell ((o directory-editor))
   (view-thing o))
