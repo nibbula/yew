@@ -5,14 +5,15 @@
 (defpackage :inator
   (:documentation
 "This is a little scaffolding for making a certain style of applet. The style
-that's encouraged is what one might call ‘emacs-like’. I consider this as a
-‘lesser’ Frobulator, in other words a style of interaction and editing that
-can be applied to many types of data.
+that's encouraged is what one might call “emacs-like”. It encapsulates a event
+loop, a set of key bindings, generic functions for viewing and editing, with
+one or many editing locations, and minimal user interaction with messages,
+prompts, and help.
 
-To make an app, you subclass ‘inator’ and provide editing, input and display
-methods. You can also provide a custom keymap. You can probably get by with
-just providing methods for ‘update-display’ and ‘await-event’, and then calling
-‘event-loop’ with an ‘inator’ sub-class instance.")
+To make an app, you subclass ‘inator’ and provide movement, optional editing,
+input, and display methods. You can provide a custom keymap in ‘default-keymap’.
+You can probably get by with just providing methods for ‘update-display’ and
+‘await-event’, and then calling ‘invoke’.")
   (:use :cl :dlib :keymap :char-util)
   (:export
    ;; Inator classes
@@ -22,6 +23,8 @@ just providing methods for ‘update-display’ and ‘await-event’, and then 
    #:base-inator
    #:inator
    #:inator-keymap
+   #:inator-default-keymap
+   #:inator-local-keymap
    #:inator-point
    #:inator-mark
    #:inator-clipboard
@@ -124,6 +127,36 @@ just providing methods for ‘update-display’ and ‘await-event’, and then 
 ;; 				    &allow-other-keys)
 ;;   (apply #'make-instance 'editing-context keys))
 
+#|──────────────────────────────────────────────────────────────────────────┤#
+ │Inators and keymaps.
+ │
+ │There are three slots related to keymaps:
+ │   ‘keymap’
+ │     The current keymap or keymap sequence that is actually used.
+ │   ‘default-keymap’
+ │     A keymap for the specific inator class.
+ │   ‘local-keymap’
+ │     A keymap for making customizations to a specific inator instance.
+ │
+ │Inator implementors should set the default keymap with customizations that
+ │they want for that inator class. The ‘default-keymap’ will get pushed on the
+ │‘keymap’ by the default inator initialization if ‘keymap’ is not explicitly
+ │provided to ‘make-instance’.
+ │
+ │Users can create bindings in the default keymap of the class to customize the
+ │keymap for all instances of that class.
+ │
+ │Users can create bindings in the ‘local-keymap’ to customize a specific
+ │instance. A key setting command should probably create the ‘local-keymap’ if
+ │there isn't one.
+ │
+ │The ‘keymap’ slot should probably not be set directly except in unusual
+ │circumstances.
+ │
+ │Be aware that keymaps with a ‘default-binding’ can block other keymaps in a
+ │keymap sequence, so they should rarely be used.
+ ╰|#
+
 ;;(defkeymap *default-inator-keymap* (:default-binding 'default-action)
 ;; @@@ The problem is if there is default binding then it stops other
 ;; keymaps from inheriting an event. I think if you want a default binding
@@ -168,6 +201,9 @@ just providing methods for ‘update-display’ and ‘await-event’, and then 
    (default-keymap
     :initarg :default-keymap :accessor inator-default-keymap :initform nil
     :documentation "Keymap to push if the keymap isn't given.")
+   (local-keymap
+    :initarg :local-keymap :accessor inator-local-keymap :initform nil
+    :documentation "Keymap for instance specific bindings.")
    (contexts
     :initarg :contexts :accessor inator-contexts
     :documentation "A set of contexts for editing.")
@@ -302,11 +338,22 @@ with ‘start-inator’."))
 (defmethod initialize-instance
     :after ((o inator) &rest initargs &key &allow-other-keys)
   "Initialize a inator."
-  (declare (ignore initargs))
-  ;; If the keymap isn't given in an initarg, push the default one.
-  (when (and (not (slot-boundp o 'keymap))
-	     (slot-boundp o 'default-keymap))
-    (push (slot-value o 'default-keymap) (slot-value o 'keymap))))
+  ;; Add all the default keymaps from superclasses if keymap isn't given in an
+  ;; initarg.
+  (when (not (getf initargs :keymap))
+    (let ((c (class-of o)) val)
+      (labels
+	((push-default (class)
+	   (when (setf val (assoc :default-keymap
+				  (mop:class-direct-default-initargs class)))
+	     (pushnew (funcall (third val)) (slot-value o 'keymap))))
+	 (push-supers (class)
+	   (loop :for cc :in (mop:class-direct-superclasses class)
+	     :do (push-default cc))))
+	(push-default c)
+	(push-supers c)
+	;; Just reversing the order isn't perfect, but it's better than nothing.
+	(setf (slot-value o 'keymap) (nreverse (slot-value o 'keymap)))))))
 
 (defmethod start-inator ((inator inator))
   "Default method which does nothing."
@@ -470,7 +517,6 @@ UPDATE-DISPLAY and and AWAIT-EVENT methods."
        )))
 |#
 
-;; “Unnecessary Syntactic Sugar”™
 (defmacro with-inator ((var type &rest args) &body body)
   "Evaluate BODY with a new inator of type TYPE, made with ARGS passed to
 MAKE-INSTANCE, with VAR bound to the new instance."

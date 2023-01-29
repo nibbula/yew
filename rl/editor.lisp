@@ -112,10 +112,6 @@ anything important.")
     :initarg :output-callback
     :initform nil
     :documentation "Function to call on output.")
-   (local-keymap
-    :accessor line-editor-local-keymap
-    :initarg :local-keymap
-    :documentation "The local keymap.")
    (queued-input
     :accessor queued-input
     :initarg :queued-input :initform nil :type list
@@ -450,6 +446,7 @@ Otherwise the region is deactivated every command loop.")
     :non-word-chars *default-non-word-chars*
     :prompt-string *default-prompt*
     :right-prompt nil
+    :default-keymap *normal-keymap*
     :terminal-class (or (and *terminal* (class-of *terminal*))
 			(find-terminal-class-for-type
 			 (pick-a-terminal-type)))
@@ -479,19 +476,6 @@ Otherwise the region is deactivated every command loop.")
 		      *terminal*)
 		    (make-instance default-class :start-at-current-line t))))))
   (dbugf :rl "terminal = ~s~%" (slot-value e 'terminal))
-
-  ;; If the local keymap wasn't given, make an empty one.
-  (unless (and (slot-boundp e 'local-keymap) (slot-value e 'local-keymap))
-    (setf (slot-value e 'local-keymap)
-	  (make-instance 'keymap)))
-
-  ;; Unless keymap was given, set the it to use the normal keymaps and
-  ;; the local keymap.
-  (unless (and (slot-boundp e 'keymap) (slot-value e 'keymap)
-	       (not (eq (slot-value e 'keymap) *default-inator-keymap*)))
-    (setf (slot-value e 'keymap)
-	  `(,(slot-value e 'local-keymap) ,*normal-keymap*
-	     ,*default-inator-keymap*)))
 
   ;; Make a default line sized buffer if one wasn't given.
   (when (or (not (slot-boundp e 'buf)) (not (slot-value e 'buf)))
