@@ -20,6 +20,11 @@ in inators.")
 ;; like, view-on or view-with, but that seems clumsy. Also, viewing implies
 ;; not modifiing, but what if the viewer is an editor that allows modification?
 ;; An edit verb? CLIM has present and accept. How do these handle where and how?
+;;
+;; What about viewing multiple things? It should be possible to view multiple
+;; things of the same general type in the same viewer, since some viewers can
+;; handle it, like an image viewer. Maybe we could make a protocol which
+;; can determine if the things are all handle-able by a single viewer?
 
 (defgeneric view (thing)
   (:documentation "Look at something."))
