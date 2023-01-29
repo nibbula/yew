@@ -88,7 +88,7 @@
 
 (defun find-viewer (type)
   "Return the viewer function for ‘type’, or NIL if none."
-    ;; @@@ extend to support sublists of name and description
+  ;; @@@ extend to support sublists of name and description
   (cdr (find-in-list (content-type-category type)
 		     (content-type-name type)
 		     *viewer-alist*)))
@@ -131,7 +131,7 @@ content-type, and ‘viewer-designator’ can something accepted by
 
 ;; @@@ This is very wrong.
 (defun guess-file-name-type (thing)
-  "Return the mime type for THING, which should probably be a filename."
+  "Return the mime type for ‘thing’, which should probably be a filename."
   (loop :for (ext . type) :in *file-name-types*
      :when (ends-with (s+ "." ext) thing :test #'equalp)
      :do (return (make-content-type :name (cdr type) :category (car type)))))
