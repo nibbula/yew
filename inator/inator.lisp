@@ -303,8 +303,10 @@ with ‘start-inator’."))
     :after ((o inator) &rest initargs &key &allow-other-keys)
   "Initialize a inator."
   (declare (ignore initargs))
+
   ;; If the keymap isn't given in an initarg, push the default one.
-  (when (and (not (slot-boundp o 'keymap))
+  (when (and (or (not (slot-boundp o 'keymap))
+		 (not (slot-value o 'keymap)))
 	     (slot-boundp o 'default-keymap))
     (push (slot-value o 'default-keymap) (slot-value o 'keymap))))
 
