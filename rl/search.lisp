@@ -6,6 +6,17 @@
 
 (declaim #.`(optimize ,.(getf rl-config::*config* :optimization-settings)))
 
+(defvar *match-style* nil
+  "Cached style for displaying the matched string for the search instance.")
+
+(declaim (inline match-style))
+(defun match-style ()
+  (or *match-style*
+      (setf *match-style*
+	    (or (theme-value *theme* '(:program :search-match :style))
+		(theme-value *theme* '(:rl :search-match :style))
+		'(:underline)))))
+
 (defun display-search (e str start end prompt)
   "Display the current line with the search string highlighted."
   (with-slots ((contexts inator::contexts)
@@ -21,10 +32,7 @@
 		  ;; @@@ The way this works could use a little re-design.
 		  buf (highlightify
 		       e (make-fatchar-string (history-current history-context))
-		       :style
-		       (or (theme-value *theme* '(:program :search-match :style))
-			   (theme-value *theme* '(:rl :search-match :style))
-			   '(:underline)))
+		       :style (match-style))
 		  (inator-point (aref contexts 0)) saved-point
 		  (inator-mark (aref contexts 0)) nil))
 	  (redraw-display e))
@@ -141,7 +149,219 @@ in that item.
 
 (defparameter *isearch-prompt* "~:[~;failed ~]~:[>~;<~] ~:[~;re-~]i-search: ")
 
-;; @@@ maybe should actually be it's own inator
+(defkeymap *default-isearch-keymap* (:default-binding 'isearch-default)
+  `((,(ctrl #\G)      . quit)
+    (,(ctrl #\S)      . isearch-again)
+    (,(ctrl #\R)      . isearch-again-reverse)
+    (,(ctrl #\L)      . redraw)
+    (,(meta-char #\r) . isearch-toggle-regexp)
+    (:f1	      . help)))
+
+(defclass search-inator (terminal-inator)
+  ((editor
+    :initarg :editor :accessor search-inator-editor
+    :documentation "The editor we're searching in.")
+   (search-string
+    :initarg :search-string :accessor search-inator-search-string
+    :type string :initform (make-stretchy-string *initial-line-size*)
+    :documentation "The string being searched for.")
+   (start-point
+    :initarg :start-point :accessor search-inator-start-point
+    :documentation "Point saved before we start searching.")
+   (start-hist
+    :initarg :start-hist :accessor search-inator-start-hist
+    :documentation "Starting history item before entering search.")
+   (start-from
+    :initarg :start-from :accessor search-inator-start-from
+    :documentation "Current history item to start searching from.")
+   (failed
+    :initarg :failed :accessor search-inator-failed :type boolean :initform nil
+    :documentation "True if the search failed.")
+   (direction
+    :initarg :direction :accessor search-inator-direction
+    :type (member :backward :forward) :initform :backward
+    :documentation "Direction we are searching in.")
+   (regexp-p
+    :initarg :regexp-p :accessor search-inator-regexp-p
+    :type boolean :initform nil
+    :documentation
+    "True if search-string should be considered a regular expression.")
+   (scanner
+    :initarg :scanner :accessor search-inator-scanner :initform nil
+    :documentation "Rexexp scanner, or nil if there isn't one.")
+   (scanner-string
+    :initarg :scanner-string :accessor search-inator-scanner-string
+    :initform nil
+    :documentation "String used for the regexp scanner.")
+   (match-start
+    :initarg :match-start :accessor search-inator-match-start :initform nil
+    :documentation "Starting position of the match.")
+   (match-end
+    :initarg :match-end :accessor search-inator-match-end :initform nil
+    :documentation "Ending position of the match."))
+  (:default-initargs :default-keymap *default-isearch-keymap*)
+  (:documentation "A search sub-system."))
+
+(defmethod initialize-instance
+    :after ((o search-inator) &rest initargs &key &allow-other-keys)
+  "Initialize a search-inator."
+  (declare (ignore initargs))
+  (assert (slot-value o 'editor))
+  (dbugf :nis "init keymap ~s default-keymap ~s~%"
+	 (if (slot-boundp o 'inator::keymap)
+	     (slot-value o 'inator::keymap)
+	     '|<unbound>|)
+	 (if (slot-boundp o 'inator::default-keymap)
+	     (slot-value o 'inator::default-keymap)
+	     '|<unbound>|))
+
+  (with-slots (editor) o
+    (let ((hist (history-context editor)))
+      (setf (slot-value o 'start-point)
+	    (inator-point (ofirst (inator-contexts editor)))
+
+            (slot-value o 'start-hist)
+	    (history-cur (get-history hist))
+
+	    (slot-value o 'start-from)
+	    (or (history-current-get hist) (history-head hist)))))
+  (values))
+
+(defmethod quit ((o search-inator))
+  (with-slots ((e editor) start-hist start-point) o
+    (with-slots ((contexts inator::contexts) history-context temporary-message) e
+      (with-slots ((point inator::point)) (aref contexts 0)
+	(setf temporary-message nil)
+	(use-first-context (e)
+	  ;; Reset history item and point back to what they were when we started.
+	  (setf (history-cur (get-history history-context)) start-hist
+		point start-point))))))
+
+(defmethod await-event ((o search-inator))
+  (tt-finish-output)
+  (prog1 (await-event (search-inator-editor o))
+    (dbugf :nis "await-event ~s~%" (last-event (search-inator-editor o)))))
+
+(defmethod update-display ((o search-inator))
+  (with-slots (search-string failed direction regexp-p match-end (e editor)) o
+    (with-slots ((contexts inator::contexts)) e
+      (with-slots ((point inator::point)) (aref contexts 0)
+	(dbugf :nis "update-display ~s ~s ~s ~s~%" search-string point match-end
+	       (inator-keymap o))
+	(display-search e search-string point match-end
+			(format nil *isearch-prompt*
+				failed (eq direction :backward)
+				regexp-p))))))
+
+(defmethod redraw ((o search-inator))
+  (update-display o))
+
+(defmethod help ((o search-inator))
+  (message (search-inator-editor o)
+	   "~a" (with-output-to-string (s)
+		  (let ((km (inator-keymap o)))
+		    (if (atom km)
+			(describe-keymap (inator-keymap o))
+			(mapcar #'describe-keymap km))))))
+
+(defgeneric isearch-again (o)
+  (:documentation "")
+  (:method ((o search-inator))
+    (with-slots (search-string last-search direction start-from (e editor)) o
+      (with-slots (last-search history-context) e
+	(when (and (zerop (length search-string)) last-search)
+	  (stretchy-append search-string last-search))
+	(setf direction :forward
+	      start-from (search-start-forward history-context))))))
+
+(defgeneric isearch-again-reverse (o)
+  (:documentation "")
+  (:method ((o search-inator))
+    (with-slots (search-string last-search direction start-from (e editor)) o
+      (with-slots (last-search history-context) e
+	(when (and (zerop (length search-string)) last-search)
+	  (stretchy-append search-string last-search))
+	(setf direction :backward
+	      start-from (search-start-backward history-context))))))
+
+(defgeneric isearch-toggle-regexp (o)
+  (:documentation "Toggle regular expression search.")
+  (:method ((o search-inator))
+    (with-slots (regexp-p scanner scanner-string) o
+      (setf regexp-p (not regexp-p)
+	    scanner nil
+	    scanner-string ""))))
+
+(defgeneric isearch-resync (o)
+  (:documentation "Make the editor be where we searched to.")
+  (:method ((o search-inator))
+    (with-slots ((e editor) search-string match-start) o
+      (with-slots ((contexts inator::contexts) buf history-context last-search) e
+	(with-slots ((point inator::point)) (aref contexts 0)
+	  (setf point 0)
+	  (buffer-delete e 0 (length buf) point)
+	  (buffer-insert e 0 (or (history-current (history-context e)) "")
+			 point)
+	  (setf point (min (or match-start (length buf)) (length buf))
+		;; temporary-message nil
+		last-search search-string)
+	  (clear-completions e)
+	  (redraw-display e))))))
+
+(defun add-to-search (o c)
+  (with-slots (search-string regexp-p match-start match-end direction
+	       (e editor) failed scanner scanner-string start-from) o
+    (with-slots ((contexts inator::contexts) history-context) e
+      (with-slots ((point inator::point)) (aref contexts 0)
+	(stretchy-append search-string c)
+	(when (and regexp-p (string/= search-string scanner-string))
+	  (when (setf scanner (ignore-errors
+			       (ppcre:create-scanner
+				search-string
+				:case-insensitive-mode
+				(use-case-insensitive-p search-string))))
+	    (setf scanner-string (copy-seq search-string))))
+	(let (new-hist)
+	  (multiple-value-setq (new-hist match-start match-end)
+	    (search-history e search-string direction start-from match-start
+			    :regexp-scanner scanner))
+	  (if new-hist
+	      (setf (history-cur (get-history (history-context e))) new-hist
+		    point match-start
+		    failed nil)
+	      (progn
+		(setf failed t))))))))
+
+;; @@@ or should we use inator:default-action ?
+(defgeneric isearch-default (o)
+  (:documentation "The default action for events not in the keymap.")
+  (:method ((o search-inator))
+    (let* ((e (search-inator-editor o))
+	   (c (last-event e)))
+      (dbugf :nis "default ~s~%" c)
+      (cond
+	;; Exit on "command" characters
+	((or (and (characterp c)
+		  (or (control-char-p c) (meta-char-p (char-code c))))
+	     (not (characterp c)))
+	 (isearch-resync o)
+	 (when (equal c #\escape)
+	   (push #\escape (queued-input e)))
+	 (push c (queued-input e))
+	 (setf (inator-quit-flag o) t))
+	(t
+	 ;; Append non-command characters to the search.
+	 (add-to-search o c))))))
+
+(defun isearch2 (e &key (direction :backward) regexp-p)
+  "Incremental search which updates the search position as the user types. The
+search can be ended by typing a control character, which usually performs a
+command, or Control-G which stops the search and returns to the start.
+Control-R searches again backward and Control-S searches again forward."
+  (let (*match-style*)
+    (invoke 'search-inator :editor e
+			   :direction direction
+			   :regexp-p regexp-p)))
 
 (defun isearch (e &key (direction :backward) regexp-p)
   "Incremental search which updates the search position as the user types. The
@@ -263,5 +483,30 @@ Control-R searches again backward and Control-S searches again forward."
 (defsingle isearch-forward (e)
   "Incremental search forward."
   (isearch e :direction :forward))
+
+(defun go-to-matching-history (e string &key regexp-p)
+  "Go to a previous history that matches ‘string’."
+  (with-slots ((contexts inator::contexts) history-context) e
+    (with-slots ((point inator::point)) (aref contexts 0)
+      (let* ((hist (get-history history-context))
+	     (start-from (or (history-current-get history-context)
+			     (history-head hist)))
+	     (pos point)
+	     end new-hist scanner)
+
+	(setf start-from (search-start-backward history-context))
+
+	(when regexp-p
+	  (setf scanner (ignore-errors
+			 (ppcre:create-scanner
+			  string
+			  :case-insensitive-mode
+			  (use-case-insensitive-p string)))))
+	(multiple-value-setq (new-hist pos end)
+	  (search-history e string :backward start-from pos
+			  :regexp-scanner scanner))
+	(if new-hist
+	    (setf (history-cur hist) new-hist
+		  point pos))))))
 
 ;; End
