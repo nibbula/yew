@@ -186,9 +186,11 @@ The function receives a 'pick' as an argument."))
 (defmethod initialize-instance
     :after ((o pick) &rest initargs &key &allow-other-keys)
   "Initialize a pick."
-  ;; When an explicit keymap wasn't specified, add our default one.
-  (when (not (getf initargs :keymap))
-    (push *pick-list-keymap* (slot-value o 'keymap))))
+  (declare (ignore initargs))
+  ;; When there's no keymap, you get the standard one.
+  (when (not (and (slot-boundp o 'keymap) (slot-value o 'keymap)))
+    (setf (slot-value o 'keymap)
+	  (list *pick-list-keymap* *default-inator-keymap*))))
 
 (defmethod run ((pick pick) &rest keys &key list &allow-other-keys)
   (declare (ignorable keys))
