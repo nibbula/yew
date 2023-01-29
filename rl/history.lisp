@@ -206,8 +206,8 @@ from most recent to oldest."
 
 (defun map-history-backward-from (function element
 				  &optional (context *history-context*))
-  "Call FUNCTION with every history-entry in the history given by CONTEXT,
-from element to oldest, or if element is NIL, from the most recent."
+  "Call ‘function’ with every history-entry in the history given by ‘context’,
+from ‘element’ to the oldest, or if ‘element’ is NIL, from the most recent."
   (when (not element)
     (setf element (history-head (get-history context))))
   (dl-list-do-element element function))

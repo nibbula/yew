@@ -24,11 +24,11 @@
 
 (defgeneric history-store-save (store style &key update history-context)
   (:documentation
-   "Save the history from HISTORY-CONTEXT to STORE in STYLE."))
+   "Save the history from ‘history-context’ to ‘store’ in ‘style’."))
 
 (defgeneric history-store-load (store style &key update history-context)
   (:documentation
-   "Load the history to HISTORY-CONTEXT from STORE in STYLE."))
+   "Load the history to ‘history-context’ from ‘store’ in ‘style’."))
 
 (defgeneric history-store-start (store style)
   (:documentation "Start using a history store."))
@@ -38,8 +38,8 @@
 
 (defgeneric history-store-default-file-name (store &optional history-context)
   (:documentation
-   "Return the default pathname where the history for HISTORY-CONTEXT in STORE
-is saved."))
+   "Return the default pathname where the history for ‘history-context’ in
+‘store’ is saved."))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Storage for format :text-file
