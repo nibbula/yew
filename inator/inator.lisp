@@ -374,6 +374,13 @@ is just to call ‘function’ with the ‘inator’ as the first argument and t
 list ‘args’ as the subsequent arguments."
   (apply function inator args))
 
+(defgeneric nicer-event (event)
+  (:documentation
+   "Return a version of event which is nicer for a person to read.")
+  (:method (e) e)
+  (:method ((e character))
+    (nice-char e)))
+
 ;; @@@ This is quite hairy and not really reflected in keymap.lisp
 ;; @@@ clean up keymap traversal in here and keymap.lisp
 (defmethod process-event ((inator inator) event &optional keymap-in)
@@ -467,10 +474,8 @@ of the inator's keymap."
 	    (setf use-default t
 		  result (sub-process event outer-map)))
 	(when (not result)
-	  ;;;(message inator "Event ~a is not bound in keymap ~w."
-	  (message inator "Event ~@[~s ~]~@[~{~s ~}~]is not bound in keymap ~w."
-		   event event-list
-		   keymap))))))
+	  (message inator "Event ~@[~a ~]~@[~{~a ~}~]is not bound."
+		   (nicer-event event) (mapcar #'nicer-event event-list)))))))
 
 (defmethod event-loop ((inator inator))
   "The default event loop. Using this loop a sub-class only has to supply the
