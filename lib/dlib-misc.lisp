@@ -418,9 +418,12 @@ at POS. Returns the new position after moving."
   `(setf ,var (delete ,func ,var)))
 
 (defun run-hooks (var &rest args)
-  "Apply ‘args’ to the hooks in ‘var’."
-  (loop :for f :in var
-     :do (apply f args)))
+  "Apply ‘args’ to the hooks in ‘var’. ‘var’ can be a single function designator
+or a list of function designators."
+  (if (listp var)
+      (loop :for f :in var
+	    :do (apply f args))
+      (apply var args)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; printing
