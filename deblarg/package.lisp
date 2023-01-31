@@ -6,7 +6,7 @@
   (:documentation
    "A crappy half-assed debugger for your enjoyment and frustration. But at
 least you can type things using RL.")
-  (:use :cl :dlib :char-util :table :table-print :keymap :terminal
+  (:use :cl :dlib :char-util :table :dlib-misc :table-print :keymap :terminal
 	:terminal-ansi :terminal-table :rl :collections :ochar :fatchar
         :fatchar-io :tiny-repl #+sbcl :sb-introspect :reader-ext :source-path)
   (:export
@@ -19,6 +19,7 @@ least you can type things using RL.")
    #:deblargger-visual-term
    #:*deblarg*
    #:*debug-term*
+   #:*deblargger-entry-hook*
    #:deblarg
    #:*default-interceptor*
    #:toggle

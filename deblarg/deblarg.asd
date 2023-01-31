@@ -17,9 +17,10 @@ REPL. It does afford one that modicum of efficacy, but scant else. Another
 smidgeon of utility is a uniform interface between platforms. Otherwise, it is
 quite lacking of features."
     :depends-on
-    (:dlib :char-util :keymap :table-print :opsys :terminal :terminal-ansi
-     :terminal-crunch :terminal-table :rl :collections :ochar :fatchar
-     :fatchar-io :tiny-repl #+sbcl :sb-introspect :reader-ext :source-path)
+    (:dlib :char-util :keymap :dlib-misc :table-print :opsys :terminal
+     :terminal-ansi :terminal-crunch :terminal-table :rl :collections :ochar
+     :fatchar :fatchar-io :tiny-repl :reader-ext :source-path
+     #+sbcl :sb-introspect)
     :components
     ((:file "package")
      (:file "base" :depends-on ("package"))

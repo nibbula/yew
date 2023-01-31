@@ -2,12 +2,6 @@
 ;;; deblarg.lisp - Debugger.
 ;;;
 
-;; This would normally be used with TINY-REPL or LISH.
-
-;;; TODO:
-;;; - how about using swank? conium?
-;;; - try getting more specific source location with *read-intern*
-
 (in-package :deblarg)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -526,49 +520,9 @@ keep the current automatic restarts set, otherwise clear them."
        t)
       (t nil))))
 
-;; (defun try-to-reset-curses ()
-;;   "If curses is loaded and active, try to reset the terminal to a sane state
-;; so when we get in error in curses we can type at the debugger."
-;;   (when (find-package :curses)
-;;     (funcall (find-symbol (symbol-name '#:endwin) (find-package :curses)))))
-
-;; @@@ It might be nice if we could avoid this duplication and just call the
-;; one in terminal-ansi.
 (defun try-to-reset-terminal ()
   "Try to reset the terminal to a sane state so when we get in error in some
 program that messes with the terminal, we can still type at the debugger."
-  ;; This whole thing assumes too much!
-  #|
-  (flet ((out (s) (format *terminal-io* "~c~a" #\escape s)))
-
-    ;; First reset the terminal driver to a sane state.
-    (nos:reset-terminal-modes)
-
-    ;; Then try to reset the terminal itself to a sane state, assuming an ANSI
-    ;; terminal. We could just do ^[c, which is quite effective, but it's
-    ;; pretty drastic, and usually clears the screen and can even resize the
-    ;; window, which is so amazingly annoying. So let's just try do individual
-    ;; things that need resetting.  This is pretty much the idea of
-    ;; termcap/info reset string, usually the "rs2", since "rs" usually just
-    ;; does ^[c.
-    (when (typep *terminal* 'terminal-ansi:terminal-ansi)
-      (mapcar
-       #'out '(" F"  ;; 7 bit controls
-	       "[0m" ;; color and attributes
-	       ">"   ;; normal keypad
-	       "#@"  ;; default char set
-	       "m"   ;; memory unlock
-	       "[4l" ;; replace mode (vs insert mode)
-	       "[?4l" ;; jump scroll (vs smooth scroll)
-	       "[?25h" ;; show the cursor
-	       "[?9l"  ;; Don't send position on mouse press
-	       "[?47l" ;; Use normal screen buffer
-	       )))
-    (finish-output))
-  |#
-  ;; Instead, let's try:
-  ;; (when *debug-io*
-  ;;   (format *debug-io* "wtf you badger ~s~%" *terminal*))
   (when (and *terminal* (typep *terminal* 'terminal:terminal))
     (setf (terminal-input-mode *terminal*) :char)
     (setf (terminal-input-mode *terminal*) :line)
@@ -630,6 +584,9 @@ program that messes with the terminal, we can still type at the debugger."
        (with-new-debugger-io (*deblarg*)
 	 ,@body))))
 
+(defvar *deblargger-entry-hook* nil
+  "Customize something that happens when you enter the debugger.")
+
 (defun deblarg (c hook &optional frame)
   "Entry point for the debugger, used as the debugger hook."
   (declare (ignore hook))		;@@@ wrong
@@ -657,6 +614,7 @@ program that messes with the terminal, we can still type at the debugger."
 	(format *debug-io* "Entering the debugger.~a~%"
 		(if (= (random 4) 1)
 		    (s+ " Blarg" (if (zerop (random 2)) #\. #\!)) ""))
+	(run-hooks *deblargger-entry-hook*)
 	(with-standard-io-syntax
 	  ;; Reset reader vars to sane values:
 	  ;; [probably uneeded since we use with-standard-io-syntax]
