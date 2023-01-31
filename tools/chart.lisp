@@ -243,10 +243,19 @@ The columns can be specified as column names or numbers."
 ;;   (:method ((i chart-viewer))
 ;;     (osort (chart-viewer)))
 
-(defun view-chart (chart)
+(defun view-chart (chart &key wait-count)
   "View a chart."
   (with-terminal-inator (*chart-viewer* 'chart-viewer :chart chart)
-    (event-loop *chart-viewer*)))
+    (cond
+      ((null wait-count)
+       (event-loop *chart-viewer*))
+      ((zerop wait-count)
+       (update-display *chart-viewer*)
+       (tt-finish-output))
+      ((integerp wait-count) (zerop wait-count)
+	(loop :for i :from 0 :below wait-count
+	  :do (update-display *chart-viewer*)
+	      (await-event *chart-viewer*))))))
 
 (defparameter *chart-type-names* '(horizontal-bar vertical-bar)
   "The different chart types.")
@@ -257,18 +266,22 @@ The columns can be specified as column names or numbers."
     :help "The chart to draw or a table to make it from.")
    (type choice :short-arg #\t :default "horizontal-bar"
     :choices *chart-type-names*
-    :help "The type of chart."))
+    :help "The type of chart.")
+   (wait-count object :short-arg #\w
+    :help "How many events to wait for before exiting."))
   "Draw a chart."
   (when (not chart)
     (when (not lish:*input*)
       (error "View what chart?"))
     (setf chart lish:*input*))
+  (when (and wait-count (or (not (integerp wait-count)) (minusp wait-count)))
+    (error "wait-count should be a non-negative integer."))
   (let ((cc
 	  ;; (error "I don't know how to view a ~s.~%" (type-of chart))))
 	  (make-chart-from
 	   (symbolify (string type) :package (find-package :chart))
 	   chart)
 	 ))
-    (view-chart cc)))
+    (view-chart cc :wait-count wait-count)))
 
 ;; End
