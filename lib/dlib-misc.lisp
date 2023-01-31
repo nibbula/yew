@@ -106,17 +106,13 @@
     (apply 'load module other-args)))
 
 ;; Maybe this should be put somewhere else, since it's seldom used.
-(defun randomize-vector (vector &key (factor 3))
-  "Randomize the order of elements in an vector. FACTOR is how many random
-swaps to do times the length of the vector."
+(defun randomize-vector (vector)
+  "Randomize the order of elements in an vector. Returns the mutated vector."
   (when (not (vectorp vector))
-    (error "VECTOR must be a vector, not a ~a." (type-of vector)))
-  (let* ((len (length vector))
-	 (swaps (* factor len)))
-    (loop :for i :from 0 :to swaps
-       :do (let* ((a (random len))
-		  (b (random len)))
-	     (rotatef (aref vector a) (aref vector b)))))
+    (error "Argument must be a vector, not a ~a." (type-of vector)))
+  (loop :with len = (length vector)
+	:for i :from (1- len) :downto 1
+	:do (rotatef (aref vector i) (aref vector (random len))))
   vector)
 
 ;; @@@ This should probably support the same args as PARSE-INTEGER.
