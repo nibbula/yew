@@ -1125,6 +1125,14 @@ just before the cursor."
   (let ((function (ask-expr prompt)))
     (and (symbolp function) (fboundp function) function)))
 
+(defun local-keymap (e)
+  "Return the local keymap for ‘e’. Make one if it doesn't have one and put
+it in the list of keymaps."
+  (or (inator-local-keymap e)
+      (prog1 (setf (inator-local-keymap e)
+		   (make-instance 'keymap:keymap :name "rl local keymap"))
+	(pushnew (inator-local-keymap e) (inator-keymap e)))))
+
 (defsingle set-key-command (e)
   "Bind a key interactively."
   (tmp-prompt e "Set key: ")
@@ -1134,7 +1142,7 @@ just before the cursor."
     (clear-completions e)
     (redraw-display e)
     (if cmd
-	(set-key key-seq cmd (line-editor-local-keymap e))
+	(set-key key-seq cmd (local-keymap e))
 	(tmp-message e "Not a function."))))
 
 (defsingle-method describe-key-briefly ((e line-editor))
