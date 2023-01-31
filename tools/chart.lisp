@@ -167,7 +167,8 @@ The columns can be specified as column names or numbers."
     (cond
       ((let ((first (first object)))
 	 (or (and (consp first) (not (consp (cdr first))))
-	     (>= (olength (first object)) 2)))
+	     (and (ordered-collection-p first)
+		  (>= (olength first) 2))))
        ;; Assume it's a two 2d list.
        (loop :for e :in object
 	     :collecting (car e) :into labels
@@ -188,7 +189,8 @@ The columns can be specified as column names or numbers."
 			    &key (label-column 0) (value-column 1))
   (multiple-value-bind (labels values)
       (cond
-	((>= (olength (oelt object 0)) 2)
+	((and (ordered-collection-p (oelt object 0))
+	      (>= (olength (oelt object 0)) 2))
 	 ;; Assume it's a two 2d thing.
 	 (loop :for e :across object
 	       :collecting (oelt e label-column) :into labels
@@ -198,7 +200,7 @@ The columns can be specified as column names or numbers."
 	 (loop :for e :across object
 	       :for i :from 1
 	       :collecting (princ-to-string i) :into labels
-	       :collecting (oelt e value-column) :into values
+	       :collecting e :into values
 	       :finally (return (values labels values)))))
     (make-instance type :labels labels :values values)))
 
