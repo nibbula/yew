@@ -96,9 +96,6 @@
    ))
 (in-package :dlib-misc)
 
-;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 1)
-;; 		   (compilation-speed 2)))
-
 #+clisp
 (defun load-again (module &rest other-args &key &allow-other-keys)
   "Load without complaining about constant redefinitions."
@@ -161,7 +158,6 @@
     (#\g :bits  #.(* 1024 1024 1024))
     (#\G :bytes #.(* 1024 1024 1024 8))))
 
-;; This is sort of based on what jwz had in youtubedown.
 (defun parse-bit-rate (string)
   "Return a bit rate based on STRING. Many variant spellings are allowed:
 
@@ -211,64 +207,6 @@
 	  ((suffix-p :bytes) (/ number 8))
 	  (t ;; no units or suffix, assume k bits
 	   (* number 1024)))))))
-
-;;
-;; foo bar quux
-;; (("foo" ()) ("bar" ()) ("quux" ()))
-;;
-;; foo foobar foobarquux
-;; (("foo" ()) ("bar" ()) ("quux" ()))
-
-(defun seqify (s) (or (and (typep s 'sequence) s) (princ-to-string s)))
-
-(defun put-in-tree (s sub-tree)
-  (let (added thing new spot (ss (seqify s)))
-    (loop :for node :in sub-tree :do
-       (setf thing (car node)
-	     spot (mismatch ss thing))
-       (when (not (zerop spot))
-	 (if (> (length thing) (length ss))
-	     (setf (car node) ss
-		   new (subseq thing spot))
-	     (setf new (subseq ss spot)))
-	 (setf (cdr node)
-	       (if (not (cdr node))
-		   (list new ())
-		   (put-in-tree new (cdr node))))
-	 (format t "zerp ~s~%" (cdr node))
-	 (setf added t)))
-    (if (not added)
-	(progn
-	  (format t "plonk ~s~%" ss)
-	  (if (equal sub-tree '(nil))
-	      (setf sub-tree (list (list ss ())))
-	      (push (list ss ()) sub-tree)))
-	sub-tree)))
-
-;; (defun put-in-tree (string sub-tree)
-;;   (loop :for c :across string
-;;      :do
-
-(defun tree-ify (list)
-  (let ((tree '()))
-    (loop :for s :in list
-       :do (setf tree (put-in-tree s tree))
-       (format t "tree: ~s~%" tree)
-       )
-    (nreverse tree)))
-
-(defun un-tree-ify (list &optional (prefix ""))
-  (if list
-      (if (and (consp list) (not (equal '(nil) list)))
-	  (loop :for i :in list :do
-	     (if (consp i)
-		 (progn
-		   (when (consp (cdr i))
-		     (format t "-> ~s~%" (s+ prefix (car i)))
-		     (un-tree-ify (cdr i) (s+ prefix (car i)))))
-		 (format t "<- ~s~%" (s+ prefix i))))
-	  ;;(format t "<. ~s~%" (s+ prefix list))
-	  )))
 
 (defun group-by-alist (function sequence &key test)
   "Return an alist of lists the items of SEQUENCE, grouped by the results of
@@ -344,10 +282,11 @@ course, you can reverse them yourself if you want."
 (defun shrink-pathname (path &key (to 70) (ellipsis *default-ellipsis*)
 			       abbreviate)
   "Make a path name fit in the given width, shrinking in a way to preserve
-useful information.
-  TO           the limit on the length.
-  ELLIPSIS     a string to use to indicate omission, which defaults to *DEFAULT-ELLIPSIS*.
-  ABBREVIATE   True to allow abbreviating leading directories to one letter."
+useful information. 
+  ‘to’           The limit on the length.
+  ‘ellipsis’     A string to use to indicate omission, which defaults to
+                 ‘*default-ellipsis*.’
+  ‘abbreviate’   True to allow abbreviating leading directories to one letter."
   (declare (type string ellipsis) (type fixnum to))
   (let* ((str (safe-namestring (quote-filename path)))
 	 (len (length str)))
@@ -404,10 +343,9 @@ at POS. Returns the new position after moving."
 	   :do (incf pos))))
   pos)
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; hooks
-
-;; Hooks - a simple, old-fashioned convention.
+#|──────────────────────────────────────────────────────────────────────────┤#
+ │ Hooks - a simple, old-fashioned convention.
+ ╰|#
 
 (defmacro add-hook (var func)
   "Add a hook function FUNC to the hook variable VAR."
@@ -425,8 +363,9 @@ or a list of function designators."
 	    :do (apply f args))
       (apply var args)))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; printing
+#|──────────────────────────────────────────────────────────────────────────┤#
+ │ Printing
+ ╰|#
 
 (defun untabify (line &optional (col 0))
   "Return a new string with all tabs in the LINE to the appropriate number
@@ -445,108 +384,6 @@ which defaults to zero."
              (write-char c str)
              (incf col))))))
 
-;; This slow and very consing, but remarkably succinct. It has the benefit of
-;; knowing the stream's current column by way of the implementation's stream
-;; machinery. It might be nice if it got the COLS from the same place.
-
-(defun old-justify-text (s &key (cols 80) (stream *standard-output*)
-			 (prefix "") (separator #\space)
-			 omit-first-prefix)
-  "Print the string S right justified by words, into COLS characters wide,
-on the stream STREAM.
-SEPARATOR is a character or string which separates the input words.
-PREFIX is printed in front of each line.
-If OMIT-FIRST-PREFIX is true, don't print the first prefix."
-  (format stream (format nil "~a~a~a~d~a"
-			 "~a~{~<~%" prefix "~1," cols ":;~a~> ~}")
-	  (if omit-first-prefix "" prefix)
-	  (split-sequence separator s :omit-empty t)))
-
-;; This is much faster.
-
-;; @@@ Problems:
-;; It doesn't know what column it's starting at (unlike the old version),
-;; and therefore wrongly assumes zero.
-;; Assumes fixed width characters, without all the unicode nonsense.
-
-;; Keep this around in case we need a faster simple character only version.
-#|
-(defun %justify-text-OLD (text &key (cols 80) (stream *standard-output*)
-			     (prefix "") (separator #\space) omit-first-prefix
-			     (start-column 0))
-  (declare (optimize (speed 3) (safety 0) (debug 3) (space 0)
-		     (compilation-speed 0))
-	   (type simple-string text prefix)
-	   (type fixnum cols))
-  ;;(check-type text simple-string)
-  (let ((len             (length text))
-	(i               0)
-	(last-word-start 0)
-	;;(line-start	 0)
-	(column          start-column))
-    (declare (type fixnum len i last-word-start column))
-    (flet ((write-word (final)
-	     ;;(dbugf :justify-text "col ~d " column)
-	     (if (< column cols)
-		 (progn
-		   ;;(dbugf :justify-text "space")
-		   (write-string text stream :start last-word-start :end i)
-		   (when (< column (- cols 2))
-		     (when (not final)
-		       (write-char separator stream))
-		     (incf column)))
-		 (progn
-		   ;;(dbugf :justify-text "newline")
-		   (write-char #\newline stream)
-		   (if prefix
-		       (progn
-			 (write-string prefix stream)
-			 (setf column (length prefix)))
-		       (setf column 0))
-		   (write-string text stream :start last-word-start :end i)
-		   (write-char separator stream)
-		   (incf column (+ (- i last-word-start) 2))))
-	     ;;(dbugf :justify-text "~%")
-	     ))
-      (when (and prefix (not omit-first-prefix))
-	(write-string prefix stream)
-	(setf column (length prefix)))
-      (loop
-	 :while (< i len)
-	 :do
-	 (cond
-	   ((char= (aref text i) #\Newline)
-	    ;; (when (not (zerop last-word-start))
-	    ;;   (write-char #\space stream))
-	    ;; (write-string text stream :start last-word-start :end i)
-	    (write-word nil)
-	    (write-char #\newline stream)
-	    (if prefix
-		(progn
-		  (write-string prefix stream)
-		  (setf column (length prefix)))
-		(setf column 0))
-	    (incf i)
-	    (setf last-word-start i
-		  ;; line-start i
-		  ))
-	   ((char= (aref text i) separator)
-	    (write-word nil)
-	    (incf i)
-	    ;; eat multiple spaces
-	    (loop :while (and (< i len) (char= (aref text i) separator))
-	       :do (incf i))
-	    (setf last-word-start i)
-	    ;;(when (zerop column)
-	    ;;  (setf line-start i))
-	    )
-	   (t
-	    (incf i)
-	    (incf column))))
-      (when (< last-word-start i)
-	(write-word t)))))
-|#
-
 ;; This can handle some wide and fatchars, but it only gives reasonable output
 ;; for the the subset of unicode scripts that have a non-context-dependant
 ;; word separator character (a.k.a. western style). This is certainly not an
@@ -557,11 +394,7 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
 (defun %justify-text (text &key (cols 80) (stream *standard-output*)
 			     (prefix "") (separator #\space) omit-first-prefix
 			     (start-column 0))
-  ;; (declare (optimize (speed 3) (safety 0) (debug 3) (space 0)
-  ;; 		     (compilation-speed 0))
-  (declare (optimize (speed 0) (safety 3) (debug 3) (space 0)
-   		     (compilation-speed 0))
-	   (type fixnum cols))
+  (declare (type fixnum cols))
   (let ((len             (olength text))
 	(i               0)
 	(last-word-start 0)
@@ -571,17 +404,14 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
 	(prefix-len      (display-length prefix)))
     (declare (type fixnum len i last-word-start column))
     (flet ((write-word ()
-	     (dbugf :justify-text "col ~d " column)
 	     (if (< (+ column (if first-word 0 sep-len)) cols)
 		 (progn
-		   ;;(dbugf :justify-text "space")
 		   (when (not first-word)
 		     (princ separator stream)
 		     (incf column sep-len))
 		   (setf first-word nil)
 		   (princ (osubseq text last-word-start (min i len)) stream))
 		 (progn
-		   (dbugf :justify-text "newline")
 		   (princ #\newline stream)
 		   (if prefix
 		       (progn
@@ -590,16 +420,13 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
 		       (setf column 0))
 		   (princ (osubseq text last-word-start i) stream)
 		   (incf column (+ (display-length
-				    (osubseq text last-word-start i))))))
-	     (dbugf :justify-text "~%")
-	     ))
+				    (osubseq text last-word-start i))))))))
       (when (and prefix (not omit-first-prefix))
 	(princ prefix stream)
 	(setf column (+ prefix-len start-column)))
       (loop
 	 :while (< i len)
 	 :do
-	 (dbugf :justify-text "~s: " i)
 	 (cond
 	   ((char= (simplify-char (oelt text i)) #\Newline)
 	    (write-word)
@@ -624,9 +451,10 @@ If OMIT-FIRST-PREFIX is true, don't print the first prefix."
 	    (incf column (display-length (oelt text i)))
 	    (incf i))))
       (when (< last-word-start i)
-	(dbugf :justify-text "last word ~s ~s~%" i column)
 	(write-word)))))
 
+;; This is only broken into two parts for the convenience of output to a
+;; string when ‘stream’ is nil.
 (defun justify-text (text &key (cols 80) (stream *standard-output*)
 			    (prefix "") (separator #\space) omit-first-prefix
 			    (start-column 0))
@@ -655,7 +483,7 @@ If STREAM is nil, return a string of the output."
 of character position, which should be the end of the displayed lines in the
 buffer.
   buffer          The string to compute endings for.
-  start-column    The column number of the first character in BUFFER.
+  start-column    The column number of the first character in ‘buffer’.
   end-column      The number columns in the view, after which it wraps.
   spots           An alist of character indexes to set the line and column of.
   column-spots    An alist of line and column pairs to set the character
@@ -1175,8 +1003,9 @@ isn't 1, the result will potentially not be exactly ‘width’ wide."
 	     (loop :for i :from 0 :below back-pad :by pad-len
 		   :do (write-char pad-char str)))))))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; spin
+#|──────────────────────────────────────────────────────────────────────────┤#
+ │ Spin
+ ╰|#
 
 (defvar *spin* nil
   "Index into the spinner string.")
@@ -1258,8 +1087,9 @@ SPIN-STRING can be given and defaults to the value of *DEFAULT-SPIN-STRING*."
        (when *spin-spun*
 	 (unspin)))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; packages
+#|──────────────────────────────────────────────────────────────────────────┤#
+ │ Packages and systems
+ ╰|#
 
 (defvar *loadable-systems* nil
   "Cached list of ASDF loadable packages. Set to NIL to recompute.")
@@ -1387,7 +1217,7 @@ configuration is changed."
     (let ((old-sym (find-symbol (string sym) package)))
       (when old-sym
 	(unintern old-sym package)
-;	(format t "Uninterning ~a from ~a~%" old-sym package)
+	;; (format t "Uninterning ~a from ~a~%" old-sym package)
 	))))
 
 ;; Simple mindless ASDF autoloader.
@@ -1442,25 +1272,6 @@ with the same name. If it's a macro, pass MACRO as true, mmkay?"
        (when sys
 	 (asdf:system-depends-on sys))))))
 
-;; (defun all-system-dependencies (system)
-;;   "Return a list of all recursive dependencies of a loaded ASDF SYSTEM."
-;;   (let (use-list)
-;;     (declare (special use-list))
-;;     (labels ((sub-deps (sys)
-;;                (let (results)
-;;                  (loop :with sub
-;;                     :for s :in (system-depends-list sys)
-;;                     :do
-;;                       (when (not (find s use-list :test #'equalp))
-;; 			(when (atom s)
-;; 			  (push s use-list)
-;; 			  (push s results))
-;; 			(when (setf sub (sub-deps s))
-;; 			  (setf results (append results sub)))))
-;;                  results)))
-;;       (sub-deps system))
-;;     use-list))
-
 (defun all-system-dependencies (system &key sort-p names-p)
   "Return a list of systems of all recursive dependencies for the designanted
 ASDF ‘system’. ‘system’ can be a list, in which case the dependencies of the
@@ -1510,8 +1321,9 @@ system definition file."
 		    (asdf/component:component-children sys))
 	    (list (asdf:system-source-file sys)))))
 
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;; I/O
+#|──────────────────────────────────────────────────────────────────────────┤#
+ │ I/O
+ ╰|#
 
 #|
 (defun read-text ()
@@ -1554,9 +1366,9 @@ text into lisp and have it be stored as lines of words."
 (defun slurp (file &key (external-format :default)
 			 element-type
 			 count)
-  "Return an array of ELEMENT-TYPE, with the contents read from FILE.
-ELEMENT-TYPE defaults to CHARACTER or the stream-element-type for streams.
-EXTERNAL-FORMAT is as in OPEN. If COUNT is non-nil, only read that many
+  "Return an array of ‘element-type’, with the contents read from ‘file’.
+‘element-type’ defaults to character or the stream-element-type for streams.
+‘external-format’ is as in ‘open’. If ‘count’ is non-nil, only read that many
 elements."
   (let (stream (close-me nil) buffer pos len result)
     (macrolet ((copy-loop (outputer)
