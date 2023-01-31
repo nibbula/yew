@@ -103,17 +103,21 @@
   (with-slots (labels values bar-fill horizontal-separator vertical-separator)
       chart
     (let* ((max-value (loop :for v :in values :maximize v))
+	   (data-count (olength values))
+	   (bar-width (max 1 (truncate (tt-width) data-count)))
+	   (left-edge (truncate (- (tt-width) (* data-count bar-width)) 2))
 	   (height (- (tt-height) 2))
-	   (x 0))
+	   (x left-edge))
       (do-bars (label value chart)
 	(loop :for y :from height
 	   :downto (if (zerop max-value)
 		       height
 		       (- height (round (* value height) max-value)))
 	   :do
-	     (tt-move-to y x)
-	     (tt-write-char bar-fill))
-	(incf x))
+	   (tt-move-to y x)
+	   (loop :for i :from 0 :below bar-width
+	     :do (tt-write-char bar-fill)))
+	(incf x bar-width))
       (tt-move-to (- (tt-height) 2) 0)
       (tt-format "~v,,,va" (1- (tt-width))
 		 vertical-separator vertical-separator))))
