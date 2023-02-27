@@ -222,7 +222,7 @@ NIL, unset the VAR, using unsetenv."
   #-linux
   (progn
     (config-feature :os-t-has-sysctl)
-    #-openbsd (configure-feature :os-t-sysctl-fancy)))
+    #-openbsd (config-feature :os-t-sysctl-fancy)))
 
 #+os-t-has-sysctl
 (defcfun ("sysctl" real-sysctl)
