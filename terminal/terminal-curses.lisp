@@ -4,7 +4,7 @@
 
 (defpackage :terminal-curses
   (:documentation "Curses terminal")
-  (:use :cl :dlib :terminal :curses :dgray :fatchar :dcolor)
+  (:use :cl :dlib :terminal :curses :dgray :collections :fatchar :dcolor)
   (:export
    #:terminal-curses-stream
    #:terminal-curses
@@ -478,7 +478,8 @@ set.")
       (setf (cffi:mem-aref fstr :int (length wide-string)) 0)
       (addnwstr fstr (length wide-string))))
 
-(defmethod terminal-write-string ((tty terminal-curses) str &key start end)
+(defmethod terminal-write-string ((tty terminal-curses) (str string)
+				  &key start end)
   "Output a string to the terminal."
   (let ((out-str (if (or start end)
 		     ;; So we don't end up making a yet another copy.
