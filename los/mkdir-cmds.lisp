@@ -13,7 +13,7 @@
    (directories pathname :repeating t :help "Directory to create."))
   :args-as args
   "Make directories."
-  (lish:with-files-or-input (directories :arg-list args))
+  (lish:with-files-or-input (:directories :arg-list args))
     (apply #'mkdir args))
 
 ;; End
