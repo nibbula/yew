@@ -6,7 +6,7 @@
   (:documentation "View things in the Lisp system.")
   (:use :cl :dlib :tree-viewer :dlib-interactive :syntax :syntax-lisp
 	:terminal :collections :fatchar :fatchar-io :completion :ochar :ostring
-	:view-generic :terminal-utils)
+	:view-generic :terminal-utils :fancy-inator)
   (:export
    #:view-lisp
    #:!view-lisp
@@ -630,8 +630,18 @@
    :func #'lisp-image-contents
    :open t))
 
+(defclass lisp-viewer (tree-viewer fancy-inator)
+  ()
+  (:documentation "View the whole Lisp system as a tree."))
+
 (defun view-lisp ()
-  (view-tree (make-instance 'lisp-node)))
+  (let ((ashvattha (make-instance 'lisp-node)))
+    (view-tree ashvattha
+	       :viewer (make-instance 'lisp-viewer
+				      :bottom (- (tt-height) 2)
+				      :root ashvattha)
+	       :default-action (lambda (o)
+				 (inator:message o "WTF do you want?")))))
 
 #+lish
 (lish:defcommand view-lisp ()

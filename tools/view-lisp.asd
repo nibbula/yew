@@ -16,6 +16,6 @@ memory is a nice neat tree, rather than the vast corrals of scattered refuse
 that it is."
     :depends-on (:dlib :tree-viewer :dlib-interactive :syntax :syntax-lisp
 		 :terminal :collections :fatchar :fatchar-io :completion
-		 :terminal-utils)
+		 :terminal-utils :fancy-inator)
     :components
     ((:file "view-lisp")))
