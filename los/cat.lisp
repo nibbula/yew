@@ -172,4 +172,4 @@ This allows interspersing standard input between other things."
   (finish-output *standard-output*)
   (values))
 
-;; EOF
+;; End
