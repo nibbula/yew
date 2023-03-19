@@ -195,9 +195,13 @@ if not given."
   #+openmcl (syscall (chdir path))
   #+sbcl (progn
 	   (syscall (chdir path))
-	   (let ((tn (ignore-errors (truename path))))
-	     (when tn
-	       (setf *default-pathname-defaults* tn))))
+	   ;; Actualy I think we want to get an error if truename fails,
+	   ;; because things like cl:open and cl:load won't work.
+	   ;; (let ((tn (ignore-errors (quote-filename (truename path)))))
+	   ;;   (when tn
+	   ;;     (setf *default-pathname-defaults* tn)))
+	   (setf *default-pathname-defaults* (truename (quote-filename path)))
+	   )
   #+clisp (ext:cd path)
   #+excl (setf *default-pathname-defaults* (pathname (excl:chdir path)))
   #+cmu (setf (ext:default-directory) path)
