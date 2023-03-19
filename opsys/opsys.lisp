@@ -435,6 +435,9 @@ if not given.")
 (defosfun current-directory ()
   "Return the full path of the current working directory as a string.")
 
+(defsetf current-directory change-directory
+  "Set the current directory.")
+
 (defparameter *default-directory-mode* #o755
   ;; @@@ should we mention umask?
   "The default POSIX style permissions for creating a directory.")
