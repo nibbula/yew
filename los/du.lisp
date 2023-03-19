@@ -652,6 +652,7 @@ file as seen if and return NIL."
     (message o "Loaded from ~a" *default-ouput-file*)
     (quit o)))
 
+#|
 (defun view-file (o)
   "View the file with “view”."
   (tt-finish-output)
@@ -664,6 +665,15 @@ file as seen if and return NIL."
   (terminal-reinitialize *terminal*)
   (tt-clear)
   (tt-finish-output))
+|#
+
+(defmethod view ((o du-node))
+  "View the file with “view”."
+  (view (get-path o)))
+
+(defmethod view-raw ((o du-node))
+  "View the file with “view-raw”."
+  (view-raw (get-path o)))
 
 (defkeymap *du-ctrl-x-keymap* ()
   `((,(ctrl #\s)	. save-file)
@@ -671,7 +681,7 @@ file as seen if and return NIL."
 
 (defkeymap *du-keymap* ()
   `((,(ctrl #\x)	. *du-ctrl-x-keymap*)
-    (#\v		. view-file)
+    ;; (#\v		. view-file)
     (#\g		. reload-item)
     (#\G		. reload-all)))
 
