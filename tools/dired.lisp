@@ -9,8 +9,9 @@
 	:view-generic :ochar :ostring)
   (:export
    #:dired
-   #:*no-warning*
    #:!dired
+   #:*no-warning*
+   #:*pause-after-running*
    ))
 (in-package :dired)
 
@@ -99,6 +100,7 @@
     (,(ctrl #\L)		. refresh)
     (#\x			. execute)
     (#\!			. dired-run)
+    (#\&			. dired-run-in-background)
     (,(char-util:meta-char #\x)	. shell-command)
     (#\^			. dired-up)
     (,(char-util:meta-char #\u)	. dired-up)
@@ -235,7 +237,20 @@
 			  :default #\N)
 			 (invoke-debugger c)
 			 (continue c)))))
-	 ,@body))))
+	 ,@body)))
+
+  (defmacro with-outside-terminal (() &body body)
+    "Evaluate ‘body’ with the terminal set up for external commsnds. Make sure
+the terminal is reset when comming back."
+    `(unwind-protect
+	  (progn
+	    (tt-clear)
+	    (tt-finish-output)
+	    (terminal-end *terminal*)
+	    ,@body)
+       (terminal-reinitialize *terminal*)
+       (tt-clear)
+       (redraw *dired*))))
 
 (defun view-thing (o &key raw)
   (with-slots (directory last) o
@@ -294,23 +309,50 @@
   "View the file."
   (view-cell o))
 
+(defun run-program-here (o &key pause background)
+  (with-slots (directory) o
+    (let* ((name (osimplify (current-file-cell o)))
+	   (full (nos:path-append directory name)))
+
+      ;; Try to execute regular executable files.
+      (cond
+	((and (is-executable full)
+	      (eq :regular (file-info-type (file-info full))))
+	 ;; (!= full)
+	 (with-simple-error-handling ()
+	   (with-outside-terminal ()
+	     (with-working-directory (directory)
+	       (lish:shell-eval (lish::expr-from-args (list full))
+				:no-expansions t
+				:context
+				(if background
+				    (lish::modified-context
+				     lish::*context*
+				     :background background)
+				     lish::*context*))
+	       (when pause
+		 (write-line "[Press Return]")
+		 (finish-output)
+		 (read-line)))))))
+      (values)))) ;; suppress sbcl note
+
+(defvar *pause-after-running* t
+  "Whether to pause after runninng a program.")
+
 (defgeneric dired-run (dired)
   (:documentation "Run a file.")
   (:method ((o directory-editor))
-    (with-simple-error-handling ()
-      (with-slots (directory) o
-	(let* ((name (osimplify (current-file-cell o)))
-	       (full (nos:path-append directory name)))
+    (run-program-here o :pause *pause-after-running*)))
 
-	  ;; Try to execute regular executable files.
-	  (cond
-	    ((and (is-executable full)
-		  (eq :regular (file-info-type (file-info full))))
-	     ;; (!= full)
-	     (lish:shell-eval (lish::expr-from-args (list full))
-			      :no-expansions t)
-	     (tt-clear)
-	     (redraw o))))))))
+(defgeneric dired-run-pause (dired)
+  (:documentation "Run a file.")
+  (:method ((o directory-editor))
+    (run-program-here o :pause t)))
+
+(defgeneric dired-run-in-background (dired)
+  (:documentation "Run a file in the background.")
+  (:method ((o directory-editor))
+    (run-program-here o :background t)))
 
 #|
 (defun item-at (o x y)
