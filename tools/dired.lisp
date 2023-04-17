@@ -98,6 +98,7 @@
     (#\V			. view-raw-command)
     (,(ctrl #\L)		. refresh)
     (#\x			. execute)
+    (#\!			. dired-run)
     (,(char-util:meta-char #\x)	. shell-command)
     (#\^			. dired-up)
     (,(char-util:meta-char #\u)	. dired-up)
@@ -195,59 +196,91 @@
 		  (push (osimplify (file-cell _)) files))) table)
       (setf files (nreverse files)))))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro with-error-handling (() &body body)
+    "Handle errors in ‘body’ and allow picking a restart."
+    `(handler-bind
+	 ((serious-condition
+	    (lambda (c)
+	      (let ((restarts (compute-restarts c)))
+		(fui:show-text
+		 (list-restarts restarts c)
+		 :input-func
+		 (lambda (w)
+		   (declare (ignore w))
+		   (loop
+		     :with key = (tt-get-key) :and digit
+		     :do
+		     (setf digit (and (characterp key) (digit-char-p key)))
+		     (cond
+		       ((or (eql key #\q)
+			    (eql key #\a))
+			(invoke-restart (find-restart 'abort)))
+		       ((and digit (< 0 digit (length restarts)))
+			;; (invoke-restart (nth digit (cdr restarts))))
+			(invoke-restart (nth digit restarts)))
+		       (t (message "What? ~s" key))))))))))
+       ,@body))
+
+  (defmacro with-simple-error-handling (() &body body)
+    "Handle errors in ‘body’ and allow entering the debugger or ignoring."
+    `(with-simple-restart (continue "Continue with the directory editor.")
+       (handler-bind
+	   ((error (lambda (c)
+		     (if (fui:popup-y-or-n-p
+		          (span-to-fat-string
+			   `((:red "Error: ")
+			     ,(apply #'format nil "~a" (list c))
+			     #\newline #\newline "Enter the debugger?"))
+			  :default #\N)
+			 (invoke-debugger c)
+			 (continue c)))))
+	 ,@body))))
+
 (defun view-thing (o &key raw)
   (with-slots (directory last) o
-    (with-simple-restart (continue "Continue with the directory editor.")
-      (handler-bind
-	  ((error (lambda (c)
-		    (if (fui:popup-y-or-n-p
-		         (span-to-fat-string
-			  `((:red "Error: ") ,(apply #'format nil "~a" (list c))
-			    #\newline #\newline "Enter the debugger?"))
-			 :default #\N)
-			(invoke-debugger c)
-			(continue c)))))
-	(let* ((name (osimplify (current-file-cell o)))
-	       (full (nos:path-append directory name)))
-	  (flet ((view-one (file)
-		   (if raw
-		       (view:view-raw file)
-		       (view:view file)))
-		 (view-multiple (files)
-		   ;; @@@@ Work this out
-		   ;; (let ((viewer (view:all-same-viewer files)))
-		   ;;   (if (and viewer (view:can-view-multiple-p viewer))
-		   ;; 	 (view:view-multiple files)
-		   ;; 	 (if raw
-		   ;; 	     (view:view-raw-things file)
-		   ;; 	     (view:view-things file))))
-		   (if raw
-		       (view:view-raw-things files)
-		       (view:view-things files))
-		   ))
-	    (cond
-	      ;; If we're going back up to the previous editor, just quit.
-	      ((and last (equal name "..")
-		    (equal (nos:path-to-absolute full)
-			   (dired-directory last)))
-	       (quit o))
-	      #| This shouldn't be on a view command!!
-	      ;; Try to execute regular executable files?
-	      ((and (is-executable full)
-		    (eq :regular (file-info-type (file-info full))))
-	        ;; (!= full)
-	        (lish:shell-eval (lish::expr-from-args (list full))
-	                         :no-expansions t)
-		(tt-clear)
-		(redraw o)) |#
-	      (t
-	       ;; Otherwise, make a new one.
-	       (let ((files (marked-files o)))
-		 (if files
-		     (view-multiple files)
-		     (view-one full))
-		 (tt-clear)
-		 (redraw o))))))))))
+    (with-simple-error-handling ()
+      (let* ((name (osimplify (current-file-cell o)))
+	     (full (nos:path-append directory name)))
+	(flet ((view-one (file)
+		 (if raw
+		     (view:view-raw file)
+		     (view:view file)))
+	       (view-multiple (files)
+		 ;; @@@@ Work this out
+		 ;; (let ((viewer (view:all-same-viewer files)))
+		 ;;   (if (and viewer (view:can-view-multiple-p viewer))
+		 ;; 	 (view:view-multiple files)
+		 ;; 	 (if raw
+		 ;; 	     (view:view-raw-things file)
+		 ;; 	     (view:view-things file))))
+		 (if raw
+		     (view:view-raw-things files)
+		     (view:view-things files))
+		 ))
+	  (cond
+	    ;; If we're going back up to the previous editor, just quit.
+	    ((and last (equal name "..")
+		  (equal (nos:path-to-absolute full)
+			 (dired-directory last)))
+	     (quit o))
+	    #| This shouldn't be on a view command!!
+	      ;; Try to execute regular executable files? ;
+	    ((and (is-executable full)	;
+	    (eq :regular (file-info-type (file-info full)))) ;
+	        ;; (!= full)		;
+	    (lish:shell-eval (lish::expr-from-args (list full)) ;
+	    :no-expansions t)		;
+	    (tt-clear)			;
+	    (redraw o)) |#
+	    (t
+	     ;; Otherwise, make a new one.
+	     (let ((files (marked-files o)))
+	       (if files
+		   (view-multiple files)
+		   (view-one full))
+	       (tt-clear)
+	       (redraw o)))))))))
 
 (defmethod view-cell ((o directory-editor))
   (view-thing o))
@@ -260,6 +293,24 @@
 (defmethod accept ((o directory-editor))
   "View the file."
   (view-cell o))
+
+(defgeneric dired-run (dired)
+  (:documentation "Run a file.")
+  (:method ((o directory-editor))
+    (with-simple-error-handling ()
+      (with-slots (directory) o
+	(let* ((name (osimplify (current-file-cell o)))
+	       (full (nos:path-append directory name)))
+
+	  ;; Try to execute regular executable files.
+	  (cond
+	    ((and (is-executable full)
+		  (eq :regular (file-info-type (file-info full))))
+	     ;; (!= full)
+	     (lish:shell-eval (lish::expr-from-args (list full))
+			      :no-expansions t)
+	     (tt-clear)
+	     (redraw o))))))))
 
 #|
 (defun item-at (o x y)
@@ -451,31 +502,6 @@
   "Return the restart number N in RESTARTS or NIL if it's not in RESTARTS."
   (when (and restarts (>= n 0) (< n (length restarts)))
     (nth n restarts)))
-
-(eval-when (:compile-toplevel :load-toplevel :execute)
-  (defmacro with-error-handling (() &body body)
-    `(handler-bind
-	 ((serious-condition
-	    (lambda (c)
-	      (let ((restarts (compute-restarts c)))
-		(fui:show-text
-		 (list-restarts restarts c)
-		 :input-func
-		 (lambda (w)
-		   (declare (ignore w))
-		   (loop
-		     :with key = (tt-get-key) :and digit
-		     :do
-		     (setf digit (and (characterp key) (digit-char-p key)))
-		     (cond
-		       ((or (eql key #\q)
-			    (eql key #\a))
-			(invoke-restart (find-restart 'abort)))
-		       ((and digit (< 0 digit (length restarts)))
-			;; (invoke-restart (nth digit (cdr restarts))))
-			(invoke-restart (nth digit restarts)))
-		       (t (message "What? ~s" key))))))))))
-       ,@body)))
 
 ;; @@@ These are BOGUS!!
 ;; We should make good versions suitable for "cp" and "mv"
