@@ -75,11 +75,10 @@ Slot are:
   seconds
   nanoseconds)
 
-;; @@@ This is similar to the code in dlib-misc and timeval in unix/types.lisp,
-;; but we can't depend on those. Perhaps if we ever make a separate time package
-;; we could depend on some part of that and have macros or something for
-;; defining time arithmetic. For now I'm only adding things that I need for
-;; other parts of opsys.
+;; @@@ This is similar to things in dtime, but it seems like dtime has to
+;; depend on opsys, instead of the other way around. Perhaps someday we could
+;; separate the pieces of dtime and use them instead of this impoverished and
+;; redundant os-time.
 
 (eval-when (:compile-toplevel)
   (defun define-time-comparison-operator (op)
@@ -362,4 +361,4 @@ cl:pathname or streams."
    :format-control "[Terminal Resized]~%")
   (:documentation "The window changed size."))
 
-;; EOF
+;; End

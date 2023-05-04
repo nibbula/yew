@@ -1216,15 +1216,6 @@ of LIST is an atom, assume it's a plist, otherwise it's an alist."
 	   (do-plist (,key ,value ,l) ,@body)
 	   (do-alist (,key ,value ,l) ,@body)))))
 
-;; I took this from rosetta code. This seems to be the fastest of 8 methods
-;; I tested. I converted it from using DO* to LOOP, and added comments, so I
-;; could understand it better. I added PRESERVE-NILS in case you have a tree
-;; where NILs are meaningful and not just empty lists.
-;;
-;; @@@ It might be nice to have a version of this that works on arbitray
-;; sequences, but it would probably be slower than this pure list version, and
-;; so we would probably still want this one. Flattening other type of sequence
-;; trees seems far less common.
 (defun flatten (tree &key preserve-nils)
   (declare (optimize (speed 3) (safety 3) (space 2) (compilation-speed 0)))
   ;; Make an outer list. This is the list we modify.
