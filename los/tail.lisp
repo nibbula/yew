@@ -23,6 +23,7 @@
 	       (when line
 		 (write-line line *standard-output*)))
 	     (progn
+	       (finish-output)
 	       (sleep interval)
 	       (setf line t)))
 	 :while line)
@@ -31,6 +32,7 @@
 	 (if (setf line (read-line stream nil nil))
 	     (write-line line *standard-output*)
 	     (progn
+	       (finish-output)
 	       (sleep interval))))))
 
 (defun really-seekable (stream)
