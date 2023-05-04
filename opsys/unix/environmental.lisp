@@ -104,6 +104,7 @@ the current 'C' environment."
 
 (defcfun ("getenv" real-getenv) :string (name :string))
 
+#|
 (defun environment-variable (var)
   "Return a string with the value of the system environment variable name VAR."
   (declare (type string-designator var))
@@ -121,6 +122,12 @@ the current 'C' environment."
     #+abcl (ext:getenv var-string)
     #-(or clisp sbcl openmcl cmu ecl excl lispworks abcl)
     (missing-implementation 'getenv)))
+|#
+
+(defun environment-variable (var)
+  "Return a string with the value of the system environment variable named ‘var’."
+  (declare (type string-designator var))
+  (real-getenv var))
 
 (defalias 'getenv 'environment-variable)
 (defalias 'env 'environment-variable)
@@ -136,8 +143,9 @@ the current 'C' environment."
 (defcfun ("unsetenv" real-unsetenv) :int (name :string))
 
 (defun unsetenv (var)
-  "Remove the environtment variable named VAR."
+  "Remove the environtment variable named ‘var’."
   (declare (type string-designator var))
+  #|
   #+clisp (setf (ext:getenv var) nil)	; @@@ guessing?
   #+excl (setf (sys::getenv var) nil)	; @@@ guessing?
   #+ccl (syscall (ccl::unsetenv var))
@@ -147,18 +155,21 @@ the current 'C' environment."
   (declare (ignore var))
   #-(or clisp openmcl excl sbcl ecl cmu lispworks abcl)
   (missing-implementation 'unsetenv))
+  |#
+  (syscall (real-unsetenv var)))
 
 (defcfun ("setenv" real-setenv) :int
   (name :string) (value :string) (overwrite :int))
 
 (defun setenv (var value)
-  "Set the environtment variable named VAR to the string VALUE. If VALUE is
-NIL, unset the VAR, using unsetenv."
+  "Set the environtment variable named ‘var’ to the string ‘value’. If ‘value’
+is NIL, unset the ‘var’, using unsetenv."
   (declare (type string-designator var)
 	   (type (or string null) value))
   (when (not value)
     (unsetenv var)
     (return-from setenv value))
+  #|
   #+clisp (setf (ext:getenv var) value)
   #+openmcl (syscall (ccl::setenv var value))
   #+excl (setf (sys::getenv var) value)
@@ -172,6 +183,8 @@ NIL, unset the VAR, using unsetenv."
   (declare (ignore var value))
   #-(or clisp openmcl excl sbcl ecl cmu lispworks abcl)
   (missing-implementation 'setenv))
+  |#
+  (syscall (real-setenv var value 1)))
 
 (defsetf environment-variable setenv
     "Set the environtment variable named VAR to the string VALUE.")
