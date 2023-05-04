@@ -578,7 +578,7 @@ delete the backup file at the end."
 			   delete-backup
 			   collect)
   #.(s+ "Edit a stream. Run the ‘script’ and/or the contents of ‘script-file’ on
-‘input’. Write the results to ‘output’"	*doc*)
+‘input’. Write the results to ‘output’. " *doc*)
   (when (and in-place collect)
     (error "in-place doesn't make sense with collect."))
   (let* ((*state* (make-state :input input :output output :collect collect))
