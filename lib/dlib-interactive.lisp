@@ -989,13 +989,30 @@ Tags are:~%~a" *file-tag-doc*))
 (defun describe-language ()
   "Describe things about the system natural language settings."
   (format t "Language: ~a~%" (nos:language))
-  #+unix
+  #-linux
   (flet ((demuff (sym)
 	   (let ((s (string sym)))
 	     (subseq s 1 (1- (length s))))))
     (print-properties
      (loop :for i :in uos::*nl-items*
 	   :collect (demuff i)
-           :collect (uos:nl-langinfo (symbol-value i))))))
+           :collect (uos:nl-langinfo (symbol-value i)))))
+  #+linux
+  (describe-language-carefully))
+
+#+linux
+(defun describe-language-carefully ()
+  (loop
+    :with p
+    :for i in uos:*nl-items*
+    :do
+    ;; Constants marked with a - seem to return bad values?
+    ;; Or maybe they're just not strings? 
+    (when (char/= (char (string i) 0) #\-)
+      (setf p (uos::nl-langinfo-raw (symbol-value i)))
+      (format t "~a~40t" i) (finish-output)
+      (if (not (cffi:null-pointer-p p))
+	  (format t "~a~%" (cffi:foreign-string-to-lisp p))
+	  (format t "<--NULL-->~%")))))
 
 ;; End
