@@ -1045,6 +1045,7 @@ descriptor FD."
 (defvar *handlers-set* nil
   "True if we've already set the signal handlers.")
 
+;; @@@ This really needs to save at least the mask and flags
 (defmacro with-terminal-signals (() &body body)
   "Evaluate the BODY with signal handlers set appropriately for reading from
 a terminal."
@@ -1250,7 +1251,7 @@ The individual settings override the settings in MODE."
   "Get the window size. First value is columns, second value is rows."
   (with-foreign-object (ws '(:struct winsize))
     (when (< (posix-ioctl tty-fd +TIOCGWINSZ+ ws) 0)
-      (error "Can't get the tty window size."))
+      (error "Can't get the tty window size: ~a." (error-message (errno))))
     (values
      (foreign-slot-value ws '(:struct winsize) 'ws_col)
      (foreign-slot-value ws '(:struct winsize) 'ws_row))))
