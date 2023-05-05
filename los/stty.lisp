@@ -74,7 +74,7 @@
 	  (join-by-string
 	   (loop :for c :in *cchars*
 		 :collect
-		 (format nil "~(~a~) = ~a; " (demuff c)
+		 (format nil "~(~a~) = ~a; " (subseq (demuff c) 1)
 			 (dump-char
 			  c (mem-aref c_cc :unsigned-char
 				      (symbol-value c)))))
