@@ -34,8 +34,6 @@
 (lish:defcommand stat
   ((follow-links boolean :short-arg #\L
     :help "True to give information about the linked thing, not the link." )
-   (help boolean :short-arg #\?
-    :help "Show the help.")
    (files pathname :repeating t
     :help "The path names to give information about."))
   :accepts (string pathname sequence)
