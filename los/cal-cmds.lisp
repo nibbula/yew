@@ -37,8 +37,12 @@
   (write-line
    (case (keywordify format)
      (:unix
-      #+unix (mini-strftime (uos:nl-langinfo uos::+D-T-FMT+))
-      #-unix (mini-strftime "%a %d %b %Y %r %Z"))
+      #+unix
+      (if (find "+DATE-FMT+" uos:*nl-items* :key #'symbol-name :test #'equal)
+	  (mini-strftime (uos:nl-langinfo uos::+DATE-FMT+))
+	  (mini-strftime (uos:nl-langinfo uos::+D-T-FMT+)))
+      #-unix
+      (mini-strftime "%a %d %b %Y %r %Z"))
      (:lisp
       (princ-to-string (get-universal-time)))
      (otherwise
