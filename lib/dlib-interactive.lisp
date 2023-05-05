@@ -30,6 +30,7 @@ be used at a REPL, but not as likely to be called by other programs.")
    #:describe-float
    #:describe-locale
    #:describe-os-errors
+   #:describe-language
 
    #:safe-set-bracketed-paste
    #:bracketed-paste-on
@@ -985,4 +986,16 @@ Tags are:~%~a" *file-tag-doc*))
       (grout-print-table table))
     table))
 
-;; EOF
+(defun describe-language ()
+  "Describe things about the system natural language settings."
+  (format t "Language: ~a~%" (nos:language))
+  #+unix
+  (flet ((demuff (sym)
+	   (let ((s (string sym)))
+	     (subseq s 1 (1- (length s))))))
+    (print-properties
+     (loop :for i :in uos::*nl-items*
+	   :collect (demuff i)
+           :collect (uos:nl-langinfo (symbol-value i))))))
+
+;; End
