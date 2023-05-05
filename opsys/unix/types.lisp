@@ -80,11 +80,21 @@ Type name     Darwin           Linux-32         Linux-x86-64     Linux-arm64    
   micro-seconds)
 
 (defun convert-timeval (timeval)
-  (if (and (pointerp timeval) (null-pointer-p timeval))
-      nil
-      (with-foreign-slots ((tv_sec tv_usec) timeval (:struct foreign-timeval))
-	(make-timeval :seconds tv_sec
-		      :micro-seconds tv_usec))))
+  (cond
+    ((pointerp timeval)
+     (if (null-pointer-p timeval)
+	 nil
+	 (with-foreign-slots ((tv_sec tv_usec) timeval
+			      (:struct foreign-timeval))
+	   (make-timeval :seconds tv_sec
+			 :micro-seconds tv_usec))))
+    ((consp timeval)
+     (make-timeval
+      :seconds (getf timeval 'tv_sec)
+      :micro-seconds (getf timeval 'tv_usec)))
+    (t
+     (error "Trying to convert an unknown timeval type: ~s ~s"
+	    (type-of timeval) timeval))))
 
 (defconstant +ms-per-sec+ (expt 10 6)
   "The number of microeconds in a second.")

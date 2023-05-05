@@ -683,6 +683,11 @@ is NIL, unset the ‘var’, using unsetenv."
 	(t
 	 (convert-from-foreign oldp type))))))))
 
+#+darwin
+(defcfun getloadavg :int
+  (loadavg (:pointer :double))
+  (nelem :int))
+
 ;; @@@ should do a (defsetf sysctl ...) so we can nicely setf it.
 
 ;; sysctl things for get-system-info
@@ -693,7 +698,7 @@ is NIL, unset the ‘var’, using unsetenv."
   
   (defun get-sysctl-timeval (name string &optional context)
     (declare (ignore name context))
-    (convert-timeval (sysctl string '(:struct foreign-loadavg))))
+    (convert-timeval (sysctl string '(:struct foreign-timeval))))
 
   (defun get-sysctl-vm-total (name string &optional context)
     (flet ((get-it () (sysctl string '(:struct foreign-vmtotal))))
@@ -730,18 +735,32 @@ is NIL, unset the ‘var’, using unsetenv."
                 (:active-shared-memory         't_armshr)
 		)))))
   
-  (defun get-load-averages (string &optional context)
-    (declare (ignore context))
+  (defun get-load-averages (name string &optional context)
+    (declare (ignore name context #+darwin string))
     (let ((a (make-array
 	      3 :element-type 'float
 	      :initial-element 0.0)))
+      #-darwin
       (dotimes (i 3)
 	(setf (aref a i)
 	      (mem-aref
 	       (getf (sysctl string '(:struct foreign-loadavg)) 'ldavg
 		     (null-pointer)) ;; Only to supress an sbcl warning.
 	       'fixpt-t i)))
+      #+darwin
+      ;; sysctl doesn't seem to work right, so just call getloadavg.
+      (with-foreign-object (avs :double 3)
+	(syscall (getloadavg avs 3))
+	(dotimes (i 3)
+	  (setf (aref a i) (mem-aref avs :double i))))
       a))
+
+  (defun get-sysctl-uptime (name string &optional context)
+    "Sysctl function to return uptime in seconds."
+    (let ((tv (get-sysctl-timeval name string context))
+	  (now (gettimeofday)))
+      (when tv
+	(timeval-seconds (timeval-sub now tv)))))
 
   (defun get-free-mem (name string &optional context)
     (declare (ignore name string context))
@@ -750,9 +769,8 @@ is NIL, unset the ‘var’, using unsetenv."
     (- (sysctl "hw.physmem" :integer)
        (sysctl "hw.usermem" :integer)))
   
-  (defvar *sysctl-data*
-    #(
-      #(:uptime		      "kern.boottime"    get-sysctl-timeval)
+  (defparameter *sysctl-data*
+    #(#(:uptime		      "kern.boottime"    get-sysctl-uptime)
       #(:load-averages	      "vm.loadavg"	 get-load-averages)
       #(:total-memory	      "hw.physmem"       :integer)
       #(:free-memory	      "FAKE"             get-free-mem)
@@ -776,12 +794,12 @@ is NIL, unset the ‘var’, using unsetenv."
       (if data
 	  (let ((string (aref data 1))
 		(type (aref data 2)))
-	  (etypecase type
-	    (keyword
-	     (sysctl string type))
-	    (symbol
-	     (funcall type name string context)))
-	  (error "Unknown system info item ~s." name)))))
+	    (etypecase type
+	      (keyword
+	       (sysctl string type))
+	      (symbol
+	       (funcall type name string context))))
+	  (error "Unknown system info item ~s." name))))
 
   (defun process-sysctl-names (names)
     (let ((s-names (intersection (sysctl-names) names))
