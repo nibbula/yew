@@ -12,4 +12,9 @@
     :long-description   "Like in the old days, if you happen to need it."
     :depends-on (:opsys :los-config)
     :components
-    ((:file "slowcat")))
+    ((:file "slowcat")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "slowcat-cmds"))
+      :depends-on ("slowcat"))))
