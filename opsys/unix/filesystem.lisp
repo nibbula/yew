@@ -266,7 +266,7 @@ C library function getcwd."
   "Make a directory."
   (path :string) (mode mode-t))
 
-#+(or linux freebsd openbsd netbsd)
+#+(or linux darwin freebsd openbsd netbsd)
 (defcfun mkdirat :int
   "Make a directory relative to a file descriptor."
   (fd :int) (path :string) (mode mode-t))
@@ -470,45 +470,47 @@ C library function getcwd."
 	  :while (/= 0 c)))))
 |#
 
+#+darwin
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (define-constant +darwin-unix-suffix+ #+x86 "$UNIX2003"
+					#-x86 "")
+
+  (define-constant +darwin-inode64-suffix+ #+(or x86 x86-64) "$INODE64"
+					   #-(or x86 x86-64) "")
+
+  (defun darwin-alias (name)
+    (s+ name +darwin-unix-suffix+))
+
+  (defun darwin-alias-i (name)
+    (s+ name +darwin-inode64-suffix+ +darwin-unix-suffix+))
+
+  (defun darwin-inode64 (name)
+    (s+ name +darwin-inode64-suffix+)))
+
 ;; opendir
-#+(and darwin 64-bit-target)
-(defcfun ("opendir$INODE64" opendir) :pointer (dirname :string))
-#+(and darwin (not 64-bit-target))
-(defcfun ("opendir$INODE64$UNIX2003" opendir) :pointer (dirname :string))
-#+netbsd
-(defcfun ("__opendir30" opendir) :pointer (dirname :string))
-#-(or darwin netbsd)
-(defcfun opendir :pointer (dirname :string))
+#+darwin (defcfun (#.(darwin-alias-i "opendir") opendir) :pointer
+	   (dirname :string))
+#+netbsd (defcfun ("__opendir30" opendir) :pointer (dirname :string))
+#-(or darwin netbsd) (defcfun opendir :pointer (dirname :string))
 
 ;; closedir
-#+(and darwin 64-bit-target)
-(defcfun ("closedir" closedir) :int (dirp :pointer))
-#+(and darwin (not 64-bit-target))
-(defcfun ("closedir$UNIX2003" closedir) :int (dirp :pointer))
-#-darwin
-(defcfun closedir :int (dirp :pointer))
+#+darwin (defcfun (#.(darwin-alias "closedir") closedir) :int (dirp :pointer))
+#-darwin (defcfun closedir :int (dirp :pointer))
 
 ;; readdir_r
-#+(and darwin 64-bit-target)
-(defcfun ("readdir_r$INODE64" readdir_r)
- 	    :int (dirp :pointer) (entry :pointer) (result :pointer))
-#+(and darwin (not 64-bit-target))
-(defcfun ("readdir_r$INODE64" readdir_r)
- 	     :int (dirp :pointer) (entry :pointer) (result :pointer))
+#+darwin (defcfun (#.(darwin-inode64 "readdir_r") readdir_r)
+           :int (dirp :pointer) (entry :pointer) (result :pointer))
 #+sunos (defcfun ("__posix_readdir_r" readdir_r)
-	    :int (dirp :pointer) (entry :pointer) (result :pointer))
+	  :int (dirp :pointer) (entry :pointer) (result :pointer))
 #+netbsd (defcfun ("__readdir_r30" readdir_r)
-	    :int (dirp :pointer) (entry :pointer) (result :pointer))
+	   :int (dirp :pointer) (entry :pointer) (result :pointer))
 #-(or darwin sunos netbsd)
 (defcfun readdir_r :int (dirp :pointer) (entry :pointer) (result :pointer))
 
 ;; readdir
-#+(and darwin 64-bit-target)
-(defcfun ("readdir$INODE64" readdir) :pointer (dirp :pointer))
-#+(and darwin (not 64-bit-target))
-(defcfun ("readdir$INODE64" readdir) :pointer (dirp :pointer))
-#+netbsd
-(defcfun ("__readdir30" readdir) :pointer (dirp :pointer))
+#+darwin (defcfun (#.(darwin-inode64 "readdir") readdir) :pointer
+	   (dirp :pointer))
+#+netbsd (defcfun ("__readdir30" readdir) :pointer (dirp :pointer))
 #-(or darwin netbsd) (defcfun readdir :pointer (dirp :pointer))
 
 ;; Use of reclen is generally fux0rd, so just count to the null
@@ -1075,6 +1077,32 @@ indicated by the constants: (in *file-flags*):~%~{~a~%~}"
   "Write NBYTES bytes to file descriptor FD from BUF."
   (fd :int) (buf :pointer) (nbytes size-t))
 
+;; Stupid fix for sbcl on darwin arm64 because I don't know how to make
+;; cffi do it properly yet.
+#+(and sbcl darwin arm64)
+(progn
+  (sb-alien:define-alien-routine ("ioctl" ioctl-pointer) sb-alien:int
+    (fd sb-alien:int) (request sb-alien:unsigned-long) &optional (arg (* t)))
+
+  (sb-alien:define-alien-routine ("ioctl" ioctl-int) sb-alien:int
+    (fd sb-alien:int) (request sb-alien:unsigned-long)
+    &optional (arg sb-alien:int))
+
+  (sb-alien:define-alien-routine ("ioctl" ioctl-none) sb-alien:int
+    (fd sb-alien:int) (request sb-alien:unsigned-long))
+
+  (defun posix-ioctl (fd request &optional arg)
+    (typecase arg
+      (null (ioctl-none fd request))
+      (integer (ioctl-int fd request arg))
+      (t
+       (cond
+         ((pointerp arg)
+          (ioctl-pointer fd request arg))
+         (t
+          (error "ioctl with unknown arg type ~s: ~s" (type-of arg) arg)))))))
+
+#-(and sbcl darwin arm64)
 (defcfun ("ioctl" posix-ioctl) :int
   "Manipulate device parameters."
   (fd :int) (request :int) (arg :pointer))
@@ -1098,7 +1126,7 @@ according to WHENCE, where WHENCE is one of:~%~{~a~%~}"
 (defconstant +AT-REMOVEDIR+ #x200
   "Value for flags in unlinkat to remove a directory.")
 
-#+(or linux freebsd openbsd netbsd)
+#+(or linux darwin freebsd openbsd netbsd)
 (progn
   (defcfun ("openat" posix-openat) :int
     (dirfd :int) (path :string) (flags :int) (mode mode-t))
@@ -2179,28 +2207,28 @@ recommended to use with-temporary-file instead."
 #-linux ;; so mostly BSDs
 (progn
   (defcfun
-    (#+darwin "stat$INODE64"
+    (#+darwin #.(darwin-inode64 "stat")
      #+netbsd "__stat50"
      #-(or darwin netbsd) "stat"
      real-stat)
     :int (path :string) (buf (:pointer (:struct foreign-stat))))
 
   (defcfun
-    (#+darwin "lstat$INODE64"
+    (#+darwin #.(darwin-inode64 "lstat")
      #+netbsd "__lstat50"
      #-(or darwin netbsd) "lstat"
      real-lstat)
     :int (path :string) (buf (:pointer (:struct foreign-stat))))
 
   (defcfun
-    (#+darwin "fstat$INODE64"
+    (#+darwin #.(darwin-inode64 "fstat")
      #+netbsd "__fstat50"
      #-(or darwin netbsd) "fstat"
      real-fstat)
     :int (fd :int) (buf (:pointer (:struct foreign-stat))))
 
   (defcfun
-      (#+darwin "fstatat$INODE64"
+      (#+darwin #.(darwin-inode64 "fstatat")
        #-darwin "fstatat"
        real-fstatat)
       :int (fd :int) (path :string) (buf (:pointer (:struct foreign-stat)))
@@ -3573,10 +3601,10 @@ objects should be stored."
     (convert-statfs buf)))
 
 ;; int getmntinfo(struct statfs **mntbufp, int flags);
-#+(and darwin 64-bit-target)
-(defcfun ("getmntinfo$INODE64" real-getmntinfo)
-    :int (mntbufp :pointer) (flags :int))
-#+(or (and darwin 32-bit-target) freebsd openbsd netbsd)
+#+darwin
+(defcfun (#.(darwin-inode64 ("getmntinfo") real-getmntinfo))
+  :int (mntbufp :pointer) (flags :int))
+#+(or freebsd openbsd netbsd)
 (defcfun (#-netbsd "getmntinfo"
 	  #+netbsd "__getmntinfo13"
 	  real-getmntinfo)
