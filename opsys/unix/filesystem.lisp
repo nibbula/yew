@@ -3602,7 +3602,7 @@ objects should be stored."
 
 ;; int getmntinfo(struct statfs **mntbufp, int flags);
 #+darwin
-(defcfun (#.(darwin-inode64 ("getmntinfo") real-getmntinfo))
+(defcfun (#.(darwin-inode64 "getmntinfo") real-getmntinfo)
   :int (mntbufp :pointer) (flags :int))
 #+(or freebsd openbsd netbsd)
 (defcfun (#-netbsd "getmntinfo"
