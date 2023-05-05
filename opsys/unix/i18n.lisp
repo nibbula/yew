@@ -42,7 +42,9 @@
 (defparameter *nl-items* nil
   "Natural language items available from nl-langinfo.")
 
-;; The order here is important and for GNU libc on linux.
+;; The order quite here is important and for GNU libc on linux.
+;; Constants starting with a #\- seem to be trouble or wrong.
+
 #+linux
 (define-enum-list *nl-items*
   #(#(+ABDAY-1+     "Abbreviated name of the first day of the week.")
@@ -96,20 +98,169 @@
     #(+T-FMT-AMPM+  "a.m. or p.m. time format string.")
 
     #(+ERA+         "Era description segments.")
-    #| USE_GNU has an ERA-YEAR in here |#
+    #(+ERA-YEAR+    "Era date format string.")
     #(+ERA-D-FMT+   "Era date format string.")
     #(+ALT-DIGITS+  "Alternative symbols for digits.")
     #(+ERA-D-T-FMT+ "Era date and time format string.")
     #(+ERA-T-FMT+   "Era time format string.")
+
+    #(+NL-TIME-ERA-NUM-ENTRIES+ "")
+    #(+NL-TIME-ERAENTRIES+ "")
+
+    #(+NL-WABDAY-1+ "")
+    #(+NL-WABDAY-2+ "")
+    #(+NL-WABDAY-3+ "")
+    #(+NL-WABDAY-4+ "")
+    #(+NL-WABDAY-5+ "")
+    #(+NL-WABDAY-6+ "")
+    #(+NL-WABDAY-7+ "")
+
+    ;; Long-named days of the week.
+    #(+NL-WDAY-1+ "Sunday")
+    #(+NL-WDAY-2+ "Monday")
+    #(+NL-WDAY-3+ "Tuesday")
+    #(+NL-WDAY-4+ "Wednesday")
+    #(+NL-WDAY-5+ "Thursday")
+    #(+NL-WDAY-6+ "Friday")
+    #(+NL-WDAY-7+ "Saturday")
+
+    #(+NL-WABMON-1+ "")
+    #(+NL-WABMON-2+ "")
+    #(+NL-WABMON-3+ "")
+    #(+NL-WABMON-4+ "")
+    #(+NL-WABMON-5+ "")
+    #(+NL-WABMON-6+ "")
+    #(+NL-WABMON-7+ "")
+    #(+NL-WABMON-8+ "")
+    #(+NL-WABMON-9+ "")
+    #(+NL-WABMON-10+ "")
+    #(+NL-WABMON-11+ "")
+    #(+NL-WABMON-12+ "")
+
+    #(+NL-WMON-1+ "")
+    #(+NL-WMON-2+ "")
+    #(+NL-WMON-3+ "")
+    #(+NL-WMON-4+ "")
+    #(+NL-WMON-5+ "")
+    #(+NL-WMON-6+ "")
+    #(+NL-WMON-7+ "")
+    #(+NL-WMON-8+ "")
+    #(+NL-WMON-9+ "")
+    #(+NL-WMON-10+ "")
+    #(+NL-WMON-11+ "")
+    #(+NL-WMON-12+ "")
+
+    #(+NL-WAM-STR+      "Ante meridiem string.")
+    #(+NL-WPM-STR+      "Post meridiem string.")
+
+    #(+NL-WD-T-FMT+     "Date and time format for strftime.")
+    #(+NL-WD-FMT+       "Date format for strftime.")
+    #(+NL-WT-FMT+       "Time format for strftime.")
+    #(+NL-WT-FMT-AMPM+  "12-hour time format for strftime.")
+
+    #(+NL-WERA-YEAR+	"Year in alternate era format.")
+    #(+NL-WERA-D-FMT+	"Date in alternate era format.")
+    #(+NL-WALT-DIGITS+	"Alternate symbols for digits.")
+    #(+NL-WERA-D-T-FMT+	"Date and time in alternate era format.")
+    #(+NL-WERA-T-FMT+	"Time in alternate era format.")
+
+    #(+NL-TIME-WEEK-NDAYS+ "")
+    #(-NL-TIME-WEEK-1STDAY+ "")
+    #(+NL-TIME-WEEK-1STWEEK+ "")
+    #(+NL-TIME-FIRST-WEEKDAY+ "")
+    #(+NL-TIME-FIRST-WORKDAY+ "")
+    #(+NL-TIME-CAL-DIRECTION+ "")
+    #(+NL-TIME-TIMEZONE+ "")
+
+    #(+DATE-FMT+	"strftime format for date.")
+    #(+NL-W-DATE-FMT+ "")
+    #(+NL-TIME-CODESET+ "")
+
+    #(+ALTMON-1+ "")
+    #(+ALTMON-2+ "")
+    #(+ALTMON-3+ "")
+    #(+ALTMON-4+ "")
+    #(+ALTMON-5+ "")
+    #(+ALTMON-6+ "")
+    #(+ALTMON-7+ "")
+    #(+ALTMON-8+ "")
+    #(+ALTMON-9+ "")
+    #(+ALTMON-10+ "")
+    #(+ALTMON-11+ "")
+    #(+ALTMON-12+ "")
+
+    #(+NL-WALTMON-1+ "")
+    #(+NL-WALTMON-2+ "")
+    #(+NL-WALTMON-3+ "")
+    #(+NL-WALTMON-4+ "")
+    #(+NL-WALTMON-5+ "")
+    #(+NL-WALTMON-6+ "")
+    #(+NL-WALTMON-7+ "")
+    #(+NL-WALTMON-8+ "")
+    #(+NL-WALTMON-9+ "")
+    #(+NL-WALTMON-10+ "")
+    #(+NL-WALTMON-11+ "")
+    #(+NL-WALTMON-12+ "")
+
+    #(+NL-ABALTMON-1+ "")
+    #(+NL-ABALTMON-2+ "")
+    #(+NL-ABALTMON-3+ "")
+    #(+NL-ABALTMON-4+ "")
+    #(+NL-ABALTMON-5+ "")
+    #(+NL-ABALTMON-6+ "")
+    #(+NL-ABALTMON-7+ "")
+    #(+NL-ABALTMON-8+ "")
+    #(+NL-ABALTMON-9+ "")
+    #(+NL-ABALTMON-10+ "")
+    #(+NL-ABALTMON-11+ "")
+    #(+NL-ABALTMON-12+ "")
+
+    #(+NL-WABALTMON-1+ "")
+    #(+NL-WABALTMON-2+ "")
+    #(+NL-WABALTMON-3+ "")
+    #(+NL-WABALTMON-4+ "")
+    #(+NL-WABALTMON-5+ "")
+    #(+NL-WABALTMON-6+ "")
+    #(+NL-WABALTMON-7+ "")
+    #(+NL-WABALTMON-8+ "")
+    #(+NL-WABALTMON-9+ "")
+    #(+NL-WABALTMON-10+ "")
+    #(+NL-WABALTMON-11+ "")
+    #(+NL-WABALTMON-12+ "")
     )
   :start #.(nl-item-value +LC-TIME+ 0))
+
+#+linux
+(define-enum-list *nl-items*
+  #(
+   #(+NL-COLLATE-NRULES+ "")
+   #(+NL-COLLATE-RULESETS+ "")
+   #(+NL-COLLATE-TABLEMB+ "")
+   #(+NL-COLLATE-WEIGHTMB+ "")
+   #(+NL-COLLATE-EXTRAMB+ "")
+   #(+NL-COLLATE-INDIRECTMB+ "")
+   #(+NL-COLLATE-GAP1+ "")
+   #(+NL-COLLATE-GAP2+ "")
+   #(+NL-COLLATE-GAP3+ "")
+   #(+NL-COLLATE-TABLEWC+ "")
+   #(+NL-COLLATE-WEIGHTWC+ "")
+   #(+NL-COLLATE-EXTRAWC+ "")
+   #(+NL-COLLATE-INDIRECTWC+ "")
+   #(+NL-COLLATE-SYMB-HASH-SIZEMB+ "")
+   #(+NL-COLLATE-SYMB-TABLEMB+ "")
+   #(+NL-COLLATE-SYMB-EXTRAMB+ "")
+   #(+NL-COLLATE-COLLSEQMB+ "")
+   #(+NL-COLLATE-COLLSEQWC+ "")
+   #(+NL-COLLATE-CODESET+ "")
+    )
+  :start #.(nl-item-value +LC-COLLATE+ 0))
 
 #+linux
 (define-enum-list *nl-items*
   #(#(+DECIMAL-POINT+            "Decimal point character.")
     #(+RADIXCHAR+                "Radix character.")
     #(+THOUSEP+                  "Separator for thousands.")
-    #(+GROUPING+                 "Grouping")
+    #(-GROUPING+                 "Grouping")
     #(+NUMERIC-DECIMAL-POINT-WC+ "Decimal point wide character")
     #(+NUMERIC-THOUSANDS-SEP-WC+ "Thousands separator wide character")
     #(+NUMERIC-CODESET+          "Code set")
@@ -121,17 +272,148 @@
   #(#(+YESEXPR+     "Affirmative response expression.")
     #(+NOEXPR+      "Negative response expression.")
     #(+YESSTR+      "Output string for ‘yes’.")
-    #(+NOSTR+       "Output string for ‘no’."))
+    #(+NOSTR+       "Output string for ‘no’.")
+    #(+NL-MESSAGES-CODESET+ "")
+    )
   :start #.(nl-item-value +LC-MESSAGES+ 0))
 
 #+linux
 (define-enum-list *nl-items*
   #(#(+CRNCYSTR+
-    "Local currency symbol, preceded by '-' if the symbol should appear
+      "Local currency symbol, preceded by '-' if the symbol should appear
 before the value, '+' if the symbol should appear after the value, or '.'
 if the symbol should replace the radix character. If the local currency symbol
-is the empty string, implementations may return the empty string ("")."))
+is the empty string, implementations may return the empty string ("").")
+    #(+INT-CURR-SYMBO+ "")
+    #(+CURRENCY-SYMBOL+ "")
+    #(+MON-DECIMAL-POINT+ "")
+    #(+MON-THOUSANDS-SEP+ "")
+    #(+MON-GROUPING+ "")
+    #(+POSITIVE-SIGN+ "")
+    #(-NEGATIVE-SIGN+ "")
+    #(-INT-FRAC-DIGITS+ "")
+    #(-FRAC-DIGITS+ "")
+    #(-P-CS-PRECEDES+ "")
+    #(-P-SEP-BY-SPACE+ "")
+    #(-N-CS-PRECEDES+ "")
+    #(-N-SEP-BY-SPACE+ "")
+    #(-P-SIGN-POSN+ "")
+    #(-N-SIGN-POSN+ "")
+    #(-NL-MONETARY-CRNCYSTR+ "")
+    #(-INT-P-CS-PRECEDES+ "")
+    #(-INT-P-SEP-BY-SPACE+ "")
+    #(-INT-N-CS-PRECEDES+ "")
+    #(-INT-N-SEP-BY-SPACE+ "")
+    #(-INT-P-SIGN-POSN+ "")
+    #(-INT-N-SIGN-POSN+ "")
+    #(-NL-MONETARY-DUO-INT-CURR-SYMBOL+ "")
+    #(-NL-MONETARY-DUO-CURRENCY-SYMBOL+ "")
+    #(-NL-MONETARY-DUO-INT-FRAC-DIGITS+ "")
+    #(-NL-MONETARY-DUO-FRAC-DIGITS+ "")
+    #(-NL-MONETARY-DUO-P-CS-PRECEDES+ "")
+    #(-NL-MONETARY-DUO-P-SEP-BY-SPACE+ "")
+    #(-NL-MONETARY-DUO-N-CS-PRECEDES+ "")
+    #(-NL-MONETARY-DUO-N-SEP-BY-SPACE+ "")
+    #(-NL-MONETARY-DUO-INT-P-CS-PRECEDES+ "")
+    #(-NL-MONETARY-DUO-INT-P-SEP-BY-SPACE+ "")
+    #(-NL-MONETARY-DUO-INT-N-CS-PRECEDES+ "")
+    #(-NL-MONETARY-DUO-INT-N-SEP-BY-SPACE+ "")
+    #(-NL-MONETARY-DUO-P-SIGN-POSN+ "")
+    #(-NL-MONETARY-DUO-N-SIGN-POSN+ "")
+    #(-NL-MONETARY-DUO-INT-P-SIGN-POSN+ "")
+    #(-NL-MONETARY-DUO-INT-N-SIGN-POSN+ "")
+    #(-NL-MONETARY-UNO-VALID-FROM+ "")
+    #(-NL-MONETARY-UNO-VALID-TO+ "")
+    #(-NL-MONETARY-DUO-VALID-FROM+ "")
+    #(-NL-MONETARY-DUO-VALID-TO+ "")
+    #(-NL-MONETARY-CONVERSION-RATE+ "")
+    #(-NL-MONETARY-DECIMAL-POINT-WC+ "")
+    #(-NL-MONETARY-THOUSANDS-SEP-WC+ "")
+    ;; #(+NL-MONETARY-CODESET+ "")
+    ;; #(+NL-NUM-LC-MONETARY+ "")
+    )
   :start #.(nl-item-value +LC-MONETARY+ 0))
+
+#+linux
+(define-enum-list *nl-items*
+  #(#(-PAPER-HEIGHT+     "")
+    #(-PAPER-WIDTH+      "")
+    #(-PAPER-CODESET+    ""))
+  :start #.(nl-item-value +LC-PAPER+ 0))
+
+#+linux
+(define-enum-list *nl-items*
+  #(#(+NL-NAME-NAME-FMT+ "")
+    #(+NL-NAME-NAME-GEN+ "")
+    #(+NL-NAME-NAME-MR+ "")
+    #(+NL-NAME-NAME-MRS+ "")
+    #(+NL-NAME-NAME-MISS+ "")
+    #(+NL-NAME-NAME-MS+ "")
+    #(+NL-NAME-CODESET+ ""))
+  :start #.(nl-item-value +LC-NAME+ 0))
+
+#+linux
+(define-enum-list *nl-items*
+    #(#(+NL-ADDRESS-POSTAL-FMT+ "")
+      #(+NL-ADDRESS-COUNTRY-NAME+ "")
+      #(+NL-ADDRESS-COUNTRY-POST+ "")
+      #(+NL-ADDRESS-COUNTRY-AB2+ "")
+      #(+NL-ADDRESS-COUNTRY-AB3+ "")
+      #(+NL-ADDRESS-COUNTRY-CAR+ "")
+      #(+NL-ADDRESS-COUNTRY-NUM+ "")
+      #(+NL-ADDRESS-COUNTRY-ISBN+ "")
+      #(+NL-ADDRESS-LANG-NAME+ "")
+      #(+NL-ADDRESS-LANG-AB+ "")
+      #(+NL-ADDRESS-LANG-TERM+ "")
+      #(+NL-ADDRESS-LANG-LIB+ "")
+      #(+NL-ADDRESS-CODESET+ "")
+      ;; #(+NL-NUM-LC-ADDRESS+ "")
+      )
+  :start #.(nl-item-value +LC-ADDRESS+ 0))
+
+#+linux
+(define-enum-list *nl-items*
+    #(#(+NL-TELEPHONE-TEL-INT-FMT+ "")
+      #(+NL-TELEPHONE-TEL-DOM-FMT+ "")
+      #(+NL-TELEPHONE-INT-SELECT+ "")
+      #(+NL-TELEPHONE-INT-PREFIX+ "")
+      #(+NL-TELEPHONE-CODESET+ "")
+      ;; #(+NL-NUM-LC-TELEPHONE+ "")
+      )
+  :start #.(nl-item-value +LC-TELEPHONE+ 0))
+
+#+linux
+(define-enum-list *nl-items*
+    #(#(+NL-MEASUREMENT-MEASUREMENT+ "")
+      #(+NL-MEASUREMENT-CODESET+ "")
+      ;; #(+NL-NUM-LC-MEASUREMENT+ "")
+      )
+  :start #.(nl-item-value +LC-MEASUREMENT+ 0))
+
+#+linux
+(define-enum-list *nl-items*
+  #(#(+NL-IDENTIFICATION-TITLE+ "")
+    #(+NL-IDENTIFICATION-SOURCE+ "")
+    #(+NL-IDENTIFICATION-ADDRESS+ "")
+    #(+NL-IDENTIFICATION-CONTACT+ "")
+    #(+NL-IDENTIFICATION-EMAIL+ "")
+    #(+NL-IDENTIFICATION-TEL+ "")
+    #(+NL-IDENTIFICATION-FAX+ "")
+    #(+NL-IDENTIFICATION-LANGUAGE+ "")
+    #(+NL-IDENTIFICATION-TERRITORY+ "")
+    #(+NL-IDENTIFICATION-AUDIENCE+ "")
+    #(+NL-IDENTIFICATION-APPLICATION+ "")
+    #(+NL-IDENTIFICATION-ABBREVIATION+ "")
+    #(+NL-IDENTIFICATION-REVISION+ "")
+    #(+NL-IDENTIFICATION-DATE+ "")
+    #(+NL-IDENTIFICATION-CATEGORY+ "")
+    #(+NL-IDENTIFICATION-CODESET+ "")
+    ;; #(+NL-NUM-LC-IDENTIFICATION+ "")
+    )
+  :start #.(nl-item-value +LC-IDENTIFICATION+ 0))
+
+;; #+linux
+;; (setf *nl-items* (nreverse *nl-items*))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; darwin
@@ -218,6 +500,10 @@ is the empty string, implementations may return the empty string ("").")
   (item nl-item) (locale locale-t))
 
 (defcfun ("nl_langinfo" nl-langinfo) :string
+  "Return the string for ITEM from the language catalog for the current locale."
+  (item nl-item))
+
+(defcfun ("nl_langinfo" nl-langinfo-raw) :pointer
   "Return the string for ITEM from the language catalog for the current locale."
   (item nl-item))
 
