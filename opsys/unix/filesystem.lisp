@@ -3564,17 +3564,17 @@ objects should be stored."
 ;;(defmethod translate-from-foreign (statfs (type foreign-statfs-type))
 ;;  (convert-statfs statfs))
 
-#+(and darwin 64-bit-target)
-(defcfun ("statfs$INODE64" real-statfs) :int (path :string)
+#+darwin
+(defcfun (#.(darwin-inode64 "statfs") real-statfs) :int (path :string)
   (buf (:pointer (:struct foreign-statfs))))
-#+(or (and darwin 32-bit-target) linux freebsd openbsd)
+#+(or linux freebsd openbsd)
 (defcfun ("statfs" real-statfs) :int (path :string)
   (buf (:pointer (:struct foreign-statfs))))
 #+(or freebsd openbsd linux)
 (defcfun ("fstatfs" real-fstatfs) :int (fd :int)
   (buf (:pointer (:struct foreign-statfs))))
-#+(and darwin 64-bit-target)
-(defcfun ("fstatfs$INODE64" real-fstatfs) :int (fd :int)
+#+darwin
+(defcfun (#.(darwin-inode64 "fstatfs") real-fstatfs) :int (fd :int)
   (buf (:pointer (:struct foreign-statfs))))
 
 ;; NetBSD renamed statfs to statvfs in 3.0, but we'll pretend it's stil just
