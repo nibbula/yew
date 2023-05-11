@@ -24,6 +24,18 @@
        ))
     (setf lish:*output* (print-calendar :year year :month month))))
 
+(defparameter *default-date-format-string* "%a %b %e %H:%M:%S %Z %Y"
+  "Default strftime-like format for the unix date format when no language
+specific one can be found.")
+
+(defun valid-locale-string-p (id)
+  "Return true if tyhe symbol ‘id’ is valid locale string."
+  (let ((value (symbol-value id))
+	(id-string (symbol-name id)))
+    (and (find id-string uos:*nl-items* :key #'symbol-name :test #'equal)
+	 (let ((str (uos:nl-langinfo value)))
+	   (and str (stringp str) (not (zerop (length str))))))))
+
 ;; If you really want to specify a complex format like posix date, just use
 ;; format-date. If you want to set the date use, set-date.
 (lish:defcommand date
@@ -38,11 +50,16 @@
    (case (keywordify format)
      (:unix
       #+unix
-      (if (find "+DATE-FMT+" uos:*nl-items* :key #'symbol-name :test #'equal)
-	  (mini-strftime (uos:nl-langinfo uos::+DATE-FMT+))
-	  (mini-strftime (uos:nl-langinfo uos::+D-T-FMT+)))
+      (cond
+	((valid-locale-string-p 'uos::+DATE-FMT+)
+	 (mini-strftime (uos:nl-langinfo uos::+DATE-FMT+)))
+	;; ((find "+D-T-FMT+" uos:*nl-items* :key #'symbol-name :test #'equal)
+	;;  (mini-strftime (uos:nl-langinfo uos::+D-T-FMT+)))
+	(t
+	 (mini-strftime *default-date-format-string*)))
       #-unix
-      (mini-strftime "%a %d %b %Y %r %Z"))
+      ;; was "%a %d %b %Y %r %Z"
+      (mini-strftime *default-date-format-string*))
      (:lisp
       (princ-to-string (get-universal-time)))
      (otherwise

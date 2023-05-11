@@ -117,7 +117,8 @@ not given."
 	       (calendar:month-name month year) str))
 	     (#\c
 	      (write-string
-	       #+unix (mini-strftime (uos:nl-langinfo uos::+D-T-FMT+))
+	       #+unix (let ((fmt (uos:nl-langinfo uos::+D-T-FMT+)))
+			(mini-strftime (or fmt "%a %d %b %Y %r %Z")))
 	       #-unix (mini-strftime "%a %d %b %Y %r %Z")
 	       ))
 	     (#\d
