@@ -472,8 +472,8 @@
   "The framebuffer.")
 
 (defun start (&key (device-name "/dev/fb0"))
-  "Start using the framebuffer in DEVICE-NAME. Return a FRAMEBUFFER structure.
-DONE should be called when done using it to free resources."
+  "Start using the framebuffer in ‘device-name’. Return a ‘framebuffer’
+structure. ‘done’ should be called when done using it to free resources."
   (let ((fd (error-check (posix-open device-name (logior +O_RDWR+ +O_CLOEXEC+) 0)
 			 "Can't open the framebuffer ~s." device-name))
 	pointer length)
@@ -567,16 +567,13 @@ DONE should be called when done using it to free resources."
 ;; Obviously update this if add support for more formats.
 (defun check-support (fb)
   "Error if we don't support the framebuffer format."
-  (unless (eq (framebuffer-type fb) +FB-TYPE-PACKED-PIXELS+)
+  (unless (or (eq (framebuffer-type fb) '+FB-TYPE-PACKED-PIXELS+)
+	      (eq (framebuffer-type fb) '+FB-TYPE-INTERLEAVED-PLANES+))
     (error "Unsupported frambuffer format: ~s"
-	   (documentation (find (framebuffer-type fb) *fb-types*
-				:key #'symbol-value)
-			  'variable)))
-  (unless (eq (framebuffer-type fb) +FB-VISUAL-TRUECOLOR+)
+	   (documentation (framebuffer-type fb) 'variable)))
+  (unless (eq (framebuffer-visual fb) '+FB-VISUAL-TRUECOLOR+)
     (error "Unsupported frambuffer visual: ~s"
-	   (documentation (find (framebuffer-visual fb) *fb-types*
-				:key #'symbol-value)
-			  'variable)))
+	   (documentation (framebuffer-visual fb) 'variable)))
   (unless (= (framebuffer-depth fb) 32)
     (error "Unsupported frambuffer depth: ~s" (framebuffer-depth fb))))
 
