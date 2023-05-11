@@ -18,6 +18,8 @@
    #:memory-avail
    #:memory-total-swap
    #:memory-free-swap
+   #:memory-lisp-space
+   #:memory-lisp-used
    #:!free
    ))
 (in-package :free)
@@ -31,7 +33,9 @@
   reclaimable
   avail
   total-swap
-  free-swap)
+  free-swap
+  lisp-space
+  lisp-used)
 
 ;; for comparing to linux free
 (defun bo ()
@@ -82,6 +86,14 @@ Swap:    ~11d ~11d ~11d~%"
 			 total used free shared (+ buffers cached) avail
 			 swap-total swap-used swap-free)))))
 
+(defun lisp-space ()
+  #+sbcl (sb-ext:dynamic-space-size)
+  #-sbcl nil)
+
+(defun lisp-used ()
+  #+sbcl (sb-kernel:dynamic-usage)
+  #-sbcl nil)
+
 (defun get-free ()
   (let* ((memory-unit-bytes   (nos:get-system-info :memory-unit-bytes))
 	 (total
@@ -114,7 +126,10 @@ Swap:    ~11d ~11d ~11d~%"
 		 :reclaimable reclaimable
 		 :avail avail
 		 :total-swap total-swap
-		 :free-swap free-swap)))
+		 :free-swap free-swap
+		 :lisp-space (lisp-space)
+		 :lisp-used (lisp-used)
+		 )))
 
 (defun format-compact-size (n width)
   (format nil "~v@a" width
@@ -124,7 +139,7 @@ Swap:    ~11d ~11d ~11d~%"
 (defun format-bytes (n width)
   (format nil "~vd" width n))
 
-(defun free-memory-table (&key in-bytes)
+(defun free-memory-table (&key in-bytes lisp)
   (let* ((format-func (if in-bytes #'format-bytes #'format-compact-size))
 	 (m (get-free))
 	 (table
@@ -145,7 +160,13 @@ Swap:    ~11d ~11d ~11d~%"
 		      ,(- (memory-total-swap m) (memory-free-swap m))
 		      ,(memory-free-swap m)
 		      0 0
-		      ,(- (memory-total m) (memory-free m))))
+		      ,(- (memory-total m) (memory-free m)))
+	      ,@(when lisp
+		  `(("Lisp" ,(memory-lisp-space m)
+			   ,(memory-lisp-used m)
+			   ,(- (memory-lisp-space m) (memory-lisp-used m))
+			   0 0
+			   ,(- (memory-lisp-space m) (memory-lisp-used m))))))
 	    :columns
 	    `((:name "")
 	      (:name "Total"      :align :right :type number
@@ -159,17 +180,21 @@ Swap:    ~11d ~11d ~11d~%"
 	      (:name "Buff/Cache" :align :right :type number
 	       :format ,format-func)
 	      (:name "Available"  :align :right :type number
-	       :format ,format-func)))))
+	       :format ,format-func)
+	      ))))
     table))
 
 (defparameter *bar-char* (code-char #x2592)) ; ▒
 ;; (defparameter *bar-char* (code-char #x2588)) ; █
 
-(defun describe-free-memory (&key bytes table)
-  "Describe free system memory."
+(defun describe-free-memory (&key bytes table (lisp t))
+  "Describe free system memory. Keyword arguments are:
+ ‘bytes’  True to show sizes in bytes.
+ ‘table’  Don't output but return a table with the data.
+ ‘lisp’   Include Lisp implementation limits if possible."
   (cond
     (table
-     (let ((table (free-memory-table :in-bytes bytes)))
+     (let ((table (free-memory-table :in-bytes bytes :lisp lisp)))
        (with-grout ()
          (grout-print-table table))
        table))
@@ -206,7 +231,17 @@ Swap:    ~11d ~11d ~11d~%"
 	       (- bar-width swap-bar)
 	       ;; (round (* (memory-free-swap m) bar-width)
 	       ;; 	      (memory-total-swap m))
-	     ))
+	       )
+	     (lisp-bar
+	       (when (and lisp (memory-lisp-space m))
+		 (if (zerop (memory-lisp-space m))
+		     0
+		     (round (* (memory-lisp-used m) bar-width)
+			    (memory-lisp-space m)))))
+	     (lisp-unused-bar
+	       (when (and lisp (memory-lisp-space m))
+		 (- bar-width lisp-bar)))
+	     )
 	(grout-span `((:cyan "Used: ")
 		      ,(format-compact-size (- (memory-total m)
 					      (memory-free m)
@@ -248,7 +283,18 @@ Swap:    ~11d ~11d ~11d~%"
 	   (:bold :fg-black
 		  ,(make-string swap-unused-bar
 				:initial-element *bar-char*))
-	   (:bold :fg-green #\]) #\newline))))
+	   (:bold :fg-green #\]) #\newline))
+	(when (and lisp lisp-bar)
+	  (grout-span
+	   `((:cyan "Lsp")
+	     (:bold :fg-green #\[)
+	     (:fg-magenta
+	      ,(make-string lisp-bar :initial-element *bar-char*))
+	     (:bold :fg-black
+		    ,(make-string lisp-unused-bar
+				  :initial-element *bar-char*))
+	     (:bold :fg-green #\]) #\newline)))
+	))
     (values))))
 
 ;; End
