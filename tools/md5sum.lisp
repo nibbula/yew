@@ -15,6 +15,11 @@
 ;; don't need it.
 
 (defun md5sum (files &key collect as-bytes)
+  "Print MD5 checksums of files.
+ ‘files’     designates list of files, streams, sequneces, or strings.
+             If ‘files’ isn't a list, it's treated as a single object to sum.
+ ‘collect’   If true return the results as a list.
+ ‘as-bytes’  If true consider the file as bytes not characters."
   (flet ((sum-thing (thing)
 	   (typecase thing
 	     (pathname (md5:md5sum-file thing))
@@ -29,6 +34,9 @@
 	      (error "Don't know how to MD5sum a ~s." (type-of thing))))))
   (grout:with-grout ()
     (let (results)
+      ;; Pretend a non-list files is a single object to sum.
+      (when (not (consp files))
+	(setf files (list files)))
       (loop :with bytes :and sum
 	 :for f :in files
 	 :do
