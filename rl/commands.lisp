@@ -1229,7 +1229,7 @@ it in the list of keymaps."
     (do-contexts (e)
       (with-context ()
 	(insert e (if (translate-return-to-newline-in-bracketed-paste e)
-		      (osubstitute #\newline #\return paste)
+		      (osubstitute #\newline #\return paste :test #'ochar=)
 		      paste))
 	(incf point len)))))
 
