@@ -340,8 +340,9 @@ Return the completion result, or NIL if there wasn't one."
 	      ;; delete the different part
 	      (delete-region e (+ start-from replace-pos) saved-point)
 	      (setf (first-point e) (+ start-from replace-pos))
+	      (setf comp (make-fat-string :string comp))
 	      (insert e comp)
-	      (incf (first-point e) (length comp)))
+	      (incf (first-point e) (olength comp)))
 	    (progn
 	      (setf (first-point e) saved-point) ; Go back to where we were
 	      (when (not no-beep)
