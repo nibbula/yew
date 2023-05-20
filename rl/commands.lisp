@@ -1224,12 +1224,12 @@ it in the list of keymaps."
   (let* ((term (or (find-ansi-terminal (line-editor-terminal e))
 		   (error "I don't know how to read a bracketed paste on ~
                              a ~a." (type-of *terminal*))))
-	 (paste (read-bracketed-paste term))
-	 (len (length paste)))
+	 (paste (make-fat-string :string (read-bracketed-paste term)))
+	 (len (olength paste)))
     (do-contexts (e)
       (with-context ()
 	(insert e (if (translate-return-to-newline-in-bracketed-paste e)
-		      (substitute #\newline #\return paste)
+		      (osubstitute #\newline #\return paste)
 		      paste))
 	(incf point len)))))
 
