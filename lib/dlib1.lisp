@@ -1240,12 +1240,13 @@ of LIST is an atom, assume it's a plist, otherwise it's an alist."
 	(delete nil result))))
 
 (defmacro with-collecting ((&optional (collector 'collect)) &body body)
-  "Define a function ‘collector’ by default name ‘collect’, which when
+  "Define a function ‘collector’ by default named ‘collect’, which when
 called with a value, adds it to the end of a list and returns the value.
 Return the list."
   (with-unique-names (head tail)
-    `(let* ((,head (list nil)) ; or actually just before the head
+    `(let* ((,head (list nil)) ;; or actually just before the head
             (,tail ,head))
+       ;; This could be macrolet, but is there a good reason?
        (flet ((,collector (thing)
                 (rplacd ,tail (setf ,tail (list thing)))
                 thing))
