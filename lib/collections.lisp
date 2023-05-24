@@ -259,7 +259,7 @@ returned by successive calls to ‘generator’ if provided.")
 ;; most of the time, but sometimes they are actually useful, like when you
 ;; want to iterate over multiple generic sequences in parallel and want it to
 ;; be even theoretically efficient for collections without O(1) or even O(n)
-;; random access.
+;; random access, for example lists.
 
 (defclass iterator ()
   ((location
