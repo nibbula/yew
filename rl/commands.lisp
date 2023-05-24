@@ -1364,13 +1364,33 @@ binding."
       (complete e :function #'completion::complete-dictionary-word
 		  :start-from start-pos))))
 
+(defun history-prefix-matches (e &key line)
+  "Return a list of the endings and the length for editor ‘e’ and ‘line’ or the
+current line."
+  (when (not line)
+    (setf line (get-buffer-string e)))
+  (let ((pos 0) match
+	(table (make-hash-table :test #'equal)))
+    (map-history-backward
+       #'(lambda (entry)
+	   (when (and (history-entry-line entry)
+		      (setf pos (osearch line (history-entry-line entry)))
+		      (zerop pos)
+		      (> (olength (history-entry-line entry)) (olength line)))
+	     (setf match (history-entry-line entry)
+		   (gethash match table) t))))
+    (let ((len 0))
+      (values
+       (with-collecting ()
+	 (omapk (_ (collect (aref _ 0)) (incf len)) table))
+       len))))
+
 (defun history-prefix-match-ending (e &key line)
   "Return the first ending of the most recent line from history that begins with
 the current line, or NIL if there is none."
   (when (not line)
-    (setf line (get-buf-str e)))
-  (dbugf :suj "line = ~s~%" line)
-  (let (pos)
+    (setf line (get-buffer-string e)))
+  (let ((pos 0))
     (block nil
       (map-history-backward
        #'(lambda (entry)
@@ -1380,6 +1400,13 @@ the current line, or NIL if there is none."
 		      (> (olength (history-entry-line entry)) (olength line)))
 	     (return
 	       (osubseq (history-entry-line entry) (olength line)))))))))
+
+(defun complete-history (context pos all)
+  (complete-list context pos all (history-prefix-matches *line-editor*)))
+
+(defsingle complete-history-command (e)
+  "History completion."
+  (complete e :function #'complete-history))
 
 (defgeneric auto-suggest-command (e)
   (:documentation "Calculate a suggested ending for the current line."))
@@ -1391,6 +1418,47 @@ the current line, or NIL if there is none."
 	  auto-suggest-style
 	  (or (theme-value *theme* '(:program :suggestion :style))
 	      auto-suggest-style))))
+
+#|
+(defun history-previous-match (e &key line)
+  "Return the most recent line from history that contains the current line,
+or NIL if there is none."
+  (with-slots (match-element) e
+    (when (not line)
+      (setf line (get-buf-str e)))
+    (let (pos entry)
+      (block nil
+	(map-history-backward-from
+	  #'(lambda (element)
+	      (setf entry (dl-content element))
+	      (when (and (history-entry-line entry)
+			 (setf pos (osearch line (history-entry-line entry))))
+		(return element)))
+	  match-element)))))
+|#
+
+(defsingle dwim-up (e)
+  "If we're not at the first line, go to the previous line.
+If we're at the first line and it's blank go to the previous history entry.
+If we're at the first and only non-blank line, go to the next most recent
+matching history entry."
+  (use-first-context (e)
+    (with-context ()
+      (let ((line (get-buf-str e)) (eol 0))
+	(cond
+	  ((or (zerop (olength line))			  ; Empty line
+	       (and (setf eol (oposition #\newline line)) ; Not on first line
+		    (>= point eol)))
+	   (previous-line-or-history e))
+	  (t
+	   #|
+	   (let ((m (history-previous-match e))
+		 line)
+	     (when m
+	       (setf (match-element e) m
+		     line (history-entry-line (ofirst m)))))
+	   |#
+	   (go-to-matching-history e (osimplify (get-buf-str e)))))))))
 
 (defgeneric toggle-mode-line (e)
   (:documentation "Toggle displaying the modeline."))
