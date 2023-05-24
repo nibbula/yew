@@ -9,6 +9,8 @@
 ;; <https://arxiv.org/pdf/2010.03090.pdf> Maybe even in-place, low copying,
 ;; versions?
 
+;; @@@ supposedly sbcl has vectorized converters now?
+
 (defparameter *encodings* nil
   "List of registered encodings.")
 
@@ -32,13 +34,13 @@ be a keyword."
   "Return the name of the function of ‘type’ for ‘charset’."
   (symbolify
    (case type
-     (:encoding (s+ "STRING-TO-" charset-name "-BYTES"))
-     (:decoding (s+ charset-name "-BYTES-TO-STRING"))
+     (:encoding         (s+ "STRING-TO-" charset-name "-BYTES"))
+     (:decoding         (s+ charset-name "-BYTES-TO-STRING"))
      (:foreign-encoding (s+ "STRING-TO-FOREIGN-" charset-name))
      (:foreign-decoding (s+ "FOREIGN-TO-STRING-" charset-name))
-     (:putter   (s+ "%PUT-" charset-name "-CHAR"))
-     (:getter   (s+ "%GET-" charset-name "-CHAR"))
-     (:length   (s+ "%LENGTH-IN-" charset-name "-BYTES"))
+     (:putter           (s+ "%PUT-" charset-name "-CHAR"))
+     (:getter           (s+ "%GET-" charset-name "-CHAR"))
+     (:length           (s+ "%LENGTH-IN-" charset-name "-BYTES"))
      (otherwise
       (error "Bad type of encoding function name: ~s" type)))
    :package package))
