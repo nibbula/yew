@@ -33,7 +33,7 @@
       (cond
 	((not (< #x7f ,u2 #xc0))
 	 (cerror "Discard bytes and start again."
-		 "Invalid UTF8 continuation byte ‘~s’." ,u2)
+		 "Invalid UTF8 2nd continuation byte ‘~s’." ,u2)
 	 (go resync))
 	((< ,u1 #xc2)
 	 (cerror "Discard bytes and start again."
@@ -49,7 +49,7 @@
       (cond
 	((not (< #x7f ,u2 #xc0))
 	 (cerror "Discard bytes and start again."
-		 "Invalid UTF8 continuation byte ‘~s’." ,u3)
+		 "Invalid UTF8 3rd continuation byte ‘~s’." ,u3)
 	 (go resync))
 	((and (= ,u1 #xe0) (< ,u2 #xa0))
 	 (cerror "Discard bytes and start again."
@@ -67,7 +67,7 @@
       (cond
 	((not (< #x7f ,u2 #xc0))
 	 (cerror "Discard bytes and start again."
-		 "Invalid UTF8 continuation byte ‘~s’." ,u3)
+		 "Invalid UTF8 4th continuation byte ‘~s’." ,u3)
 	 (go resync))
 	((and (= ,u1 #xf0) (< ,u2 #x90))
 	 (cerror "Discard bytes and start again."
