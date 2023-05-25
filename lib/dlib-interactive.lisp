@@ -989,7 +989,7 @@ Tags are:~%~a" *file-tag-doc*))
 (defun describe-language ()
   "Describe things about the system natural language settings."
   (format t "Language: ~a~%" (nos:language))
-  #-linux
+  #+(and unix (not linux))
   (flet ((demuff (sym)
 	   (let ((s (string sym)))
 	     (subseq s 1 (1- (length s))))))
