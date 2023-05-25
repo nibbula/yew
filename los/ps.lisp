@@ -372,6 +372,7 @@ owned by ‘user’."
 		     out-list)
 		   #+linux
 		   :columns
+		   #+linux
 		   `((:name "PID"  :type number)
 		     (:name "PPID" :type number)
 		     (:name "GID"  :type number)
