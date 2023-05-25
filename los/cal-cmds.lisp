@@ -28,6 +28,7 @@
   "Default strftime-like format for the unix date format when no language
 specific one can be found.")
 
+#+unix
 (defun valid-locale-string-p (id)
   "Return true if tyhe symbol ‘id’ is valid locale string."
   (let ((value (symbol-value id))
