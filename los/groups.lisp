@@ -17,6 +17,6 @@
     (format t "~{~a~^ ~}~%" result)
     (setf *output* result))
   #-unix
-  (format t "I don't know how to show your groups on ~s.~%" *os*))
+  (format t "I don't know how to show your groups on ~s.~%" dlib:*os*))
 
 ;; End

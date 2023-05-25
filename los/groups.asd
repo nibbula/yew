@@ -10,6 +10,6 @@
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Print a list of groups that the current user is in."
-    :depends-on (:opsys :lish)
+    :depends-on (:dlib :opsys :lish)
     :components
     ((:file "groups")))
