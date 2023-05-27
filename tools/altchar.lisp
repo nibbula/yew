@@ -4,7 +4,8 @@
 
 (defpackage :altchar
   (:documentation "Type with alternate character sets.")
-  (:use :cl :char-util :keymap :options :collections :rl :pick-list :inator)
+  (:use :cl :dlib :char-util :keymap :options :collections :fatchar :rl
+	:pick-list :inator)
   (:export
    #:altchar-mode
    #:altchar-insert-command
@@ -120,6 +121,11 @@ we can use pick-list effectively."
      "a̳b̳c̳d̳e̳f̳g̳h̳i̳j̳k̳l̳m̳n̳o̳p̳q̳r̳s̳t̳u̳v̳w̳x̳y̳z̳"
      "0̳1̳2̳3̳4̳5̳6̳7̳8̳9̳"
      "!̳\"̳#̳$̳%̳&̳'̳(̳)̳*̳+̳,̳-̳.̳/̳:̳;̳<̳=̳>̳?̳@̳[\̳\̳]̳^̳_̳`̳{̳|̳}̳~̳")
+    ("u̲n̲d̲e̲r̲l̲i̲n̲e̲"
+     "A̲B̲C̲D̲E̲F̲G̲H̲I̲J̲K̲L̲M̲N̲O̲P̲Q̲R̲S̲T̲U̲V̲W̲X̲Y̲Z̲"
+     "a̲b̲c̲d̲e̲f̲g̲h̲i̲j̲k̲l̲m̲n̲o̲p̲q̲r̲s̲t̲u̲v̲w̲x̲y̲z̲"
+     "0̲1̲2̲3̲4̲5̲6̲7̲8̲9̲"
+     "!̲\"̲#̲$̲%̲&̲'̲(̲)̲*̲+̲,̲-̲.̲/̲:̲;̲<̲=̲>̲?̲@̲[̲\\̲]̲^̲_̲`̲{̲|̲}̲~̲")
     ("s̶t̶r̶i̶k̶e̶t̶h̶r̶o̶u̶g̶h̶"
      "A̶B̶C̶D̶E̶F̶G̶H̶I̶J̶K̶L̶M̶N̶O̶P̶Q̶R̶S̶T̶U̶V̶W̶X̶Y̶Z̶"
      "a̶b̶c̶d̶e̶f̶g̶h̶i̶j̶k̶l̶m̶n̶o̶p̶q̶r̶s̶t̶u̶v̶w̶x̶y̶z̶"
@@ -142,7 +148,8 @@ we can use pick-list effectively."
 (defparameter *alphabets*
   (flet ((letters (string)
 	   (when string
-	     (coerce (char-util:graphemes string) 'vector))))
+	     ;; So it's separated into graphemes.
+	     (make-fat-string :string string))))
   (loop :for a :in *alphabet-data*
      :collect
      (let ((set (make-alphabet :name        (first a)
@@ -177,13 +184,13 @@ we can use pick-list effectively."
   (let (pos)
     (cond
       ((setf pos (position c *upper*))
-       (aref (alphabet-upper-map alphabet) pos))
+       (oelt (alphabet-upper-map alphabet) pos))
       ((setf pos (position c *lower*))
-       (aref (alphabet-lower-map alphabet) pos))
+       (oelt (alphabet-lower-map alphabet) pos))
       ((setf pos (position c *digits*))
-       (aref (alphabet-digits alphabet) pos))
+       (oelt (alphabet-digits alphabet) pos))
       ((setf pos (position c *punctuation*))
-       (aref (alphabet-punctuation alphabet) pos))
+       (oelt (alphabet-punctuation alphabet) pos))
       (t c))))
 
 (defgeneric altchar-insert-command (editor)
@@ -196,12 +203,10 @@ Otherwise insert the normal character."))
   (let ((set (line-editor-character-set e)))
     (when set
       (let ((char (find-char (rl::last-event e) set)))
-	;; (message e "~s" char)
 	(if char
-	    ;; (self-insert e nil char)
 	    (progn
 	      (insert e char)
-	      (incf rl::point (olength char)))
+	      (incf rl::point))
 	    (self-insert e))))))
 
 (defun altchar-mode (e &optional (state t state-provided-p))
