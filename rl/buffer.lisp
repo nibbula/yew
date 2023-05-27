@@ -107,14 +107,14 @@
 (defgeneric buffer-insert (e pos thing point)
   (:documentation
    "Insert something into the buffer at position POS.")
-  (:method ((e line-editor) pos (c character) point)
-    (let ((fc (make-fatchar :c c)))
+  (:method ((e line-editor) pos (c fatchar) point)
       (with-slots (buf) e
-	(record-undo e 'insertion pos (make-fatchar-string (string c)) point)
+	(record-undo e 'insertion pos
+		     (make-fatchar-string (string (fatchar-c c))) point)
 	(if (= pos (length buf))
 	    ;; Appending to the end
 	    (progn
-	      (vector-push-extend fc buf
+	      (vector-push-extend c buf
 				  (+ (array-total-size buf)
 				     (truncate
 				      (* (array-total-size buf) 2/3)))))
@@ -126,8 +126,10 @@
 				  (truncate (* (array-total-size buf) 2/3))))))
 	      (incf (fill-pointer buf))
 	      (setf (subseq buf (1+ pos)) (subseq buf pos))
-	      (setf (aref buf pos) fc)
-	      (update-markers-for-insert e pos 1 point))))))
+	      (setf (aref buf pos) c)
+	      (update-markers-for-insert e pos 1 point)))))
+  (:method ((e line-editor) pos (c character) point)
+    (buffer-insert e pos (make-fatchar :c c) point))
   (:method ((e line-editor) pos (s string) point)
     ;; (with-slots (buf) e
     ;;   (let ((len (length s))
