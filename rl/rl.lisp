@@ -430,9 +430,12 @@ Keyword arguments:
 	 ;; @@@ It might be nice to get a better error if string is not
 	 ;; insert-able, but that might limit how we can extend the buffer.
 	 (without-undo (e)
-	   (buffer-insert e 0 string 0)
-	   ;; (setf (inator-point e) (length string))
-	   (set-all-points e (length string))))))
+	   (let ((to-insert
+		   (typecase string
+		     (fat-string string)
+		     (t (make-fat-string :string string)))))
+	     (buffer-insert e 0 to-insert 0)
+	     (set-all-points e (olength to-insert)))))))
 
     ;; If the terminal is in line mode even after we set it to :char mode,
     ;; our whole thing is kind of moot, so just fall back to reading from the
