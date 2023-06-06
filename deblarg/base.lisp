@@ -166,7 +166,7 @@ are indicated instead of being signaled."
     (error (c)
       (declare (ignore c))
       (return-from display-value
-	(format nil "<<Error printing a ~a>>" (type-of v))))))
+	(format stream "<<Error printing a ~a>>" (type-of v))))))
 
 (defun print-stack-line (line &key width)
   "Print a stack LINE, which is a cons of (line-numbner . string)."

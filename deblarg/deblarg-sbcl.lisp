@@ -29,6 +29,30 @@
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (setf *deblargger-implementation-class* 'sbcl-deblargger))
 
+(defun frame-value (frame var)
+  "Return the value of ‘var’ from ‘frame’ or #:|<Unavailable>|. If ‘var’ isn't
+a debugger variable, just return it."
+  (let ((result
+	  (cond
+	    ((sb-di::debug-var-p var)
+	     (handler-case
+		 (sb-di::debug-var-value var frame)
+	       (condition () '#:|<Unavailable>|)))
+	    (t var))))
+    #|
+    It seems a very strange situation can happen here. Is this an sbcl bug?
+
+    (and (eq (type-of result) 'cl:function)
+         (not (eq 'cl:function
+                  (typecase result
+                    (cl:function 'cl:function)
+                    (t 't))))))
+    |#
+    (cond
+      ((typep result 'condition)
+       '#:|-condition-|)
+      (t result))))
+
 (defun print-frame (f &optional (stream *debug-io*))
   "Print a frame."
   (labels ((print-lambda-list (f arg-list)
@@ -37,9 +61,7 @@
 		(cond
 		  ((sb-di::debug-var-p v)
 		   ;;(sb-di::debug-var-symbol v)
-		   (let ((vv (handler-case
-				 (sb-di::debug-var-value v f)
-			       (condition () '#:|<Unavailable>|))))
+		   (let ((vv (frame-value f v)))
 		     (when (not (or (eql vv '#:|<Unavailable>|)
 				    (typep vv 'condition)))
 		       (write-char #\space stream)
@@ -339,11 +361,12 @@ innermost N contexts, if we can."
 	  (loop :for v :in (sb-di:ambiguous-debug-vars fun "")
 	     :do
 	     (when (eq (sb-di:debug-var-validity v loc) :valid)
-              (format *debug-io* "~S~:[#~W~;~*~] = ~S~%"
-                      (sb-di:debug-var-symbol v)
-                      (zerop (sb-di:debug-var-id v))
-                      (sb-di:debug-var-id v)
-                      (sb-di:debug-var-value v cur))))))))
+               (format *debug-io* "~S~:[#~W~;~*~] = "
+                       (sb-di:debug-var-symbol v)
+                       (zerop (sb-di:debug-var-id v))
+                       (sb-di:debug-var-id v))
+	       (display-value (frame-value cur v) *debug-io*)
+	       (terpri *debug-io*)))))))
 
 (defmethod debugger-old-backtrace ((d sbcl-deblargger) n)
   "Output a list of execution stack contexts. Try to limit it to the
