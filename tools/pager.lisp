@@ -2,13 +2,6 @@
 ;;; pager.lisp - More or less like more or less.
 ;;;
 
-;; TODO:
-;;  - sub-files for keep & filter ?
-;;  - syntax highlighting
-;;  - big stream issues?
-;;    - direct read for files
-;;    - option to use tmp file for pipe (disk vs mem tradeoff)
-
 (defpackage :pager
   (:documentation "pager - More or less like more or less.
 
@@ -54,10 +47,12 @@ The shell command takes any number of file names.
    ))
 (in-package :pager)
 
-;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0)
-;; 		   (compilation-speed 0)))
-;; (declaim (optimize (speed 3) (safety 0) (debug 1) (space 1)
-;; 		   (compilation-speed 0)))
+;; TODO:
+;;  - sub-files for keep & filter ?
+;;  - syntax highlighting
+;;  - big stream issues?
+;;    - direct read for files
+;;    - option to use tmp file for pipe (disk vs mem tradeoff)
 
 (define-constant +digits+ #(#\0 #\1 #\2 #\3 #\4 #\5 #\6 #\7 #\8 #\9)
   "For reading the numeric argument." 'equalp)
@@ -446,10 +441,15 @@ but perhaps reuse some resources."))
 
 	   ;; Underline a character
 	   ((and (< i (- len 2))
-		 (char= (char line i) #\_)
 		 (char= (char line (+ i 1)) #\backspace))
-	    (incf i 2)
-	    (setf c (char line i))
+
+	    (cond
+	      ((char= (char line i) #\_)
+	       (incf i 2)
+	       (setf c (char line i)))
+	      ((char= (char line (+ i 2)) #\_)
+	       (setf c (char line i))
+	       (incf i 2)))
 
 	    ;; Underline & Bold
 	    (when (and (< i (- len 2))
