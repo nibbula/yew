@@ -439,25 +439,29 @@ but perhaps reuse some resources."))
 	    (pushnew :bold attrs)
 	    (setf c (char line i)))
 
-	   ;; Underline a character
+	   ;; Underline
 	   ((and (< i (- len 2))
-		 (char= (char line (+ i 1)) #\backspace))
-
+		 (char= (char line (+ i 1)) #\backspace)
+		 (or (char= (char line i) #\_)
+		     (char= (char line (+ i 2)) #\_)))
 	    (cond
+	      ;; forward underline
 	      ((char= (char line i) #\_)
 	       (incf i 2)
-	       (setf c (char line i)))
+	       (setf c (char line i))
+	       (pushnew :underline attrs))
+	      ;; backward underline
 	      ((char= (char line (+ i 2)) #\_)
 	       (setf c (char line i))
-	       (incf i 2)))
+	       (incf i 2)
+	       (pushnew :underline attrs)))
 
-	    ;; Underline & Bold
+	    ;; underline and bold
 	    (when (and (< i (- len 2))
-		       (char= (char line (+ i 1)) #\backspace)
+		       (find :underline attrs)
 		       (char= (char line (+ i 2)) (char line i)))
 	      (incf i 2)
-	      (pushnew :bold attrs))
-	    (pushnew :underline attrs))
+	      (pushnew :bold attrs)))
 
 	   ;; Overwrite
 	   ((char= (char line i) #\backspace)
