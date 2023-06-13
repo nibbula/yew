@@ -401,89 +401,60 @@ but perhaps reuse some resources."))
 (defun process-grotty-line (line)
   "Convert from grotty typewriter sequences to fatchar strings."
   (when (= (length line) 0)
-    (return-from process-grotty-line line))
+    (return-from process-grotty-line #()))
   (let ((fat-line (make-stretchy-vector (+ (length line) 16)
 					:element-type 'fatchar))
-	(i 0) (fi 0) (len (length line))
-	c attrs prev-char overwrite-char)
-    (flet ((do-backspace ()
-	     (setf overwrite-char prev-char
-		   prev-char #\backspace))
-	   (add-char ()
-	     (setf c (char line i)
-		   attrs nil
-		   overwrite-char nil
-		   prev-char c)))
+	(i 0) (len (length line)))
+    (flet ((add-char (c &optional attrs)
+	     (stretchy:stretchy-append
+	      fat-line (make-fatchar :c c :attrs (when attrs
+						   (copy-seq attrs)))))
+	   (has-backspace ()
+	     (and (< i (- len 1))
+		  (char= (char line (1+ i)) #\backspace)))
+	   (looking-at (thing &optional (offset 0))
+	     (etypecase thing
+	       ((or string array)
+		(and (< (+ i offset) (- len (+ (length thing) offset)))
+		     (equalp thing (subseq line i (+ i (length thing))))))
+	       (character
+		(and (< (+ i offset) len)
+		     (char= thing (char line (+ i offset))))))))
       (loop
-	 :do
-	 (cond
-	   ;; Bold bullet
-	   ((and (< i (- len 7))
-		 (equal "++oo" (subseq line i (+ i 7))))
-	    (setf c (code-char #x2022)) ; #\bullet •
-	    (pushnew :bold attrs)
-	    (incf i 6))
-
-	   ;; Normal bullet
-	   ((and (< i (- len 3))
-		 (equal "+o" (subseq line i (+ i 3))))
-	    (setf c (code-char #x2022)) ; #\bullet •
-	    (incf i 2))
-
-	   ;; A bold underscore character
-	   ((and (< i (- len 3))
-		 (char= (char line i) #\_)
-		 (char= (char line (+ i 1)) #\backspace)
-		 (char= (char line (+ i 2)) #\_))
-	    (incf i 2)
-	    (pushnew :bold attrs)
-	    (setf c (char line i)))
-
-	   ;; Underline
-	   ((and (< i (- len 2))
-		 (char= (char line (+ i 1)) #\backspace)
-		 (or (char= (char line i) #\_)
-		     (char= (char line (+ i 2)) #\_)))
-	    (cond
-	      ;; forward underline
-	      ((char= (char line i) #\_)
-	       (incf i 2)
-	       (setf c (char line i))
-	       (pushnew :underline attrs))
-	      ;; backward underline
-	      ((char= (char line (+ i 2)) #\_)
-	       (setf c (char line i))
-	       (incf i 2)
-	       (pushnew :underline attrs)))
-
-	    ;; underline and bold
-	    (when (and (< i (- len 2))
-		       (find :underline attrs)
-		       (char= (char line (+ i 2)) (char line i)))
-	      (incf i 2)
-	      (pushnew :bold attrs)))
-
-	   ;; Overwrite
-	   ((char= (char line i) #\backspace)
-	    (do-backspace))
-
-	   ;; Bold
-	   ((and prev-char (char= prev-char #\backspace)
-		 overwrite-char (char= overwrite-char (char line i)))
-	    (pushnew :bold (fatchar-attrs (aref fat-line (1- fi))))
-	    (setf prev-char overwrite-char))
-
-	   ;; Normal
-	   (t
-	    (add-char)))
-	 (when c
-	   (stretchy:stretchy-append
-	    fat-line (make-fatchar :c c :attrs (copy-seq attrs)))
-	   (incf fi)
-	   (setf c nil))
-	 (incf i)
-	 :while (< i len)))
-    fat-line))
+	:do
+	(cond
+	  ((has-backspace)
+	   (cond
+	     ((looking-at #\_)		; forward underline
+	      (cond
+		((looking-at #\_ 2)	; bold underscore
+		 (add-char #\_ '(:bold)))
+		(t			; underlined char
+		 (add-char (char line (+ i 2)) '(:underline))))
+	      (incf i 2))
+	     ((looking-at #\_ 2)	; backward underline
+	      (add-char (char line i) '(:underline))
+	      (incf i 2))
+	     ((char= (char line i) (char line (+ i 2))) ; bold
+	      (cond
+		((looking-at		; bold bullet
+		  #(#\+ #\backspace #\+ #\backspace #\o #\backspace #\o))
+		 (add-char (code-char #x2022) '(:bold))
+		 (incf i 6))
+		(t
+		 (add-char (char line i) '(:bold))
+		 (incf i 2))))
+	     ((looking-at #(#\+ #\backspace #\o)) ; bullet
+	      (add-char (code-char #x2022)) ; #\bullet •
+	      (incf i 2))
+	     (t				; overwrite
+	      (add-char (char line (+ i 2)))
+	      (incf i 2))))
+	  (t
+	   (add-char (char line i))))
+	(incf i)
+	:while (< i len))
+      fat-line)))
 
 ;; This is quite inefficient.
 (defun process-control-characters (line)
