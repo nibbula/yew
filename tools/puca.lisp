@@ -836,12 +836,14 @@ confirmation first."
 	  (get-list *puca*))
 	(tt-clear)
 	(draw-screen *puca*)
-	(info-window
-	 "Error"
-	 (mapcar #'span-to-fat-string
-		 `((:red (:underline ,(type-of c)))
-		   ("The command \"" (:cyan ,command) "\" got an error:")
-		   (:red ,(format nil "~a" c)))))))))
+	(if (puca-debug *puca*)
+	    (invoke-debugger c)
+	    (info-window
+	     "Error"
+	     (mapcar #'span-to-fat-string
+		     `((:red (:underline ,(type-of c)))
+		       ("The command \"" (:cyan ,command) "\" got an error:")
+		       (:red ,(format nil "~a" c))))))))))
 
 (defun do-command (command format-args
 		   &rest keys &key (relist t) (do-pause t) confirm)
