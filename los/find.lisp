@@ -215,6 +215,26 @@ removeed."
   ;; @@@ need a lot of work here
   (equal (modification-time info) time))
 
+(defun compare-device (stat device)
+  "Return true if the device is the same."
+  #+unix
+  (equal (os-unix:file-status-device stat) device)
+  #-unix #-unix
+  (declare (ignore stat device))
+  t) ;; @@@ fixme for non-unix
+
+;; @@@ fix to not duplicate stat?
+(defun dir-device (dir)
+  #+unix (uos:file-status-device (uos:stat dir))
+  #-unix nil) ;; @@@
+
+;; @@@ fix to not duplicate stat?
+(defun same-device-p (dir device)
+  #+unix (if (typep device 'boolean)
+	     t
+	     (compare-device (uos:stat dir) device))
+  #-unix t) ;; @@@
+
 (defun resilient-stat (path follow-links)
   "Stat that returns the link information when the symbolic link is missing."
   #+unix (or (and follow-links (ignore-errors (os-unix:stat path)))
@@ -362,6 +382,7 @@ Options:
 		   (collect t)
 		   max-depth
 		   min-depth
+		   same-device
 		   (parallel nil)
 		   ;; tests
 		   name file-type path perm group user size type time
@@ -369,37 +390,38 @@ Options:
 		   ;; actions
 		   do action
 		   (print nil))
-  "Find files. Start in directory DIR.
+  "Find files. Start in directory ‘dir’.
 Tests are:
-  :name           Matches file name.
-  :file-type      Matches file type as returned by “file”.
-  :path           Matches full path.
-  :perm           Matches permissions.
-  :group          Matches group, a numeric GID or a name.
-  :user           Matches user, a numeric UID or a name.
-  :size           Matches size, a number with possible suffix.
-  :type           Matches file type, one of: b, c, d, f, l, p, s.
-  :time           Matches time, in some format or another.
-  :expr           Matches the expression, which consists of operators:
-                   (and expr ...)
-                   (or expr ...)
-                   (not expr)
-                   (name string)
-                   (file-type string)
-                   (perm string) or (permissions string)
-                   (path string)
-  :test           Satisfies the boolean predicate given the file name.
+  ‘name’          Matches file name.
+  ‘file-type’     Matches file type as returned by “file”.
+  ‘path’          Matches full path.
+  ‘perm’          Matches permissions.
+  ‘group’         Matches group, a numeric GID or a name.
+  ‘user’          Matches user, a numeric UID or a name.
+  ‘size’          Matches size, a number with possible suffix.
+  ‘type’          Matches file type, one of: b, c, d, f, l, p, s.
+  ‘time’          Matches time, in some format or another.
+  ‘expr’          Matches the expression, which consists of operators:
+                  (and expr ...)
+                  (or expr ...)
+                  (not expr)
+                  (name string)
+                  (file-type string)
+                  (perm string) or (permissions string)
+                  (path string)
+  ‘test’          Satisfies the boolean predicate given the file name.
 Actions:
-  :do             Calles the function with the full path for every match.
-  :collect        True to return the file name(s) as a list. (default t)
-  :print          True to print the file name. (default nil)
+  ‘do’            Calles the function with the full path for every match.
+  ‘collect’       True to return the file name(s) as a list. (default t)
+  ‘print’         True to print the file name. (default nil)
 Options:
-  :follow-links   True to follow symbolic links. (default t)
-  :verbose        True to print directories as they are traversed.
-  :max-depth      Maximum depth to consider.
-  :min-depth      Minimum depth to consider.
-  :regexp         True if matching is done with regular expressions. (default t)
-  :case-mode      The mode for matching letter characters. One of :smart,
+  ‘follow-links’  True to follow symbolic links. (default t)
+  ‘verbose’       True to print directories as they are traversed.
+  ‘max-depth’     Maximum depth to consider.
+  ‘min-depth’     Minimum depth to consider.
+  ‘same-device’   Consider only files only the same device we started on.
+  ‘regexp’        True if matching is done with regular expressions. (default t)
+  ‘case-mode’     The mode for matching letter characters. One of :smart,
                   :sensitive, or :insensitive. (default :smart)
                   :smart is insensitive if there are no upper case letters,
                   sesitive otherwise. :sesitive matches the exact case.
@@ -417,7 +439,7 @@ Options:
   (let* ((no-test (not (or name file-type path perm group user size type time
                            test)))
 	 (files '())
-	 (need-to-stat (or perm user group size type time))
+	 (need-to-stat (or perm user group size type time same-device))
 	 (depth 0)
 	 (dir-list)
 	 (sub-dirs)
@@ -470,6 +492,14 @@ Options:
 	 (push (symbolify action) actions))
 	(t
 	 (error "action ~s doesn't seem be callable." action))))
+
+    ;; @@@ fix this
+    (when (eq same-device t)
+      (unless (typep dir 'nos:path-designator)
+	(error "Sorry, but ‘same-device’ doesn't work yet with multiple ~
+                starting ‘dirs’. "))
+      (setf same-device (dir-device dir)))
+
     (flet ((perform-action (full)
 	     (loop :for a :in actions :do (funcall a full))
 	     nil))
@@ -492,6 +522,9 @@ Options:
 		  (size-matched  (or (not size)  (compare-size  stat size)))
 		  (type-matched  (or (not type)  (compare-type  stat type)))
 		  (time-matched  (or (not time)  (compare-time  stat time)))
+		  (device-matched
+		    (or (typep same-device 'boolean)
+			(compare-device stat same-device)))
 		  (file-type-matched (or (not file-type)
 					 (compare file-type
 						  (file-type full) verbose
@@ -501,7 +534,7 @@ Options:
 	     (cond
 	       ((and name-matched type-matched path-matched perm-matched
 		     user-matched group-matched size-matched time-matched
-		     file-type-matched test-matched)
+		     file-type-matched test-matched device-matched)
 		(perform-action full))
 	       (no-test
 		(perform-action full)))))))
@@ -510,11 +543,15 @@ Options:
       ;;(return-from find-files files)
       (return files))
     (loop :for f :in sub-dirs
-      :if (not (ignored-file-name-p f))
+      :if (and (not (ignored-file-name-p f))
+	       (same-device-p f same-device))
       :do
 ;;;	    (let ((sub (concatenate 'string dir *directory-separator* f))
        (let ((sub #|(nos:path-append dir f) |# f)
 	     result)
+	 ;; (when (eq same-device t)
+	 ;;   (setf same-device (dir-device sub)))
+
 	 (if verbose (format t "subdir: ~a~%" sub))
 	 (setf result
 	       ;; (if parallel
@@ -544,6 +581,9 @@ Options:
 			   :unicode-normalize unicode-normalize
 			   :unicode-remove-combining unicode-remove-combining
 			   :collect collect
+			   :max-depth max-depth
+			   :min-depth min-depth
+			   :same-device same-device
 			   :parallel parallel
 			   :name name
 			   :file-type file-type
@@ -600,7 +640,8 @@ arguments are the same."
    unicode-remove-combining
    (collect nil)
    max-depth
-   min-depth  
+   min-depth
+   same-device
    ;; tests
    name file-type path perm group user size type time
    test expr
@@ -649,4 +690,4 @@ select [attr]* [from dir] [where expr] [order [by]] [group [by]]
 
 |#
 
-;; EOF
+;; End

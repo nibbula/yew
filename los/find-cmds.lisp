@@ -36,6 +36,9 @@
     :help        "Maximum depth of files to consider.")
    (min-depth	 integer  :long-arg "min-depth"
     :help        "Minimum depth of files to consider.")
+   (same-device  boolean  :short-arg #\x
+    :help        "Don't consider directories on devices different than the
+                  starting directory.")
    (regexp	 boolean  :short-arg #\r :default t
     :help        "True if matching is done with regular expressions.")
    (case-mode	 choice  :short-arg #\C :default :smart
