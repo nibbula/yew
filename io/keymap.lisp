@@ -439,13 +439,18 @@ to bind to the escape key, so you have escape key equivalents to meta keys."
      keymap)
     new-keymap))
 
-(defun substitute-key-definition (new-definition old-definition keymap)
+(defun substitute-key-definition (new-definition old-definition keymap
+				  &key old-keymap)
   "Substitute ‘new-definition’ for every binding of ‘old-definition’ in
-‘keymap’. Definitions are compared with ‘key-definition-equal’."
+‘keymap’. Definitions are compared with ‘key-definition-equal’.
+If ‘old-keymap’ is given, it is used as the source of old definitions. Providing
+an ‘old-keymap’ and a new empty ‘keymap’ can be useful if for making a new
+keymap with only re-definitions for adding to a keymap stack."
   (map-keymap #'(lambda (key def)
 		  ;; (when (eq def old-definition)
 		  (when (key-definition-equal def old-definition)
-		    (define-key keymap key new-definition))) keymap)
+		    (define-key keymap key new-definition)))
+	      (or old-keymap keymap))
   keymap)
 
 (defun keys-bound-to (definition keymap &key test)
