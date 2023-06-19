@@ -82,15 +82,22 @@ The slots of the editing context are bound in the body."
 (defmethod call-command ((e line-editor) function args)
   "Command invoker that handles calling commands for multiple editing contexts."
   (maybe-record-command e function args)
-  (if (get function 'multiple)
-      (progn
-	(when (get function 'pre)
-	  (apply (pre-name function) e args))
-	(do-contexts (e)
-	  (apply function e args))
-	(when (get function 'post)
-	  (apply (post-name function) e args)))
-      (apply function e args)))
+  (typecase function
+    (symbol
+     (if (get function 'multiple)
+	 (progn
+	   (when (get function 'pre)
+	     (apply (pre-name function) e args))
+	   (do-contexts (e)
+	     (apply function e args))
+	   (when (get function 'post)
+	     (apply (post-name function) e args)))
+	 (apply function e args)))
+    (function
+     ;; I guess non-symbol functions are on their own for mutltiple contexts.
+     (apply function e args))
+    (t
+     (error "I don't know how to call a ~a ~a." (type-of function) function))))
 
 (defun add-to-clipboard (string)
   "Add ‘string’ the to global clipboard."
