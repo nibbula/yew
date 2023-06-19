@@ -365,8 +365,9 @@ Keyword arguments:
 			:input-callback	    	input-callback
 			:output-callback    	output-callback
 			:debugging	    	debug
+			:quit-value		quit-value
 			:local-keymap	    	local-keymap
-			:keymap		    	keymap
+			:keymap			keymap
 			:accept-does-newline	accept-does-newline
 			:partial-line-indicator	partial-line-indicator
 			:terminal		terminal
@@ -378,7 +379,8 @@ Keyword arguments:
 	 (*completion-count* 0)
 	 (*history-context* history-context)
 	 terminal-state)
-
+    (when quit-value
+      (setf (slot-value e 'quit-value) quit-value))
 
     #+ccl (setf ccl::*auto-flush-streams* nil)
     #+ccl (ccl::%remove-periodic-task 'ccl::auto-flush-interactive-streams)
@@ -452,10 +454,10 @@ Keyword arguments:
 	(return-from rl (values line e))))
 
     ;; Command loop
-    (with-slots (quit-flag exit-flag command buf point last-command terminal
-		 screen-relative-row screen-col debugging temporary-message
-		 keep-message filter-hook region-active buf-str
-		 keep-region-active auto-suggest-p) e
+    (with-slots (quit-flag exit-flag quit-value command buf point last-command
+		 terminal screen-relative-row screen-col debugging
+		 temporary-message keep-message filter-hook region-active
+		 buf-str keep-region-active auto-suggest-p) e
       ;; (multiple-value-setq (screen-relative-row screen-col)
       ;; 	(terminal-get-cursor-position *terminal*))
       (let ((result nil))
@@ -517,7 +519,8 @@ Keyword arguments:
 			(setf (last-command-was-completion e) (did-complete e))
 			(when (not (last-command-was-completion e))
 			  (set-completion-count e 0))
-			(when exit-flag (setf result quit-value))
+			(when exit-flag
+			  (setf result quit-value))
 			;; @@@ perhaps this should be done by a hook?
 			(run-hooks *post-command-hook* e)
 			(when (not quit-flag)
@@ -548,7 +551,9 @@ Keyword arguments:
 	    (terminal-end terminal terminal-state)
 	    ;; Make sure the NIL history item is gone.
 	    (history-line-close)))
-	(values (if result result (fatchar-string-to-string buf))
+	(values (if (or result exit-flag)
+		    result
+		    (fatchar-string-to-string buf))
 		e)))))
 
 ;; This is for compatability with read-line.
@@ -564,36 +569,79 @@ Keyword arguments:
       :recursive-p recursive-p
       :prompt prompt))
 
+(defun list-acceptance-function (list test &key message)
+  "Return a function which takes an editor accepts an item from ‘list’
+where ‘test’ is true. If ‘list’ is function, call it with the item so far to
+generate the list. ‘message’ will be printed when the item fails the test."
+  (lambda (e)
+    (let ((item (buffer-string (buf e))))
+      (if (funcall test item list)
+	  (accept-line e)
+	  (let ((output-string
+		  (with-output-to-fat-string (str)
+		    (print-columns
+		     (typecase list
+		       (function (funcall list item))
+		       (t list))
+		     :columns (terminal-window-columns *terminal*)
+		     :smush t
+		     :format-char "/fatchar-io:print-string/"
+		     :stream str))))
+	    (message e "~s ~a. Please pick one of:~%~a"
+		     (if (zerop (olength item))
+			 "Nothing"
+			 item)
+		     (or message "is not a valid choice")
+		     output-string))))))
+
+(defsingle abort-editor (e)
+  "Stop editing and return NIL."
+  (with-slots (quit-flag exit-flag quit-value) e
+    (setf quit-flag t
+	  exit-flag t
+	  quit-value nil)))
+
+(defun make-read-local-keymap ()
+  (make-instance 'keymap :map `((,(ctrl #\g) . abort-editor))))
+
 (defun read-filename (&key (prompt *default-prompt*) allow-nonexistent string)
   "Read a file name."
-  (let (filename editor)
-    (loop :do
-       (tt-erase-to-eol)		; umm
-       (setf (values filename editor)
-	     (rl :prompt prompt
-		 :completion-func #'complete-filename
-		 :history-context :read-filename
-		 :accept-does-newline nil
-		 :string string
-		 :editor editor))
-       (tt-erase-to-eol)		; umm
-       :until (or allow-nonexistent (probe-file filename))
-       :do (tmp-message editor "File not found."))
-    filename))
+  (let ((keymap
+	  (substitute-key-definition
+	   (list-acceptance-function
+	    (lambda (item)
+	      (glob:glob (s+ item "*")))
+	    (lambda (item list)
+	      (declare (ignore list))
+	      (or allow-nonexistent (nos:file-exists item)))
+	    :message "isn't an existing file")
+	   'accept-line
+	   (make-read-local-keymap)
+	   :old-keymap *normal-keymap*)))
+    (values
+     (rl :prompt prompt
+	 :completion-func #'complete-filename
+	 :history-context :read-filename
+	 :accept-does-newline nil
+	 :string string
+	 :local-keymap keymap))))
 
-(defun read-choice (list &key (prompt *default-prompt*))
+(defun read-choice (list &key (prompt *default-prompt*) (test #'equal))
   "Read a choice from a list."
-  (let (item editor)
-    (loop :do
-       (setf (values item editor)
-	     (rl :prompt prompt
-		 :completion-func (list-completion-function list)
-		 :history-context :read-choice
-		 :accept-does-newline nil
-		 :editor editor))
-       :until (position item list :key #'princ-to-string :test #'equal)
-       :do (tmp-message editor "~a is not a valid choice." item))
-    item))
+  (let ((keymap
+	  (substitute-key-definition
+	   (list-acceptance-function list
+	     (lambda (item list)
+	       (position item list :key #'princ-to-string :test test)))
+	   'accept-line
+	   (make-read-local-keymap)
+	   :old-keymap *normal-keymap*)))
+    (values
+     (rl :prompt prompt
+	 :completion-func (list-completion-function list)
+	 :history-context :read-choice
+	 :accept-does-newline nil
+	 :local-keymap keymap))))
 
 (defmacro edit-value (place &key prompt (value nil value-supplied-p))
   "Edit the value of something."
@@ -605,4 +653,4 @@ Keyword arguments:
 				  ,place)
 			      :escape t :readably t)))))
 
-;; EOF
+;; End

@@ -97,6 +97,11 @@ anything important.")
     :initform nil
     :initarg :exit-flag
     :documentation "True if the user requested to stop editing.")
+   (quit-value
+    :accessor quit-value
+    :initform nil
+    :initarg :quit-value
+    :documentation "Value to return from editing when quitting.")
    (filter-hook
     :accessor filter-hook
     :initarg :filter-hook
