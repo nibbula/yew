@@ -653,8 +653,8 @@
 		;; running, and is just noise. If you want to know where it's
 		;; really from, just do a stack trace in the debugger.
 		;; Otherwise it's just confusing for the user, even when the
-		;; user is me, who knows damn well what the stupid system call
-		;; should have done.
+		;; user is me, who usually knows damn well what the stupid
+		;; system call should have done.
 		;;
 		;; ,(concatenate 'string (string-downcase func) ":")
 		))
