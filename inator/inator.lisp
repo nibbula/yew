@@ -343,17 +343,21 @@ with ‘start-inator’."))
   (when (not (getf initargs :keymap))
     (let ((c (class-of o)) val)
       (labels
-	((push-default (class)
-	   (when (setf val (assoc :default-keymap
-				  (mop:class-direct-default-initargs class)))
-	     (pushnew (funcall (third val)) (slot-value o 'keymap))))
+	((push-keymap (class keymap-init-arg &optional no-ii)
+	   (cond
+	     ((setf val (assoc keymap-init-arg
+			       (mop:class-direct-default-initargs class)))
+	      (pushnew (funcall (third val)) (slot-value o 'keymap)))
+	     ((and (not no-ii) (setf val (getf initargs keymap-init-arg)))
+	      (pushnew val (slot-value o 'keymap)))))
 	 (push-supers (class)
 	   (loop :for cc :in (mop:class-direct-superclasses class)
-	     :do (push-default cc))))
-	(push-default c)
+		 :do (push-keymap cc :default-keymap t))))
+	(push-keymap c :default-keymap)
 	(push-supers c)
 	;; Just reversing the order isn't perfect, but it's better than nothing.
-	(setf (slot-value o 'keymap) (nreverse (slot-value o 'keymap)))))))
+	(setf (slot-value o 'keymap) (nreverse (slot-value o 'keymap)))
+	(push-keymap c :local-keymap)))))
 
 (defmethod start-inator ((inator inator))
   "Default method which does nothing."
