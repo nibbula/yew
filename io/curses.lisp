@@ -323,16 +323,11 @@ loading this library.")
 (defcvar ("COLOR_PAIRS"	*color-pairs*)	:int)
 (defcvar ("stdscr"	*stdscr*)	window-ptr)
 
-#-(or cygwin win32)
-(defcvar ("acs_map"	private-acs-map) :pointer)
-#+(or cygwin win32 darwin)
-(defcfun ("_nc_acs_map" acs-map-func) :pointer)
+#-(or cygwin win32) (defcvar ("acs_map" private-acs-map) :pointer)
+#+(or cygwin win32 darwin) (defcfun ("_nc_acs_map" acs-map-func) :pointer)
 
-#+darwin
-(defcfun ("_nc_init_acs" init-acs) :void)
-
-#+darwin
-(defcfun ("_nc_acs_char" acs-char) chtype (c :int))
+#+darwin (defcfun ("_nc_init_acs" init-acs) :void)
+#+darwin (defcfun ("_nc_acs_char" acs-char) chtype (c :int))
 
 (defun acs-map (c)
   (declare (type character c))
@@ -340,8 +335,7 @@ loading this library.")
 	  #-(or cygwin win32)
 	  (mem-aref (get-var-pointer 'private-acs-map) 'chtype (char-code c))
 	  #+(or cygwin win32)
-	  (mem-aref (acs-map-func) 'chtype (char-code c))
-	  ))
+	  (mem-aref (acs-map-func) 'chtype (char-code c))))
 
 (defmacro acs-ulcorner  () '(acs-map #\l))	;; upper left corner
 (defmacro acs-llcorner	() '(acs-map #\m))	;; lower left corner
