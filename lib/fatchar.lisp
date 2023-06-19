@@ -1981,8 +1981,8 @@ they were not set in this string."
      fg bg (if (not attr-was-set) :unset attr))))
 
 (defun process-ansi-colors (fat-line)
-  "Convert ANSI color escapes into colored fatchars. FAT-LINE can be an ostring,
-but if it's a vector, it's assumed to be a vector of fatchar, aka a
+  "Convert ANSI color escapes into colored fatchars. ‘fat-line’ can be an
+ostring, but if it's a vector, it's assumed to be a vector of fatchar, aka a
 fatchar-string. Returns a either fatchar-string if it was given one, or a
 fat-string otherwise."
   (when (zerop (olength fat-line))
