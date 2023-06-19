@@ -132,7 +132,7 @@ terminal."
 |#
 
 (defun complete (e &key function (start-from 0) no-beep)
-  "Call the completion function and display the results, among other things.
+  "Call the completion ‘function’ and display the results, among other things.
 Return the completion result, or NIL if there wasn't one."
   (with-slots (completion-func buf) e
     (setf function (or function completion-func))
