@@ -1020,17 +1020,12 @@ GRAPHEME-VARs will be, which defaults to character so it's compatable with a
 (defgeneric graphemes (string)
   (:documentation "Return a sequence of graphemes in STRING.")
   (:method ((string string))
-    #+(and sbcl has-sb-unicode)
-    (progn
-      (dbugf :char-util "sbcl grapheme ~s ~s~%" (type-of string) string)
-      (sb-unicode:graphemes string))
-    #-(and sbcl has-sb-unicode)
-    (progn
-      ;; (dbugf :char-util "my grapheme ~s ~s~%" (type-of string) string)
-      (let (result)
-	(do-graphemes (g string)
-	  (push g result))
-	(nreverse result)))))
+    ;; #+(and sbcl has-sb-unicode)
+    ;; (sb-unicode:graphemes string)
+    ;; #-(and sbcl has-sb-unicode T)
+    (with-collecting ()
+      (do-graphemes (g string)
+	(collect g)))))
 
 ;; (char-util:graphemes "d⃝u⃝c⃝k⃝")
 ;; (values (char-util:graphemes "수도") (char-util:graphemes "수도"))
