@@ -82,11 +82,11 @@
       (setf (slot-value o 'height) (tt-height))))
 
   ;; Add customized keys for widgets.
-  (when (and (slot-boundp o 'rl::local-keymap)
-	     (slot-value o 'rl::local-keymap))
+  (when (and (slot-boundp o 'inator::local-keymap)
+	     (slot-value o 'inator::local-keymap))
     ;; (add-keymap *widget-keymap* (slot-value o 'rl::local-keymap))
     (loop :for (key-seq . binding) :in *widget-keys* :do
-       (set-key key-seq binding (slot-value o 'rl::local-keymap)))))
+       (set-key key-seq binding (slot-value o 'inator::local-keymap)))))
 
 ;; @@@ copied from fui
 (defun erase-area (x y width height &key string rendition)
