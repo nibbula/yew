@@ -431,6 +431,8 @@ keep the current automatic restarts set, otherwise clear them."
 	 (dd-eval-in-frame arg1 arg2)))))
       (error      (:e)   "Show the error again."
        (print-condition (debugger-condition *deblarg*)))
+      (describe   (:ee)  "Describe the condition."
+       (describe (debugger-condition *deblarg*)))
       (abort      (:a :abort :pop)   "Abort to top level."
        (do-restart 'abort restarts))
       (continue   (:c)   "Invoke continue restart."
