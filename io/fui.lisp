@@ -306,15 +306,15 @@ waits for a key press and then returns."
 ;;   - In general, just take a string and display it as-is.
 (defun show-text (text &key input-func title justify
 			 x y width height min-width min-height)
-  "Display TEXT in a pop up window. Optionally calls INPUT-FUNC with the
-window as an argument to get input. If no INPUT-FUNC is provided it just
+  "Display ‘text’ in a pop up window. Optionally calls ‘input-func’ with the
+window as an argument to get input. If no ‘input-func’ is provided it just
 waits for a key press and then returns.
 Keyword arguments are:
- - TITLE                A title for the window.
- - JUSTIFY              True to justify the text in the window.
- - X Y                  Position of the window.
- - WIDTH HEIGHT         Size of the window.
- - MIN-WIDTH MIN-HEIGHT Minimum size of the window."
+ ‘title’                   A title for the window.
+ ‘justify’                 True to justify the text in the window.
+ ‘x’ ‘y’                   Position of the window.
+ ‘width’ ‘height’          Size of the window.
+ ‘min-width’ ‘min-height’  Minimum size of the window."
   (with-immediate ()
     (display-text title (if justify
 			    (list text)
@@ -325,15 +325,17 @@ Keyword arguments are:
 		  :min-width min-width :min-height min-height)))
 
 (defun popup-y-or-n-p (question &rest args
-		       &key title x y width height min-width min-height default)
-  "A popup window version of Y-OR-N-P. Display the QUESTION.
+		       &key title x y width height min-width min-height default
+			 justify)
+  "A popup window version of Y-OR-N-P. Display the ‘question’.
 Keyword arguments are:
- - DEFAULT              If given, allow other characters to act as if the
-                        default was entered. Must be #\\Y be #\\N.
- - TITLE                A title for the window.
- - X Y                  Position of the window.
- - WIDTH HEIGHT         Size of the window.
- - MIN-WIDTH MIN-HEIGHT Minimum size of the window."
+ ‘default’                 If given, allow other characters to act as if the
+                           default was entered. Must be #\\Y be #\\N.
+ ‘title’                   A title for the window.
+ ‘justify’                 True to justify the text in the window.
+ ‘x’ ‘y’                   Position of the window.
+ ‘width’ ‘height’          Size of the window.
+ ‘min-width’ ‘min-height’  Minimum size of the window."
   (declare (ignorable title x y width height min-width min-height))
   (labels ((valid-answer (c)
 	     (and (characterp c)
@@ -357,7 +359,7 @@ Keyword arguments are:
 			nil
 			(list "" question "" "Y or N ?")
 			:input-func #'yornp
-			:justify nil
+			:justify justify
 			args)))))
 
 ;; @@@ make justify work? maybe it's the re-fangling?
