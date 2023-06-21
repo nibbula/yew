@@ -563,7 +563,7 @@ program that messes with the terminal, we can still type at the debugger."
     (when (not (ignore-errors
 		(print-span
 		 `((:fg-white "Condition: ")
-		   (:fg-red (:underline ,(princ-to-string (type-of c)))
+		   (:fg-red (:underline ,(prin1-to-string (type-of c)))
 			    #\newline
 			    ,(princ-to-string c) #\newline)))
 		t))
