@@ -396,10 +396,18 @@ try to figure it out."
   "List of known image format tags.")
 
 (defun load-image-format (format-tag &key quiet)
-  #+quicklisp (ql:quickload (s+ "image-" (string-downcase format-tag))
-			    :silent quiet)
-  #-quicklisp (asdf:load-system (s+ "image-" (string-downcase format-tag))
-				:verbose (not quiet)))
+  (handler-case
+      (progn
+	#+quicklisp (ql:quickload (s+ "image-" (string-downcase format-tag))
+				  :silent quiet)
+	#-quicklisp
+	(asdf:load-system (s+ "image-" (string-downcase format-tag))
+			  :verbose (not quiet)))
+    ((or #+quicklisp ql:system-not-found
+	 asdf:missing-component) ()
+      (cerror "Skip the image."
+	      'unknown-image-type
+	      :format-arguments `(nil ,format-tag)))))
 
 (defun load-known-formats (&key quiet)
   "Load all the image formats we know about. This is useful to make sure
@@ -457,7 +465,7 @@ out."
 				      (content-type-name type))
 				  :by :mime)))
 	   ;; Try to autoload
-	   (asdf:load-system (s+ "image-" (content-type-name type)))
+	   (load-image-format (s+ "image-" (content-type-name type)))
 	   ;; And look for it registered again.
 	   (setf format (find-image-format
 			 (s+ (content-type-category type) "/"
@@ -507,7 +515,7 @@ known type, or a file-error if we can't open it."
     (if (not real-format)
 	(progn
 	  ;; Try to autoloading
-	  (asdf:load-system (s+ "image-" (string-downcase format)))
+	  (load-image-format (s+ "image-" (string-downcase format)))
 	  (when (not (setf real-format (find-image-format format)))
 	    (cerror "Skip the image."
 		    'unknown-image-type
