@@ -530,7 +530,7 @@ the first time it fails to identify the image."
        (fatchar:span-to-fat-string
 	`((:red "Error: ") ,(apply #'format nil format-string args)
 	  #\newline #\newline "Enter the debugger?"))
-       :default #\N)
+       :default #\N :justify t)
       (invoke-debugger condition)
       (continue condition)))
 
