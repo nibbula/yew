@@ -8,6 +8,7 @@
   (:export
    ;; Main entry point
    #:find-files
+   #:!find
    ))
 (in-package :find)
 
