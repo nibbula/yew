@@ -104,8 +104,7 @@
 			      (loop
 				:with v
 				:do
-				   (setf v (randomize-vector
-					    (copy-seq _) :factor 1))
+				   (setf v (randomize-vector (copy-seq _)))
 				   ;; (format t "Trying ~a~%" v)
 				:while (equal v _)
 				:finally (return v)))
