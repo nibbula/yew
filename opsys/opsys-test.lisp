@@ -109,7 +109,7 @@
 (defun test-file-name (str)
   (format nil "~a-~d" str *test-file-num*))
 
-(defun stream-setup ()
+(defun stream-setup-1 ()
   (setf *test-file-num* (random (expt 2 30)))
   ;; file with 5 lines
   (with-open-file (str (test-file-name "fizz") :direction :output)
@@ -128,7 +128,7 @@
   (with-open-file (str (test-file-name "fizz-blank") :direction :output)
     (format str "    x")))
 
-(defun stream-takedown ()
+(defun stream-takedown-1 ()
   (dolist (x '("fizz" "fizz-nonl" "fizz-chars" "fizz-blank")) 
     (delete-file (test-file-name x))))
 
@@ -180,8 +180,8 @@
      okay))
 
 (deftests (opsys-stream-1 :doc "OS streams")
-  :setup stream-setup
-  :takedown stream-takedown
+  :setup stream-setup-1
+  :takedown stream-takedown-1
   "Test reading lines."
   (lines-test "fizz")
   "Test reading lines without a trailing newline."
@@ -195,12 +195,91 @@
   (with-test-stream (ss "fizz-blank")
     (char= #\x (peek-char t ss))))
 
+(defun stream-setup-2 ()
+  (setf *test-file-num* (random (expt 2 30)))
+
+  ;; file with every byte
+  (with-open-file (str (test-file-name "fuzz") :direction :output
+		       :element-type '(unsigned-byte 8))
+    (loop :for i :from 0 :to #xff :do
+      (write-byte i str))))
+
+(defun stream-takedown-2 ()
+  (dolist (x '("fuzz"))
+    (delete-file (test-file-name x))))
+
+(defun bytes-test (filename)
+  (let (ss (okay t))
+    (unwind-protect
+      (progn
+	(setf ss (make-os-stream (test-file-name filename)
+				 :element-type '(unsigned-byte 8)))
+	(loop :for i :from 0 :to #xff :do
+	  (print i)
+	  (when (not (eql (read-byte ss) i))
+	    (setf okay nil))))
+      (close ss))
+    okay))
+
+(defun seq-test (filename)
+  (prog (ss
+         (seq (make-array #xff :element-type '(unsigned-byte 8))))
+    (unwind-protect
+      (progn
+	(setf ss (make-os-stream (test-file-name filename)
+				 :element-type '(unsigned-byte 8)))
+	(unless (eql (read-sequence seq ss) #xff)
+	  (return nil))
+	(loop :for i :from 0 :below #xff :do
+	  (when (not (eql (aref seq i) i))
+	    (return nil))))
+      (close ss)))
+  t)
+
+(defun seek-test (filename)
+  (prog (ss
+        (seq (make-array #x80 :element-type '(unsigned-byte 8))))
+    (unwind-protect
+      (progn
+	(setf ss (make-os-stream (test-file-name filename)
+				 :element-type '(unsigned-byte 8)))
+	;; seek half way through
+	(when (not (eql (file-position ss #x80) #x80))
+	  (return nil))
+	;; read the rest
+	(when (not (eql (read-sequence seq ss) #xff))
+	  (return nil))
+	;; check it
+	(loop :for i :from 0 :below #x80 :do
+	  (when (not (eql (aref seq i) (+ #x80 i)))
+	    (return nil))))
+      (close ss)))
+  t)
+
+(deftests (opsys-stream-2 :doc "OS streams binary")
+  :setup stream-setup-2
+  :takedown stream-takedown-2
+  "Test reading bytes."
+  (bytes-test "fuzz")
+  "Test reading sequence."
+  (seq-test "fuzz")
+  "Test seeking and reading bytes."
+  (seek-test "fuzz")
+  ;; (with-test-stream (ss "fuzz")
+  ;;   (char= #\1 (peek-char nil ss)))
+  ;; (with-test-stream (ss "fuzz")
+  ;;   (char= #\2 (peek-char #\1 ss)))
+  ;; (with-test-stream (ss "fuzz")
+  ;;   (char= #\x (peek-char t ss)))
+  )
+
 (deftests (opsys-all :doc "All tests for OPSYS.")
   opsys-path-1
   opsys-terminal-1
   opsys-terminal-2
   opsys-terminal-3
   opsys-stream-1
+  ;; opsys-stream-2
   )
 
 (defun run ()
