@@ -149,7 +149,8 @@ A: _This_ *is* the documentation.
 
 (defun find-test-in-group (name group)
   (loop :for x :in (test-group-tests group) :do
-     (when (equalp (test-name x) name)
+     (when (or (and (test-p x) (equalp (test-name x) name))
+	       (eq x name))
        (return x))))
 
 (defun find-test (name)
