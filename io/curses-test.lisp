@@ -8,6 +8,7 @@
   (:export
    #:test
    #:menu
+   #:run
    ))
 (in-package :curses-test)
 
@@ -698,4 +699,7 @@
   (call-test #'test-all)
   (values))
 
-;; EOF
+(defun run ()
+  (format t "Call ‘test’ to run tests interactively. Skipping.~%"))
+
+;; End

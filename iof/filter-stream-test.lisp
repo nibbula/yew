@@ -7,6 +7,7 @@
   (:use :cl :filter-stream)
   (:export
    #:test
+   #:run
    ))
 (in-package :filter-stream-test)
 
@@ -153,4 +154,7 @@
 (defun test ()
   (test-output))
 
-;; EOF
+(defun run ()
+  (format t "filter-stream-test needs to be fixed~%"))
+
+;; End

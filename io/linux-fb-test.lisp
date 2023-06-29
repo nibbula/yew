@@ -202,7 +202,12 @@
 		    ((#\q #\Q) (return)))))
 	  (tt-cursor-on))))))
 
-(defun run ()
+(defun run (&key force)
+  (when (and (not (glob:fnmatch "/dev/tty[0-9]*" (uos:ttyname 0)))
+	     (not force))
+    (format t "It doesn't look like you're on a linux console. ~
+               Skipping tests.~%")
+    (return-from run nil))
   (with-fb ()
     (unwind-protect
 	 (progn
