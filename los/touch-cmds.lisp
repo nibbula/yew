@@ -51,7 +51,7 @@
   (error "Fancy date parsing isn't implemented yet."))
 
 (lish:defcommand touch
-  ((files pathname :optional nil :repeating t :help "Files to touch.")
+  ((files pathname #|:optional nil|# :repeating t :help "Files to touch.")
    (no-create boolean :short-arg #\c :help "Don't create files.")
    (date string :short-arg #\d :optional t ;; @@@ make an arg type
     :help "Date to set as the file's time.")
@@ -69,12 +69,13 @@
 			(get-os-time)))
 	 (mtime (and modification-only time-stamp))
 	 (atime (and access-only time-stamp)))
-    (loop :for f :in files
-	  :do
-	  (when (or (not no-create)
-		    (and no-create (nos:file-exists f)))
-	    (touch f :modification-time mtime
-		     :access-time atime
-		     :time time-stamp)))))
+    (lish:with-files-or-input (files)
+      (loop :for f :in files
+	    :do
+	       (when (or (not no-create)
+			 (and no-create (nos:file-exists f)))
+		 (touch f :modification-time mtime
+			  :access-time atime
+			  :time time-stamp))))))
 
 ;; End
