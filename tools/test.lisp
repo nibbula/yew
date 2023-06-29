@@ -285,21 +285,23 @@ exit occurs.
 		 (report-start ',func-name ,fdoc)
 		 (setf (test-result (find-test ',func-name))
 		       (report-done ,b)))
-	       (add-to-group-name ',group-name
-				  (make-test :name ',func-name
-					     :func #',func-name
-					     :doc ',fdoc
-					     :body ',b)))
+	       (eval-when (:load-toplevel :execute)
+		 (add-to-group-name ',group-name
+				    (make-test :name ',func-name
+					       :func #',func-name
+					       :doc ',fdoc
+					       :body ',b))))
 	      :and :do (setf fdoc nil) (incf n)
 	    :end
 	    :do (setf spot (cdr spot)))))
     `(progn
        ,@bodies
-       (let ((g (find-group ',group-name)))
-	 (setf (test-group-tests g) (nreverse (test-group-tests g))
-	       (test-group-setup g) ',setup
-	       (test-group-takedown g) ',takedown
-	       (test-group-doc g) ',doc))
+       (eval-when (:load-toplevel :execute)
+	 (let ((g (find-group ',group-name)))
+	   (setf (test-group-tests g) (nreverse (test-group-tests g))
+		 (test-group-setup g) ',setup
+		 (test-group-takedown g) ',takedown
+		 (test-group-doc g) ',doc)))
          ;; (setf (cadr (assoc ',group-name *tests*))
 	 ;;       (nreverse (cadr (assoc ',group-name *tests*))))
        (values))))
