@@ -11,6 +11,7 @@
    #:test-1 #:test-2 #:test-3 #:test-4 #:test-5 #:test-6 #:test-7 #:test-8
    #:test-hashing #:test-hash-1
    #:test-zerg-1 #:test-zerg-2
+   #:run
    ))
 (in-package :terminal-crunch-test)
 
@@ -370,4 +371,8 @@
 	      (tt-write-char-at y x (code-char c))))
 	  (tt-finish-output))))))
 
-;; EOF
+(defun run ()
+  (format t "These have to be run interactively in a terminal. So, no.~%")
+  t)
+
+;; End
