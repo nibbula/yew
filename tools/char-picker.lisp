@@ -66,7 +66,6 @@ searching through the list of characters. Type the key on the left to pick the
 character.
 "))
 
-;; @@@ consider using ◌ for displaying combining characters
 (defun write-special-char (c)
   (let ((thing c))
     (ctypecase c
@@ -108,13 +107,17 @@ character.
 			     (aref *letters* l)
 			     #\?)
 			 (+ start l))
-	 (setf cc (code-char i)
-	       name (or (char-name (code-char i)) ""))
-	 (write-special-char (displayable-char cc
-					       :all-control t
-					       :show-meta nil))
+	 (cond
+	   ((setf cc (code-char i))
+	    (setf name (or (char-name cc) ""))
+	    (write-special-char (displayable-char cc
+						  :all-control t
+						  :show-meta nil)))
+	   ;; Not a recognized char in this encoding, i.e. code-char is nil
+	   (t
+	    (setf name (span-to-fat-string '(:red "Not a character")))))
 	 (tt-move-to-col 20)
-	 (if (and scanner
+	 (if (and scanner cc
 		  (setf (values ss-pos ss-end)
 			;; (search search-string name :test #'equalp)
 			(scan scanner name)))
