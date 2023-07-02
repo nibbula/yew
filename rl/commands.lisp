@@ -1067,35 +1067,35 @@ just before the cursor."
   "Insert the next character input without interpretation."
   (let ((c (get-a-char e)))
     (do-contexts (e)
-      (self-insert e t c))))
+      (self-insert e c :quoted t))))
 
-(defmulti self-insert (e &optional quoted char)
+(defmulti self-insert (e event &key quoted)
   (with-slots (command buf) e
-    (when (not char)
-      (setf char (last-event e)))
+    (when (not event)
+      (setf event (last-event e)))
     (cond
-      ((not (characterp char))
+      ((not (characterp event))
        ;; @@@ Perhaps we should get a real error, since this is probably a bug
        ;; not just a mis-configuration?
-       ;;(cerror "Go on" "~a is not a character." char)
-       (beep e "~a is not a character." char))
-      ((and (not (graphic-char-p char)) (not quoted))
-       (beep e "~a is unbound." char))
+       ;;(cerror "Go on" "~a is not a character." event)
+       (beep e "~a is not a character." event))
+      ((and (not (graphic-char-p event)) (not quoted))
+       (beep e "~a is unbound." event))
       (t
        ;; a normal character
        (if (= (length buf) point)
 	   ;; end of the buf
 	   (progn
-	     (insert e char)
+	     (insert e event)
 	     ;; flash paren and keep going
-	     (when (and (eq *paren-match-style* :flash) (is-close-char char))
+	     (when (and (eq *paren-match-style* :flash) (is-close-char event))
 	       (flash-paren e))
 	     (incf point))
 	   ;; somewhere in the middle
 	   (progn
-	     (when (and (eq *paren-match-style* :flash) (is-close-char char))
+	     (when (and (eq *paren-match-style* :flash) (is-close-char event))
 	       (flash-paren e))
-	     (insert e char)
+	     (insert e event)
 	     (incf point)))))))
 
 (defgeneric self-insert-command (line-editor)
@@ -1103,15 +1103,15 @@ just before the cursor."
 
 (defmulti-method self-insert-command ((e line-editor))
   "Try to insert a character into the buffer."
-  (self-insert e))
+  (self-insert e nil))
 
 ;; @@@ Is this reasonable?
-(defmulti-method default-action ((e line-editor))
-  (self-insert e))
+(defmulti-method default-action ((e line-editor) &optional event)
+  (self-insert e event))
 
 (defmulti newline (e)
   "Insert a newline."
-  (self-insert e t #\newline))
+  (self-insert e #\newline :quoted t))
 
 ;; @@@ we can probably just use the one in terminal-inator?
 ;; (defmethod read-key-sequence ((e line-editor) &optional keymap)
@@ -1249,7 +1249,7 @@ it in the list of keymaps."
 	   (symbol-call :char-picker :char-picker))))
     (if result
 	(do-contexts (e)
-	  (self-insert e t result))
+	  (self-insert e result :quoted t))
 	(beep e "char-picker failed"))))
 
 (defsingle unipose-command (e)
@@ -1259,7 +1259,7 @@ it in the list of keymaps."
     (setq result (unipose first-ccc second-ccc))
     (if result
 	(do-contexts (e)
-	  (self-insert e t result))
+	  (self-insert e result :quoted t))
 	(beep e "unipose ~c ~c unknown" first-ccc second-ccc))))
 
 (defsingle insert-file (e)

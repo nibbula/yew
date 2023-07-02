@@ -207,7 +207,7 @@ Otherwise insert the normal character."))
 	    (progn
 	      (insert e char)
 	      (incf rl::point))
-	    (self-insert e))))))
+	    (self-insert e nil))))))
 
 (defun altchar-mode (e &optional (state t state-provided-p))
   "Toggle or set altchar-mode."
