@@ -277,7 +277,7 @@ You can probably get by with just providing methods for ‘update-display’ and
 (defgeneric copy (inator))
 (defgeneric paste (inator))		; yank
 (defgeneric select (inator))		; mark
-(defgeneric default-action (inator))
+(defgeneric default-action (inator &optional event))
 
 ;; Help / Output
 
@@ -331,9 +331,12 @@ with ‘start-inator’."))
 
 ;; Default methods
 
-(defmethod default-action ((inator inator))
+(defmethod default-action ((inator inator) &optional event)
   "Default method which does nothing."
-  (declare (ignore inator)))
+  (message inator "Event ~{~a ~}is not bound."
+	   (if (consp event)
+	       (mapcar #'nicer-event event)
+	       (list (nicer-event event)))))
 
 (defmethod initialize-instance
     :after ((o inator) &rest initargs &key &allow-other-keys)
@@ -478,8 +481,7 @@ of the inator's keymap."
 	    (setf use-default t
 		  result (sub-process event outer-map)))
 	(when (not result)
-	  (message inator "Event ~@[~a ~]~@[~{~a ~}~]is not bound."
-		   (nicer-event event) (mapcar #'nicer-event event-list)))))))
+	  (default-action inator (append (list event) event-list)))))))
 
 (defmethod event-loop ((inator inator))
   "The default event loop. Using this loop a sub-class only has to supply the

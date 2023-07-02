@@ -317,8 +317,9 @@ starting at START. If not found, return START."
 ;;   (with-slots (start view-size) i
 ;;     (decf start view-size)))
 
-(defmethod default-action ((i char-picker))
+(defmethod default-action ((i char-picker) &optional event)
   "Use a character based on it's on screen letter tag."
+  (declare (ignore event)) ;; @@@
   (with-slots (input searching search-string start result) i
     (when (and (characterp input) (graphic-char-p input))
       (if searching

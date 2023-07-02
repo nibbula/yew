@@ -141,56 +141,14 @@ entered.")
     :initarg :before-hook :accessor pick-before-hook :initform nil
     :documentation "Function to call before entering the event loop.
 The function receives a 'pick' as an argument."))
+  (:default-initargs
+   :local-keymap *pick-list-keymap*)
   (:documentation "State for a pick-list-inator."))
 
-(defkeymap *pick-list-keymap* (:default-binding #'default-action)
-  `((#\escape		  . *pick-list-escape-keymap*)
-    (,(ctrl #\G)	  . quit)
-    (#\return		  . accept)
-    (#\newline		  . accept)
-    (#\space		  . pick-list-toggle-item)
-    (,(ctrl #\X)	  . *pick-list-ctrl-x-keymap*)
-    (:down		  . next)
-    (:up		  . previous)
-    (#\>		  . move-to-bottom)
-    (:end		  . move-to-bottom)
-    (#\<		  . move-to-top)
-    (:home		  . move-to-top)
-    (,(ctrl #\F)	  . next-page)
-    (,(ctrl #\V)	  . next-page)
-    (:npage		  . next-page)
-    (,(ctrl #\B)	  . previous-page)
-    (,(meta-char #\v)	  . previous-page)
-    (:ppage		  . previous-page)
-    (:left		  . shift-left)
-    (:right	     	  . shift-right)
-    (,(ctrl #\A)	  . shift-beginning)
-    (,(ctrl #\E)	  . shift-end)
-    (#\?		  . help)
-    (,(ctrl #\@)	  . select)
-    (,(meta-char #\w)	  . copy)
-    (,(ctrl #\R)	  . search-backward-command)
-    (:press		  . handle-press)
-    (:release		  . handle-release)
-    (:scroll-up		  . scroll-up)
-    (:scroll-down	  . scroll-down)
-    ))
-
-(defparameter *pick-list-escape-keymap*
-  (build-escape-map *pick-list-keymap*))
-
-(defkeymap *pick-list-ctrl-x-keymap* ()
-  `((,(ctrl #\V)	. view-item)
-    (,(ctrl #\X)	. pick-list-toggle-region)))
-
-(defmethod initialize-instance
-    :after ((o pick) &rest initargs &key &allow-other-keys)
-  "Initialize a pick."
-  (declare (ignore initargs))
-  ;; When there's no keymap, you get the standard one.
-  (when (not (and (slot-boundp o 'keymap) (slot-value o 'keymap)))
-    (setf (slot-value o 'keymap)
-	  (list *pick-list-keymap* *default-inator-keymap*))))
+;; (defmethod initialize-instance
+;;     :after ((o pick) &rest initargs &key &allow-other-keys)
+;;   "Initialize a pick."
+;;   (declare (ignore initargs)))
 
 (defmethod run ((pick pick) &rest keys &key list &allow-other-keys)
   (declare (ignorable keys))
@@ -542,8 +500,9 @@ The function receives a 'pick' as an argument."))
 	;; Where's the unreachable code??
 	(setf items (sort items #'ostring-lessp :key #'car)))))
 
-(defmethod default-action ((pick pick)) ; pick-typing-search
+(defmethod default-action ((pick pick) &optional event) ; pick-typing-search
   "Try to search for typed input and return T if we did."
+  (declare (ignore event)) ;; @@@ we should probably use this instead of ‘input’
   (with-slots (typing-searches input search-str point max-line
 	       items top page-size save-search) pick
     (if (and typing-searches

@@ -1811,8 +1811,8 @@ point in time (a.k.a. revision hash).")
 	      4))
     (message p "C-u ~a" universal-argument)))
 
-;; (defmethod default-action ((p puca))
-;;   (message p "Event not bound ~s" (inator-command p)))
+;; (defmethod default-action ((p puca) &optional event)
+;;   (message p "Event not bound ~s" event))
 
 (defmethod update-display ((p puca-app))
   (with-slots ((point inator::point) top first-line bottom debug
