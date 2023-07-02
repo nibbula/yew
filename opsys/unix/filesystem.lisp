@@ -219,7 +219,7 @@ if not given."
   #+abcl
   (progn
     (syscall (chdir path))
-    (setf *default-pathname-defaults* (truename path)))
+    (setf *default-pathname-defaults* (truename (quote-filename path))))
   #-(or clisp excl openmcl sbcl cmu ecl lispworks abcl)
   (missing-implementation 'change-directory))
 
@@ -3790,7 +3790,9 @@ objects should be stored."
   #+linux
   ;; I suppose this could work on other systems too, but it's certainly
   ;; more efficient and effective to get it from the statfs.
-  (let (longest len (max-len 0) (real-name (safe-namestring (truename file))))
+  (let ((max-len 0)
+	(real-name (safe-namestring (truename (quote-filename file))))
+	longest len)
     (loop :for f :in
        (remove-if
 	(_ (not (begins-with (filesystem-info-mount-point _) real-name)))
