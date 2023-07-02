@@ -38,6 +38,46 @@ menu without having to make closures, and the ‘do-menu*’ function which can'
    ))
 (in-package :pick-list)
 
+(defkeymap *pick-list-keymap* ( #|:default-binding #'default-action |#)
+  `((#\escape		  . *pick-list-escape-keymap*)
+    (,(ctrl #\G)	  . quit)
+    (#\return		  . accept)
+    (#\newline		  . accept)
+    (#\space		  . pick-list-toggle-item)
+    (,(ctrl #\X)	  . *pick-list-ctrl-x-keymap*)
+    (:down		  . next)
+    (:up		  . previous)
+    (#\>		  . move-to-bottom)
+    (:end		  . move-to-bottom)
+    (#\<		  . move-to-top)
+    (:home		  . move-to-top)
+    (,(ctrl #\F)	  . next-page)
+    (,(ctrl #\V)	  . next-page)
+    (:npage		  . next-page)
+    (,(ctrl #\B)	  . previous-page)
+    (,(meta-char #\v)	  . previous-page)
+    (:ppage		  . previous-page)
+    (:left		  . shift-left)
+    (:right	     	  . shift-right)
+    (,(ctrl #\A)	  . shift-beginning)
+    (,(ctrl #\E)	  . shift-end)
+    (#\?		  . help)
+    (,(ctrl #\@)	  . select)
+    (,(meta-char #\w)	  . copy)
+    (,(ctrl #\R)	  . search-backward-command)
+    (:press		  . handle-press)
+    (:release		  . handle-release)
+    (:scroll-up		  . scroll-up)
+    (:scroll-down	  . scroll-down)
+    ))
+
+(defparameter *pick-list-escape-keymap*
+  (build-escape-map *pick-list-keymap*))
+
+(defkeymap *pick-list-ctrl-x-keymap* ()
+  `((,(ctrl #\V)	. view-item)
+    (,(ctrl #\X)	. pick-list-toggle-region)))
+
 (defvar *pick* nil
   "The current pick list state.")
 
@@ -506,8 +546,8 @@ The function receives a 'pick' as an argument."))
   (with-slots (typing-searches input search-str point max-line
 	       items top page-size save-search) pick
     (if (and typing-searches
-	     (and (characterp input)
-		  (graphic-char-p input) (not (position input "<> "))))
+	     (characterp input)
+	     (graphic-char-p input) (not (position input "<> ")))
 	;; Search for the seach string
 	(progn
 	  (setf save-search t)
@@ -683,8 +723,9 @@ The function receives a 'pick' as an argument."))
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 (defun pick-list (list &key message by-index sort-p default-value
-			 selected-item (typing-searches t) keymap multiple
-			 popup (x 0) (y 0) height before-hook type)
+			 selected-item (typing-searches t)
+			 (keymap nil keymap-provided-p)
+			 multiple popup (x 0) (y 0) height before-hook type)
   "Have the user pick a value from ‘list’ and return it. Arguments are:
 
  ‘message’         A string to be displayed before the list.
@@ -699,24 +740,30 @@ The function receives a 'pick' as an argument."))
  ‘before-hook’     A function to call before entering the event loop.
  ‘type’            Class of the list picker.
 "
-  (let ((*pick* (make-instance
+  (let ((initargs
+	  `(:message         ,message
+	    :by-index        ,by-index
+	    :sort-p          ,sort-p
+	    :default-value   ,default-value
+	    :selected-item   ,selected-item
+	    :typing-searches ,typing-searches
+	    ;; If a keymap is given, put it in front of the standard ones.
+	    ;; :keymap          (when keymap
+	    ;; 		    (list keymap
+	    ;; 		     *pick-list-keymap* *default-inator-keymap*))
+	    :multiple        ,multiple
+	    :popup           ,popup
+	    :x               ,x
+	    :y               ,y
+	    :height          ,height
+	    :before-hook     ,before-hook))
+	(*pick*))
+    (when keymap-provided-p
+      (setf (getf initargs :keymap) keymap))
+    (setf *pick*
+	  (apply #'make-instance
 		 (or type (if popup 'popup-pick 'full-pick))
-		 :message         message
-		 :by-index        by-index
-		 :sort-p          sort-p
-		 :default-value   default-value
-		 :selected-item   selected-item
-		 :typing-searches typing-searches
-		 ;; If a keymap is given, put it in front of the standard ones.
-		 :keymap          (when keymap
-				    (list keymap
-				     *pick-list-keymap* *default-inator-keymap*))
-		 :multiple        multiple
-		 :popup           popup
-		 :x               x
-		 :y               y
-		 :height          height
-		 :before-hook     before-hook)))
+		 initargs))
     (run *pick* :list list)))
 
 #| Figure out where something like this should go in the event loop:
@@ -893,7 +940,7 @@ The function receives a 'pick' as an argument."))
   (accept i)
   (setf (directory-accepted i) t))
 
-(defkeymap *pick-file-keymap* (:default-binding #'default-action)
+(defkeymap *pick-file-keymap* (#|:default-binding #'default-action|#)
   `((#\newline		  . accept-file-or-directory)))
 
 (defmethod view-item ((pick file-picker))
@@ -914,8 +961,7 @@ The function receives a 'pick' as an argument."))
 		 :multiple multiple
 		 :sort-p t
 		 :typing-searches t
-		 :keymap (list *pick-file-keymap*
-			       *pick-list-keymap* *default-inator-keymap*))))
+		 :local-keymap (list *pick-file-keymap* *pick-list-keymap*))))
     (run *pick*)))
 
 (defun pick-files (&key message (directory ".") (allow-browse t) show-hidden
