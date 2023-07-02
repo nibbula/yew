@@ -53,6 +53,12 @@
     :initarg :line-buffered-p :accessor line-buffered-p
     :initform nil :type boolean
     :documentation "True if we always flush after outputting a newline.")
+   (cached-color-count
+    :initarg :cached-color-count :accessor cached-color-count
+    :initform nil :type (or null integer)
+    :documentation
+    "Cached count of colors the terminal supports. NIL if we haven't guessed
+it yet.")
    (translate-alternate-characters
     :initarg :translate-alternate-characters
     :accessor translate-alternate-characters
@@ -120,12 +126,6 @@ require terminal driver support."))
    (mouse-down
     :initarg :mouse-down :accessor mouse-down :initform nil :type boolean
     :documentation "True if we think a mouse button is down.")
-   (cached-color-count
-    :initarg :cached-color-count :accessor cached-color-count
-    :initform nil :type (or null integer)
-    :documentation
-    "Cached count of colors the terminal supports. NIL if we haven't guessed
-it yet.")
    (emulator
     :initarg :emulator :accessor emulator :initform nil
     :documentation "Guess of what the emulator is.")
