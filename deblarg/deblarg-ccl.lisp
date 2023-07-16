@@ -47,6 +47,24 @@
        (incf i)
        :while (< i (+ current-frame n)))))
 
+(defun print-frame (f context &optional (stream *debug-io*))
+  "Print a frame."
+  (princ
+   (or
+    (ignore-errors
+     (with-output-to-fat-string (str)
+       (write-char #\( str)
+       (write (ccl:function-name (ccl:frame-function f context))
+	      :stream str :case :downcase)
+       (loop :for v :in (ccl:frame-supplied-arguments f context)
+	     :do
+		(write-char #\space str)
+		(display-value v str))
+       (write-char #\) str)))
+    (span-to-fat-string
+     `(:red ,(format nil "Error printing frame #x~x" f))))
+   stream))
+
 (defmethod debugger-backtrace ((d ccl-deblargger) n)
   "Our own backtrace for CCL."
   (declare (ignore n))			; @@@
@@ -62,19 +80,8 @@
     (loop :with i = 0
        :for (f context) :in frames
        :do
-       (print-span `((:fg-yellow ,(format nil "~3a" i))
-		     ,(or
-		       (ignore-errors
-			(format nil " (~(~a~{ ~s~}~))~%"
-				(or (ignore-errors
-				     (ccl:function-name
-				      (ccl:frame-function f context))) "")
-				(or (ignore-errors
-				     (ccl:frame-supplied-arguments
-				      f context)))))
-		       `(:red
-			 ,(format
-			   nil " Error printing frame ~a~%" f)))))
+       (print-stack-line (cons i (with-output-to-fat-string (str)
+				   (print-frame f context str))))
        (incf i))))
 
 (defun OLD-get-frame (n)
