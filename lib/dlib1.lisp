@@ -2611,7 +2611,7 @@ could be useful in case the streams support multiple element types."
 (defun quote-format (s)
   "Quote a string to send to format, so that any possible format directives
 are printed rather than interpreted as directives, which really just means:
-repleace a single tilde with double tidles."
+replace a single tilde with double tidles."
   (replace-subseq "~" "~~" s))
 
 ;; I would say titlify or titlize, but the spelling is weird.
