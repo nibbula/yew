@@ -9,11 +9,18 @@
 ;; blame me for using it. According to Wikipedia, python uses something like
 ;; this too.
 
+;; @@@ I don't see a way this will work on CCL which doesn't allow #xdc00 as a
+;; UTF-8 character. I think we would have to define our own encoding e.g. with
+;; define-character-encoding, but then the whole system would have to use it??
+
 (defmacro %get-utf8b-char (byte-getter char-setter)
   (with-names (bonk pull splort u1 u2 u3 u4 u5)
     `(macrolet ((,bonk (&rest args)
 		  "Put the xor'd args as a char."
-		  `(,',char-setter (code-char (logior ,@args))))
+		  `(,',char-setter
+		    #+ccl (or (code-char (logior ,@args))
+			   (error "Sorry. UTF8B encoding doesn't work on CCL."))
+		    #-ccl (code-char (logior ,@args))))
 		(,splort ()
 		  "Put any alredy read bytes as invalid chars and return."
 		  `(progn
