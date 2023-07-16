@@ -63,11 +63,12 @@ loading this.
 (defun interninator (name package dirt-pile)
   "Return the symbol NAME from package if it exists, or from the DIRT-PILE
 package if it doesn't. If DIRT-PILE is NIL, return a packageless symbol."
-  (or (let ((pkg (find-package package)))
+  (values ; to shut up sbcl
+   (or (let ((pkg (find-package package)))
 	(and pkg (find-symbol name pkg)))
-      (if dirt-pile
-	  (intern name dirt-pile)
-	  (make-symbol name))))
+       (if dirt-pile
+	   (intern name dirt-pile)
+	   (make-symbol name)))))
 
 #-has-read-intern
 (progn
