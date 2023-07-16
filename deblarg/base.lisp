@@ -23,6 +23,11 @@
     :initarg :condition :accessor debugger-condition :initform nil
     :type (or condition null)
     :documentation "The condition which got us in here.")
+   (string-limit
+    :initarg :string-limit :accessor debugger-string-limit :initform 500
+    :documentation
+    "Limit on the length of strings printed in things like stack traces. Should
+be an integer or NIL for unlimited.")
    (term
     :initarg :term :accessor debugger-term  :type terminal
     :documentation "The terminal for debugger I/O.")
@@ -158,9 +163,15 @@ are indicated instead of being signaled."
 	;; Make strings with weird characters not screw up the display.
 	(string
 	 (prin1 (with-output-to-string (str)
-		  (loop :for c :across v :do
-		     (displayable-char c :stream str
-				       :all-control t :show-meta nil)))
+		  (let ((i 0))
+		    (loop :for c :across v
+			  :while (< i (debugger-string-limit *deblarg*))
+			  :do
+			     (displayable-char c :stream str
+						 :all-control t :show-meta nil)
+			     (incf i))
+		    (when (< i (length v))
+		      (write-string "..." str))))
 		stream))
 	(t (prin1 v stream)))
     (error (c)
@@ -180,4 +191,4 @@ are indicated instead of being signaled."
     (terminal-write-char (or (and *deblarg* (debugger-term *deblarg*))
 			     *terminal*) #\newline)))
 
-;; EOF
+;; End
