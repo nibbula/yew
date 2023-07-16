@@ -289,7 +289,7 @@ normalized before comparison."
 		:nanoseconds n)))
 
 (defun dtime- (time1 time2)
-  "Return the difference of TIME1 and TIME2, as a dtime."
+  "Return the difference of ‘time1’ and ‘time2’, as a dtime."
   (let ((n (- (dtime-nanoseconds time1) (dtime-nanoseconds time2)))
 	s)
     (cond
@@ -666,8 +666,8 @@ return the description as a string."
       :when (plusp rounded)
       :do
 	 (if once
-	       (write-char #\space out)
-	       (setf once t))
+	     (write-char #\space out)
+	     (setf once t))
 	 (format out "~d ~(~a~)" rounded (if (> rounded 1) (caar u) (cadar u)))
 	 (decf seconds (* rounded factor)))
     ;; Report in the largest integer sub-unit down to ns.
@@ -677,8 +677,9 @@ return the description as a string."
 	(when (plusp (truncate nanos
 			       (setf divisor
 				     (/ +ns-per-sec+ (dtime-divisor (caar u))))))
-	  (when once
-	    (write-char #\space out))
+	  (if once
+	      (write-char #\space out)
+	      (setf once t))
 	  (format out "~d ~(~a~)"
 		  (setf rounded (truncate nanos divisor))
 		  (if (> rounded 1) (caar u) (cadar u)))
