@@ -5,61 +5,57 @@
 (defpackage :xterm-control
   (:documentation "Control an XTerm compatible terminal.")
   (:use :cl :dlib :dlib-misc :char-util :keymap :terminal :terminal-ansi
-	:inator :terminal-inator :rl :ppcre :dcolor)
+	:inator :terminal-inator :rl :ansi :dcolor :ppcre)
   (:export
    #:control-xterm
    #:!xterm-control
    ))
 (in-package :xterm-control)
 
-(declaim (optimize (speed 0) (safety 0) (debug 3) (space 0) (compilation-speed 0)))
+;; (declaim (optimize (speed 0) (safety 0) (debug 3) (space 0) (compilation-speed 0)))
+
+(defun raw-format (control &rest args)
+  (let ((tt (or (terminal-wrapped-terminal *terminal*) *terminal*)))
+    (apply #'terminal-format tt control args)
+    (terminal-finish-output tt)))
 
 (defun iconify (state)
-  (tt-format "~a~at" +csi+ (if state 2 1))
-  (tt-finish-output))
+  (raw-format "~a~at" +csi+ (if state 2 1)))
 
 (defun move-to (x y)
-  (tt-format "~a~a;~a;~at" +csi+ 3 x y)
-  (tt-finish-output))
+  (raw-format "~a~a;~a;~at" +csi+ 3 x y))
 
 (defun resize-pixels (width height)
-  (tt-format "~a~a;~a;~at" +csi+ 4 width height)
-  (tt-finish-output))
+  (raw-format "~a~a;~a;~at" +csi+ 4 width height))
 
 (defun resize-characters (width height)
-  (tt-format "~a~a;~a;~at" +csi+ 8 height width)
-  (tt-finish-output))
+  (raw-format "~a~a;~a;~at" +csi+ 8 height width))
 
 (defun raise ()
-  (tt-format "~a~at" +csi+ 5)
-  (tt-finish-output))
+  (raw-format "~a~at" +csi+ 5))
 
 (defun lower ()
-  (tt-format "~a~at" +csi+ 6)
-  (tt-finish-output))
+  (raw-format "~a~at" +csi+ 6))
 
 (defun refresh-term ()
-  (tt-format "~a~at" +csi+ 7)
-  (tt-finish-output))
+  (raw-format "~a~at" +csi+ 7))
 
 ;; I would like to use this to toggle, but it doesn't seem to work quite right.
 ;; (tt-format "~c[10;2t" #\escape)
 (defun set-fullscreen (state)
-  (tt-format "~a10;~dt" +csi+ (if state 1 0))
-  (tt-finish-output))
+  (raw-format "~a10;~dt" +csi+ (if state 1 0)))
 
 (defun set-utf8-title-mode (state)
-  (tt-format "~c[>2;3~c" #\escape (if state #\t #\T))
-  (tt-finish-output))
+  (raw-format "~c[>2;3~c" #\escape (if state #\t #\T)))
 
 (defun set-title (title &optional (which :window))
   (let ((param (case which
 		 (:window 2)
 		 (:icon 1)
 		 (:both 0))))
-    (tt-format "~a~a;~a~c" +osc+ param title (char-util:ctrl #\G))
-    ;;(tt-format "~a~a;~a~a" +osc+ param title +st+)
-    (tt-finish-output)))
+    (raw-format "~a~a;~a~c" +osc+ param title (char-util:ctrl #\G))
+    ;;(raw-format "~a~a;~a~a" +osc+ param title +st+)
+    ))
 
 (defun get-title (&optional (which :window))
   ;; @@@ Why does this output a bunch of crap?
@@ -101,8 +97,7 @@
 		))
 
 (defun set-font (font)
-  (tt-format "~a50;~a~c" +osc+ font (char-util:ctrl #\G))
-  (tt-finish-output))
+  (raw-format "~a50;~a~c" +osc+ font (char-util:ctrl #\G)))
 
 (defun edit-font ()
   (let ((font (get-font)) result)
@@ -655,7 +650,9 @@
   (with-slots (x y char-width char-height pixel-width pixel-height fullscreen
 	       foreground background title icon-title font increment)
       *xterminator*
-    (tt-clear)
+    ;; (tt-clear)
+    (tt-home)
+    (tt-erase-below)
     (tt-move-to 1 0)
     (tt-write-string
      (with-output-to-string (str)

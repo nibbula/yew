@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description   "Control XTerm compatible terminals."
     :depends-on (:dlib :dlib-misc :char-util :keymap :terminal :terminal-ansi
-		 :inator :terminal-inator :rl :cl-ppcre)
+		 :inator :terminal-inator :rl :ansi :cl-ppcre)
     :components
     ((:file "xterm-control")))
