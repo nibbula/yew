@@ -30,7 +30,8 @@
    #:terminal-wrapped-terminal      ;; #:wrapped-terminal
    #:terminal-retained
    #:terminal-events-enabled	    ;; #:events-enabled
-   #:terminal-get-size		    ; @@@ "get" is stupid
+   #:terminal-get-size		    ; @@@ this should probably go away
+   #:terminal-size
    #:terminal-get-cursor-position
    #:terminal-device-time
    #:terminal-output-line
@@ -102,6 +103,7 @@
    #:tt-restore-cursor		  #:terminal-restore-cursor
    #:tt-width
    #:tt-height
+   #:tt-size			  #:terminal-size
    #:tt-title                     #:terminal-title
    #:tt-selection                 #:terminal-selection
    #:tt-has-attribute             #:terminal-has-attribute
@@ -444,6 +446,15 @@ made a terminal of the given TYPE."))
 
 (defgeneric terminal-get-size (terminal)
   (:documentation "Get the window size."))
+
+(defgeneric terminal-size (terminal)
+  (:documentation
+   "Get the window size. Returns a list of (‘height' ‘width’)."))
+
+(defgeneric (setf terminal-size) (size terminal)
+  (:documentation "Set the window size, if possible. ‘size’ should be an
+ordered-collection of which the first element is the height and the second
+element is the width."))
 
 (defgeneric terminal-get-cursor-position (terminal)
   (:documentation
@@ -833,6 +844,10 @@ or :CHAR for character at time with no echo."))
 (defmacro tt-height ()
   "Return the height of the terminal window in characters."
   '(terminal-window-rows *terminal*))
+
+(deftt size ()
+  "Return the size of the terminal window in characters aa list
+of (‘height' ‘width’).")
 
 (deftt char-at (row col)
   "Return the character at ROW and COL of terminal, or NIL if the  terminal
