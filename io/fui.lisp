@@ -65,19 +65,16 @@
 (defun draw-box (x y width height &key string #| alt-chars plain |#)
   "Draw a box at X Y of WIDTH and HEIGHT. STRING a string of WIDTH to use for
 drawing, which will get overwritten."
-  ;; (when (and plain (not *plain-acs-table*))
-  ;;   (let (terminal-ansi::*acs-table*)
-  ;;     (terminal-ansi::make-acs-table terminal-ansi::*acs-table-data-plain*)
-  ;;     (setf *plain-acs-table* terminal-ansi::*acs-table*)))
-  (let* (#|(terminal-ansi::*acs-table* *plain-acs-table*)|#
-	 (str-len (- width 2))
-	 (str (if string
-		  (fill string (code-char #x2500) :end str-len)
-		  (make-string str-len
-			      :initial-element (code-char #x2500))))) ; ─
+  (let* (str-len str)
+    (when string
+      (setf str-len (- width 2)
+	    str (fill string (code-char #x2500) :end str-len))) ; ─
+
     (tt-move-to y x)
     (tt-write-char (code-char #x250c))	; ┌
-    (tt-write-string str :end str-len)
+    (if string
+	(tt-write-string str :end str-len)
+	(loop :repeat (- width 2) :do (tt-write-char (code-char #x2500)))) ; ─
     (tt-write-char (code-char #x2510))	; ┐
     (loop :for iy :from (1+ y) :below (+ y (1- height)) :do
        (tt-move-to iy x)
@@ -86,9 +83,10 @@ drawing, which will get overwritten."
        (tt-write-char (code-char #x2502))) ; │
     (tt-move-to (+ y (1- height)) x)
     (tt-write-char (code-char #x2514))	; └
-    (tt-write-string str :end str-len)
+    (if string
+	(tt-write-string str :end str-len)
+	(loop :repeat (- width 2) :do (tt-write-char (code-char #x2500)))) ; ─
     (tt-write-char (code-char #x2518)))) ; ┘
-
 
 ;; @@@ maybe windows should be implemented as a sub-terminal?
 
