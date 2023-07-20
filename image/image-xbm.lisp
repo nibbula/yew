@@ -66,7 +66,7 @@ if we can't find it."
   (let ((string
 	 (handler-case
 	     (slurp file-or-stream)
-	   (stream-error (c)
+	   (error (c)
 	     (declare (ignore c))
 	     (return-from guess-xbm nil)))))
     (and string
