@@ -176,7 +176,7 @@ drawing, which will get overwritten."
 	    text-y row)
       (tt-move-to start-y start-x))))
 
-(defun refangle (string)
+(defun re-fangle (string)
   "Turn FATCHAR-STRINGS back to FAT-STRINGS, but leave other things."
   (typecase string
     (fatchar-string (make-fat-string :string string))
@@ -197,7 +197,7 @@ drawing, which will get overwritten."
 	   ;; (start-pos (if (< column 0) (min len (- column)) 0))
 	   ;; (end-pos   (min len (max 0 (- width column))))
 	   (lines
-	    (mapcar #'refangle
+	    (mapcar #'re-fangle
 		    (split-sequence #\newline
 				    (string-vector text)
 				    :key #'simplify-char))))
@@ -284,7 +284,7 @@ waits for a key press and then returns."
     (loop :with i = (if title 2 0)
        :for l :in justified-lines
        :do
-       (window-text w (refangle l) :row i :column 2)
+       (window-text w (re-fangle l) :row i :column 2)
        (incf i))
     (tt-finish-output)
     (setf result (if input-func
