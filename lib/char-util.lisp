@@ -810,6 +810,32 @@ than space, and delete."
 	       (substitute #\_ #\- (string-capitalize property)))
 	      (t property))))
 
+;; @@@ This should be done better, and in the unicode package. It's just for
+;; speed on non-sbcl.
+#-sbcl
+(defparameter *other-grapheme-extend-table*
+  (let ((table (make-hash-table)))
+    (loop :for c :across #( #x9BE #x9D7 #xB3E #xB57 #xBBE #xBD7 #xCC2 #xCD5
+    #xCD6 #xD3E #xD57 #xDCF #xDDF #x200C #x302E #x302F #xFF9E #xFF9F #x1133E
+    #x11357 #x114B0 #x114BD #x115AF #x1D165 #x1D16E #x1D16F #x1D170 #x1D171
+    #x1D172 #xE0020 #xE0021 #xE0022 #xE0023 #xE0024 #xE0025 #xE0026 #xE0027
+    #xE0028 #xE0029 #xE002A #xE002B #xE002C #xE002D #xE002E #xE002F #xE0030
+    #xE0031 #xE0032 #xE0033 #xE0034 #xE0035 #xE0036 #xE0037 #xE0038 #xE0039
+    #xE003A #xE003B #xE003C #xE003D #xE003E #xE003F #xE0040 #xE0041 #xE0042
+    #xE0043 #xE0044 #xE0045 #xE0046 #xE0047 #xE0048 #xE0049 #xE004A #xE004B
+    #xE004C #xE004D #xE004E #xE004F #xE0050 #xE0051 #xE0052 #xE0053 #xE0054
+    #xE0055 #xE0056 #xE0057 #xE0058 #xE0059 #xE005A #xE005B #xE005C #xE005D
+    #xE005E #xE005F #xE0060 #xE0061 #xE0062 #xE0063 #xE0064 #xE0065 #xE0066
+    #xE0067 #xE0068 #xE0069 #xE006A #xE006B #xE006C #xE006D #xE006E #xE006F
+    #xE0070 #xE0071 #xE0072 #xE0073 #xE0074 #xE0075 #xE0076 #xE0077 #xE0078
+    #xE0079 #xE007A #xE007B #xE007C #xE007D #xE007E #xE007F)
+      :do (setf (gethash (code-char c) table) t))
+   table))
+
+#-sbcl
+(defun is-other-grapheme-extend (c)
+  (gethash c *other-grapheme-extend-table*))
+
 ;; @@@ This only works with cl-unicode.
 #-has-sb-unicode
 (defun character-unicode-properties (char)
@@ -941,7 +967,8 @@ If the character is not a Hangul syllable or Jamo, returns NIL"
       ((= code 10) :LF)
       ((= code 13) :CR)
       ((or (member category '(:Mn :Me))
-           (has-property char :other-grapheme-extend)
+           #+sbcl (has-property char :other-grapheme-extend)
+           #-sbcl (is-other-grapheme-extend char)
            (and *other-break-special-graphemes*
                 (member category '(:Mc :Cf)) (not (<= #x200B code #x200D))))
        :extend)
