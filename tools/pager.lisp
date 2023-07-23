@@ -1251,16 +1251,17 @@ end."
        :while (not done))
     str))
 
-(defun ask (&optional prompt)
-  ;;(ask-for :prompt prompt)
+(defun ask (prompt &key default)
   (tt-move-to (1- (tt-height)) 0)
   (tt-erase-to-eol)
   (tt-finish-output)
-  (prog1
-      (rl:rl :prompt prompt
-	     :accept-does-newline nil
-	     :history-context :pager)
-    (setf (tt-input-mode) :char)))
+  (let ((result (rl:rl :prompt prompt
+		       :accept-does-newline nil
+		       :history-context :pager)))
+    (setf (tt-input-mode) :char)
+    (if (or (not result) (zerop (length result)))
+	default
+	result)))
 
 (defun ask-for-file (&optional prompt)
   (tt-move-to (1- (tt-height)) 0)
@@ -1295,18 +1296,22 @@ list containing strings and lists."
      (all-matches str (fatchar-string-to-string
 		       (span-to-fatchar-string line))))))
 
-(defgeneric search-for (pager str &key direction)
+(defgeneric search-for (pager str &key direction start)
   (:documentation
    "Search for ‘str’. ‘direction’ can be :forward or :backward, defaulting to
 :forward."))
 
-(defmethod search-for ((pager text-pager) str &key (direction :forward))
+(defmethod search-for ((pager text-pager) str &key (direction :forward) start)
   (with-slots (lines count line page-size ignore-case) *pager*
+    (when (not str)
+      (user-error "Search string isn't set."))
+    (when (not start)
+      (setf start (if (eq direction :forward) (1+ line) (1- line))))
     (let ((search-regexp (if ignore-case (s+ "(?i)" str) str))
 	  ll l)
       (case direction
 	(:forward
-	 (setf ll (nthcdr line lines))
+	 (setf ll (nthcdr start lines))
 	 (loop
 	    :do
 	    (setf l (car ll))
@@ -1320,7 +1325,7 @@ list containing strings and lists."
 	     (setf line (line-number l))
 	     nil))
 	(:backward
-	 (setf l (nth line lines))
+	 (setf l (nth start lines))
 	 (loop
 	    :while (and l (>= (line-number l) 0)
 			(not (search-line search-regexp (line-text l))))
@@ -1332,17 +1337,26 @@ list containing strings and lists."
 	(otherwise
 	 (error "Search direction should be either :forward or :backward."))))))
 
-(defmethod search-for ((pager binary-pager) str &key (direction :forward))
+(defmethod search-for ((pager binary-pager) str &key (direction :forward) start)
   (with-slots (buffer buffer-start byte-count byte-pos page-size ignore-case
 	       got-eof)
       *pager*
+    (when (not str)
+      (user-error "Search string isn't set."))
+
     (let (;(search-regexp (if ignore-case (s+ "(?i)" str) str)))
-	  (byte-str (unicode:string-to-utf8b-bytes str)))
+	  (byte-str (if (stringp str)
+			(unicode:string-to-utf8b-bytes str)
+			str))) ;; assume it's already bytes
+      (when (not start)
+	(setf start (if (eq direction :forward)
+			(+ (- buffer-start byte-pos) (length byte-str))
+			(- (- buffer-start byte-pos) (length byte-str)))))
       (case direction
 	(:forward
 	 (loop :with pos
 	   :do
-	      (when (setf pos (search-bytes byte-str buffer))
+	      (when (setf pos (search-bytes byte-str buffer :start2 start))
 		(let* (#| (line-bytes (line-bytes)) |#
 		       (new-pos
 			 ;; (+ buffer-start
@@ -1363,7 +1377,8 @@ list containing strings and lists."
 	   :with pos
 	   :do
 	      (previous-page pager)
-	      (when (setf pos (search-bytes byte-str buffer :from-end t))
+	      (when (setf pos (search-bytes byte-str buffer
+					    :from-end t :start2 start))
 		(let* ((line-bytes (line-bytes))
 		       (new-pos
 			 (+ buffer-start
@@ -1891,7 +1906,9 @@ byte-pos."
 (defmethod search-command ((pager pager))
   "Search forwards for something in the stream."
   (with-slots (search-string) pager
-    (setf search-string (ask "Search for: "))
+    (setf search-string
+	  (ask (format nil "Search for~@[ [~a]~]: " search-string)
+	       :default search-string))
     (block nil
       (handler-case
 	  (when (not (search-for pager search-string))
@@ -1923,18 +1940,16 @@ byte-pos."
 (defmethod search-next ((pager text-pager))
   "Search for the next occurrence of the current search in the stream."
   (with-slots (line search-string) pager
-    (incf line)
     (when (not (search-for pager search-string))
-      (decf line)
       (message pager "--Not found--"))))
 
 (defmethod search-next ((pager binary-pager))
   "Search for the next occurrence of the current search in the stream."
   (with-slots (byte-pos search-string) pager
+    (when (not search-string)
+      (user-error "Search string isn't set."))
     (let ((byte-str (unicode:string-to-utf8b-bytes search-string)))
-      (incf byte-pos (length byte-str))
-      (when (not (search-for pager search-string))
-	(decf byte-pos (length byte-str))
+      (when (not (search-for pager byte-str))
 	(message pager "--Not found--")))))
 
 (defgeneric search-previous (pager)
@@ -1946,9 +1961,7 @@ byte-pos."
   (with-slots (line search-string) pager
     (if (not (zerop line))
 	(progn
-	  (decf line)
 	  (when (not (search-for pager search-string :direction :backward))
-	    (incf line)
 	    (message pager "--Not found--")))
 	(message pager "Search stopped at the first line."))))
 
