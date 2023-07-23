@@ -6,18 +6,9 @@
   (:documentation "pager - More or less like more or less.
 
 As you may know, we can only see so much at one time. A paginator is the
-traditional solution, which allows one to scroll through textual output.
-The funtionality of a paginator can easily and perhaps better be done by a
-text editor in read-only mode. The problem is that many text editors have
-significant resource requirement and start up time, as well as being ill
-suited to being at the end of a shell pipeline. The paginator is a small,
-modest, and simple program which should start up quickly and be able to be
-conviently used as the last step of an output pipline.
-
-I would like this pager to evolve into a thing that can be used either as an
-editor mode or a standalone program. But for the time being it acts like a
-traditional Unix paginator, except that it lives in a Lisp world, which means
-it should be smartly compiled to a tight executable or used from a Lisp shell.
+traditional solution, which allows one to scroll through textual output. The
+paginator is a small, and simple program which should start up quickly and be
+able to be conviently used as the last step of an output pipline.
 
 SYNOPSIS
   pager files...                                        [shell command]
@@ -612,15 +603,12 @@ read until we get an EOF."
 		 (pos (or (file-position stream)
 			  (clamp byte-pos 0 file-len)))
 		seek-succeeded)
-	    ;; (dbugf :pager "read-size ~s pos ~s~%" read-size pos)
 	    (when (not seekable)
 	      (error "Unseekable binary streams not implemented yet."))
 	    (when (< (length buffer) read-size)
-	      ;; (dbugf :pager "adjusting to ~s~%" read-size)
 	      (setf buffer (adjust-array buffer read-size)))
 	    (when (/= byte-pos pos)
 	      (clampf byte-pos 0 (max 0 (- file-len read-size)))
-	      ;; (dbugf :pager "seeking to ~s~%" byte-pos)
 	      (setf seek-succeeded (file-position stream byte-pos))
 	      (assert seek-succeeded))
 	    (unwind-protect
@@ -632,8 +620,6 @@ read until we get an EOF."
 		   (setf buffer-start byte-pos
 			 read-count (read-sequence buffer stream))
 		   (setf byte-count file-len)
-		   ;; (dbugf :pager "byte-count ~s read-count ~s stream ~s~%"
-		   ;; 	  byte-count read-count stream)
 		   (when (< read-count (length buffer))
 		     (setf got-eof t)
 		     ;; (setf buffer-start (- byte-count read-count))
