@@ -379,6 +379,13 @@ but perhaps reuse some resources."))
 	(pager-byte-count o) 0
 	(pager-byte-pos o) 0))
 
+(define-condition user-error (simple-error)
+  ()
+  (:documentation "An error from a pager user command."))
+
+(defun user-error (control &rest args)
+  (error 'user-error :format-control control :format-arguments args))
+
 (defmacro sub-page ((stream-var) &body body)
   "Generate some output and run a sub-instance of the pager on it."
   ;;(declare (ignore stream-var)) ; @@@
@@ -1052,7 +1059,7 @@ line : |----||-------||---------||---|
 	     (tt-write-span `(,@empty-indicator-style ,empty-indicator-char))))
       (if message
 	  (progn
-	    (display-message message)
+	    (display-message (quote-format message))
 	    (setf message nil))
 	  (when show-modeline
 	    (display-prompt pager))))))
@@ -2275,7 +2282,16 @@ q - Abort")
 			  (setf quit-flag nil
 				suspend-flag nil
 				suspended nil)
-			  (event-loop *pager*)
+			  (loop :do
+			    (with-simple-restart (continue "Keep going.")
+			      (handler-case
+				  (event-loop *pager*)
+				(user-error (c)
+				  (message *pager*
+					   (simple-condition-format-control c)
+					   (simple-condition-format-arguments c))
+				  (continue c))))
+			      :while (not quit-flag))
 			  (when suspend-flag
 			    (setf suspended t)
 			    (if (find-package :lish)
