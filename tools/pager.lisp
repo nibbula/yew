@@ -405,21 +405,22 @@ but perhaps reuse some resources."))
   (let ((fat-line (make-stretchy-vector (+ (length line) 16)
 					:element-type 'fatchar))
 	(i 0) (len (length line)))
-    (flet ((add-char (c &optional attrs)
-	     (stretchy:stretchy-append
-	      fat-line (make-fatchar :c c :attrs (when attrs
-						   (copy-seq attrs)))))
-	   (has-backspace ()
-	     (and (< i (- len 1))
-		  (char= (char line (1+ i)) #\backspace)))
+    (labels ((add-char (c &optional attrs)
+	       (stretchy:stretchy-append
+		fat-line (make-fatchar :c c :attrs (when attrs
+						     (copy-seq attrs)))))
+	     (is-char (i c)
+	       (and (< i len)
+		    (char= (char line i) c)))
+	     (has-backspace ()
+	       (is-char (1+ i) #\backspace))
 	   (looking-at (thing &optional (offset 0))
 	     (etypecase thing
 	       ((or string array)
 		(and (< (+ i offset) (- len (+ (length thing) offset)))
 		     (equalp thing (subseq line i (+ i (length thing))))))
 	       (character
-		(and (< (+ i offset) len)
-		     (char= thing (char line (+ i offset))))))))
+		(is-char (+ i offset) thing)))))
       (loop
 	:do
 	(cond
@@ -430,12 +431,13 @@ but perhaps reuse some resources."))
 		((looking-at #\_ 2)	; bold underscore
 		 (add-char #\_ '(:bold)))
 		(t			; underlined char
-		 (add-char (char line (+ i 2)) '(:underline))))
+		 (when (< (+ i 2) len)
+		   (add-char (char line (+ i 2)) '(:underline)))))
 	      (incf i 2))
 	     ((looking-at #\_ 2)	; backward underline
 	      (add-char (char line i) '(:underline))
 	      (incf i 2))
-	     ((char= (char line i) (char line (+ i 2))) ; bold
+	     ((is-char (+ i 2) (char line i)) ; bold
 	      (cond
 		((looking-at		; bold bullet
 		  #(#\+ #\backspace #\+ #\backspace #\o #\backspace #\o))
@@ -448,8 +450,9 @@ but perhaps reuse some resources."))
 	      (add-char (code-char #x2022)) ; #\bullet •
 	      (incf i 2))
 	     (t				; overwrite
-	      (add-char (char line (+ i 2)))
-	      (incf i 2))))
+	      (when (< (+ i 2) len)
+		(add-char (char line (+ i 2)))
+		(incf i 2)))))
 	  (t
 	   (add-char (char line i))))
 	(incf i)
