@@ -506,6 +506,7 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 	      :from-end from-end
 	      :key key)))
 
+#| doesn't work on CCL because it still passes key as nil
 (defmethod osubstitute ((new-item character)
 			(old-item character) (collection fat-string)
 			 &key from-end
@@ -553,6 +554,38 @@ the environemnt has <arg> and <arg>-P for all those keywords."
   (call-with-start-end-test onsubstitute
     (new-item old-item (fat-string-string collection)
      :from-end from-end :count count :key key)))
+|#
+
+(defmethod osubstitute ((new-item character)
+			(old-item character) (collection fat-string)
+			&rest args
+			&key from-end test test-not start end count key)
+  (declare (ignorable from-end test test-not start end count key))
+  (apply #'osubstitute
+	 (make-fatchar :c new-item) (make-fatchar :c old-item) collection args))
+
+(defmethod onsubstitute ((new-item character)
+			(old-item character) (collection fat-string)
+			 &rest args
+			 &key from-end test test-not start end count key)
+  (declare (ignorable from-end test test-not start end count key))
+  (apply #'onsubstitute
+	 (make-fatchar :c new-item) (make-fatchar :c old-item) collection args))
+
+(defmethod osubstitute ((new-item fatchar)
+			(old-item fatchar) (collection fat-string)
+			&rest args
+			&key from-end test test-not start end count key)
+  (declare (ignorable from-end test test-not start end count key))
+  (apply #'osubstitute
+	 new-item old-item (fat-string-string collection) args))
+
+(defmethod onsubstitute ((new-item fatchar)
+			(old-item fatchar) (collection fat-string)
+			 &rest args
+			 &key from-end test test-not start end count key)
+  (declare (ignorable from-end test test-not start end count key))
+  (apply #'onsubstitute new-item old-item (fat-string-string collection) args))
 
 (defmethod osearch ((collection-1 fat-string) (collection-2 fat-string)
 		    &rest args
