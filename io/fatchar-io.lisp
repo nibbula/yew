@@ -19,7 +19,6 @@
    #:with-output-to-fat-string
    #:fs+
    #:join-by-fat-string
-   #:*print-control-char-with-caret*
    ))
 (in-package :fatchar-io)
 
@@ -28,10 +27,6 @@
 (defun render-fat-string (fat-string &key (terminal *terminal*) (start 0) end)
   (render-fatchar-string (fat-string-string fat-string)
 			 :terminal terminal :start start :end end))
-
-;; @@@ This is a terrible hack. But how else to do it?
-(defvar *print-control-char-with-caret* t
-  "True to print control characters with a caret, like ^X.")
 
 ;; @@@ why doesn't this work right???
 (defun render-fatchar-string (fatchar-string

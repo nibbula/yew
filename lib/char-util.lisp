@@ -29,6 +29,7 @@
    #:grapheme-length
    #:simplify-char
    #:simplify-string
+   #:*print-control-char-with-caret*
    ))
 (in-package :char-util)
 
@@ -41,6 +42,10 @@
 ;(
 
 ;; (declaim (optimize (speed 3) (safety 0) (debug 1) (space 0) (compilation-speed 0)))
+
+;; @@@ This is a terrible hack. But how else to do it?
+(defvar *print-control-char-with-caret* t
+  "True to print control characters with a caret, like ^X.")
 
 ;; Sadly #\^A is not portable. This assumes ASCII or UTF8 or something. 
 (defun ctrl (c)
@@ -1209,10 +1214,12 @@ GRAPHEME-VARs will be, which defaults to character so it's compatable with a
     ((eql c #\newline)
      0)
     (t
-     (if (control-char-graphic c)
-	 2   ; ^X
-	 4)  ; \000
-     )))
+     ;; This too is mostly stupid and wrong.
+     (if *print-control-char-with-caret*
+	 (if (control-char-graphic c)
+	     2   ; ^X
+	     4)  ; \000
+	 0))))
 
 (defun grapheme-length (g)
   "Return the length of the character for display."
