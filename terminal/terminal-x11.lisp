@@ -815,7 +815,7 @@ is zero, but for inserting and deleting is the current line."
        ;; Copy the retained lines up
        (setf (subseq array start (- height n))
 	     (subseq array (+ start n) height))
-       (dbugf :tx11 "scroll-copy ~d ~d -> 0 ~d~%" n height (- height n))
+       ;; (dbugf :tx11 "scroll-copy ~d ~d -> 0 ~d~%" n height (- height n))
        ;; Move the new blank lines in place.
        (setf (subseq array (- height n)) new-blanks)
        ;; Blank out the newly blank lines
@@ -823,7 +823,7 @@ is zero, but for inserting and deleting is the current line."
     (t ;; minusp
      (let ((offset (abs n))
 	   (new-blanks (subseq array (+ height n))))
-       (dbugf :tx11 "scroll-copy ~s ~s ~s~%" n start height)
+       ;; (dbugf :tx11 "scroll-copy ~s ~s ~s~%" n start height)
        ;; Copy the retained lines down
        ;;(setf (subseq array (1+ offset))
        (setf (subseq array (+ start offset))
@@ -838,7 +838,7 @@ is zero, but for inserting and deleting is the current line."
 
 (defun scroll (tty n &key (start 0 start-supplied-p))
   "Scroll by N lines."
-  (dbugf :tx11 "(scroll ~s)~%" n)
+  ;; (dbugf :tx11 "(scroll ~s)~%" n)
   (with-slots ((window-rows terminal::window-rows)
 	       (window-columns terminal::window-columns)
 	       lines cell-width cell-height window draw-gc) tty
@@ -1245,10 +1245,10 @@ is zero, but for inserting and deleting is the current line."
 		   (when (= cursor-row last-row)
 		     (if (= cursor-column last-col)
 			 (progn
-			   (dbugf :tx11 "Delayed scroll~%")
+			   ;; (dbugf :tx11 "Delayed scroll~%")
 			   (scroll-one-line))
 			 (progn ;; delayed wrap
-			   (dbugf :tx11 "Delayed wrap~%")
+			   ;; (dbugf :tx11 "Delayed wrap~%")
 			   ;; (incf cursor-row) @@@ not really?
 			   (setf cursor-column 0 changed t)
 			   (set-moved tty)
@@ -1265,11 +1265,11 @@ is zero, but for inserting and deleting is the current line."
 		       (if (= cursor-column last-col)
 			   (progn
 			     ;; @@@ horrible
-			     ;;(dbugf :tx11 "Delaying scroll @ ~d ~d~%" x y)
-			     (dbugf :tx11 "Delaying scroll~%")
+			     ;; (dbugf :tx11 "Delaying scroll @ ~d ~d~%" x y)
+			     ;; (dbugf :tx11 "Delaying scroll~%")
 			     (setf delay-scroll t))
 			   (progn
-			     (dbugf :tx11 "next-line scroll-one-line~%")
+			     ;; (dbugf :tx11 "next-line scroll-one-line~%")
 			     (scroll-one-line)))))))
 	(case (char-char char)
 	  (#\newline
@@ -1826,14 +1826,14 @@ to the grid. It must be on a single line and have no motion characters."
 	  actual-end str)
       (setf c-start-x (max 0 c-start-x)
 	    c-start-y (max 0 c-start-y))
-      (dbugf :tx11 "redraw-area ~s ~s ~s ~s~%"
-	     c-start-x c-start-y c-width c-height)
+      ;; (dbugf :tx11 "redraw-area ~s ~s ~s ~s~%"
+      ;; 	     c-start-x c-start-y c-width c-height)
       (draw-rectangle window erase-gc
 		      (or start-x 0) (or start-y 0)
 		      (or width window-width) (or height window-height)
 		      t)
       (when (not (zerop top))
-	(dbugf :tx11 "redrawing scrollback, top = ~s~%" top)
+	;; (dbugf :tx11 "redrawing scrollback, top = ~s~%" top)
 	(loop
 	   ;; :for y = 0 :then (1+ y)
 	   :for i :from top :downto (max 0 (- top window-rows))
@@ -1842,8 +1842,8 @@ to the grid. It must be on a single line and have no motion characters."
 		 actual-end
 		 (clamp (+ c-start-x c-width) 0 (min (olength str)
 						     window-columns)))
-	   (dbugf :tx11 "bowser y ~s i ~s [~s ~s] str ~s~%"
-		  y i c-start-x actual-end str)
+	   ;; (dbugf :tx11 "bowser y ~s i ~s [~s ~s] str ~s~%"
+	   ;; 	  y i c-start-x actual-end str)
 	   (%draw-fat-string tty str
 			     :end actual-end :start c-start-x
 			     :x 0 :y y)
@@ -1869,8 +1869,8 @@ to the grid. It must be on a single line and have no motion characters."
 	       )
 	 (when (and (plusp (- actual-end c-start-x))
 		    (not (zerop (olength str))))
-	   ;; (dbugf :tx11 "redraw line [~s ~s] ~s - ~s ~s ~s~%"
-	   ;; 	  output-start y c-start-x actual-end
+	   ;; (dbugf :tx11 "redraw line [~s] ~s - ~s len ~s ~a~%"
+	   ;; 	  y c-start-x actual-end
 	   ;; 	  (olength str)
 	   ;; 	  str
 	   ;; 	  ;; (aref lines y)
@@ -1901,7 +1901,7 @@ to the grid. It must be on a single line and have no motion characters."
   (with-slots (display top scrollback (window-rows terminal::window-rows)) tty
     (when (< top (olength scrollback))
       (setf top (min (1- (olength scrollback)) (+ top n)))
-      (dbugf :tx11 "scroll back ~s ~s~%" top (olength scrollback))
+      ;; (dbugf :tx11 "scroll back ~s ~s~%" top (olength scrollback))
       (redraw-area tty)
       (display-finish-output display))))
 
@@ -1910,7 +1910,7 @@ to the grid. It must be on a single line and have no motion characters."
   (with-slots (display top scrollback) tty
     (when (> top 0)
       (setf top (max 0 (- top n)))
-      (dbugf :tx11 "scroll forward ~s ~s~%" top (olength scrollback))
+      ;; (dbugf :tx11 "scroll forward ~s ~s~%" top (olength scrollback))
       (redraw-area tty)
       (display-finish-output display))))
 
@@ -1960,7 +1960,7 @@ i.e. the terminal is 'line buffered'."
 				&key start end)
   "Output a string to the terminal, followed by a newline."
   (%write-string tty str start end)
-  (dbugf :tx11 "---> heckin newline~%")
+  ;; (dbugf :tx11 "---> heckin newline~%")
   (%write-text tty #\newline)
   (when (line-buffered-p tty)
     (terminal-finish-output tty)))
@@ -2294,7 +2294,8 @@ If ‘in-region’ is true, constrain to the scrolling region."
 		     "The scrolling region end doesn't fit in the screen."))
 	   (setf (cdr region) end))))
       (setf scrolling-region region))
-    (dbugf :tx11 "scrolling region ~s~%" scrolling-region)))
+    ;; (dbugf :tx11 "scrolling region ~s~%" scrolling-region)
+    ))
 
 (defmethod terminal-set-attributes ((tty terminal-x11) attributes)
   "Set the attributes given in the list. If NIL turn off all attributes.
@@ -2365,7 +2366,7 @@ handler cases."
 	(:exposure
 	 (event-slots (slots x y width height xlib:window #|count|#)
 	   (when (eq xlib:window our-window)
-	     (dbugf :tx11 "exposure ~s ~s ~s ~s~%" x y width height)
+	     ;; (dbugf :tx11 "exposure ~s ~s ~s ~s~%" x y width height)
 	     (force-output *trace-output*)
 	     (redraw-area tty x y width height)
 	     (display-finish-output display)
@@ -2452,8 +2453,8 @@ handler cases."
     (:key-release (code #|state|#)
 		  (let* ((sym (keycode->keysym display code 0))
 			 (sym-name (keysym-name sym)))
-		    (dbugf :tx11 "code ~s sym ~s name ~s ~s~%" code sym sym-name
-			   (eq sym-name key))
+		    ;; (dbugf :tx11 "code ~s sym ~s name ~s ~s~%" code sym
+		    ;; 	   sym-name (eq sym-name key))
 		    (eq sym-name key))
 		  t)))
 
@@ -2652,8 +2653,8 @@ handler cases."
      (discard-current-event display)
      t)
     ((:button-press :button-release :key-press)
-     (dbugf :tx11 "something pressed~%")
-     (dbugf :tx11 "WTF input? ~s ~s~%" event-key slots) (finish-output)
+     ;; (dbugf :tx11 "something pressed~%")
+     ;; (dbugf :tx11 "WTF input? ~s ~s~%" event-key slots) (finish-output)
      (apply #'queue-event display event-key slots)
      (setf *input-available* t)
      t)
@@ -2693,7 +2694,7 @@ handler cases."
 	       (and timeout (dtime-to time-left :seconds))))
 	(loop
 	   :do
-	   (dbugf :tx11 "time-left ~s ~s~%" time-left (timeout))
+	   ;; (dbugf :tx11 "time-left ~s ~s~%" time-left (timeout))
 	   (setf result
 		 (process-event display
 				;;:peek-p t ;; <<--
@@ -2701,14 +2702,14 @@ handler cases."
 				:handler #'listen-handler
 				:force-output-p t
 				:timeout (timeout)))
-	   (dbugf :tx11 "result ~s *input-available* ~s~%" result
-		  *input-available*)
+	   ;; (dbugf :tx11 "result ~s *input-available* ~s~%" result
+	   ;; 	  *input-available*)
 	   (when timeout
 	     (setf time-left (dtime- (dtime+ start-time real-timeout)
 				     (get-dtime))))
 	   :while (and (not *input-available*)
 		       (or (not timeout) (dtime-plusp time-left))))
-	(dbugf :tx11 "CHANG ~s~%" *input-available*)
+	;; (dbugf :tx11 "CHANG ~s~%" *input-available*)
 	*input-available*))))
 
 (defmethod terminal-input-mode ((tty terminal-x11))
