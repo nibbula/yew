@@ -915,7 +915,11 @@ i.e. the terminal is 'line buffered'."
 	    (write-char #\m stream))
 	  (write-string +zero-effect+ stream))
       (if (zerop line)
-	  (write-char cc stream)
+	  (typecase cc
+	    (string
+	     (write-string cc stream))
+	    (character
+	     (write-char cc stream)))
 	  (write-char (line-char line) stream))
       (update-column tty cc)
       (when (and (line-buffered-p tty) (eql cc #\newline))
