@@ -67,7 +67,6 @@
   (tt-clear)
   ;; (tt-erase-below)
   (draw-box 0 0 (tt-width) (tt-height))
-  (draw-eks (tt-width) (tt-height))
   (center "Press ? for help" 1)
   (center (format nil "~d x ~d" (tt-width) (tt-height)))
   (tt-finish-output))
