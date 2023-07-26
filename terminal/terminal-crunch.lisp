@@ -744,11 +744,6 @@ sizes. It only copies the smaller of the two regions."
 (defun update-size (tty)
   (with-slots ((wtty wrapped-terminal)) tty
     (when (size-changed-p tty)
-      ;; (dbugf :crunch "resize ~s ~s -> ~s ~s~%"
-      ;; 	   (terminal-window-rows tty)
-      ;; 	   (terminal-window-columns tty)
-      ;; 	   (terminal-window-rows wtty)
-      ;; 	   (terminal-window-columns wtty))
       ;; Resize the screens
       (let ((screen (make-new-screen (terminal-window-rows wtty)
 				     (terminal-window-columns wtty))))
@@ -767,9 +762,6 @@ sizes. It only copies the smaller of the two regions."
   "Get the window size from the wrapped terminal and store it in tty."
   (with-slots ((wtty wrapped-terminal)) tty
     (multiple-value-prog1 (terminal-get-size wtty)
-      ;; (dbugf :crunch "get-size ~s ~s~%"
-      ;; 	   (terminal-window-rows wtty)
-      ;; 	   (terminal-window-columns wtty))
       ;; Potentially resize the screens
       (update-size tty))))
 
@@ -782,20 +774,17 @@ sizes. It only copies the smaller of the two regions."
   "Set the window size, if possible. ‘size’ should be an
 ordered-collection of which the first element is the height and the second
 element is the width."
-  (dbugf :crunch "setf terminal-size ~s~%" size)
   (with-slots ((wtty wrapped-terminal)) tty
     (setf (terminal-size wtty) size)
     (update-size tty)
     size))
 
 (defmethod (setf terminal-window-rows) (rows (tty terminal-crunch))
-  (dbugf :crunch "setf terminal-window-rows ~s~%" rows)
   (with-slots ((wtty wrapped-terminal)) tty
     (prog1 (setf (terminal-window-rows wtty) rows)
       (update-size tty))))
 
 (defmethod (setf terminal-window-columns) (columns (tty terminal-crunch))
-  (dbugf :crunch "setf terminal-window-columns ~s~%" columns)
   (with-slots ((wtty wrapped-terminal)) tty
     (prog1 (setf (terminal-window-columns wtty) columns)
       (update-size tty))))
@@ -852,8 +841,8 @@ the terminal doesn't support it."
     (when start-at-current-line
       #+(or) ;; @@@@ FORKED UP
       (let ((keep-stuff (equalp (terminal-device-time tty) last-time)))
-	(dbugf :kaka "@@@@@ Keeping stuff from ~s ~s~%" last-time-start-line
-	       start-line)
+	;; (dbugf :kaka "@@@@@ Keeping stuff from ~s ~s~%" last-time-start-line
+	;;        start-line)
 	(setf start-line
 	      (if keep-stuff
 		  last-time-start-line
@@ -1095,7 +1084,7 @@ function to blank with."
   "Copy ‘array’ for scrolling ‘N’ lines in a ‘height’ window. ‘blanker’ is a
 function to blank with. ‘start’ is the line to start from, which for scrolling
 is zero, but for inserting and deleting is the current line."
-  (dbugf :crunch "scroll-copy ~d ~d ~d~%" n height start)
+  ;; (dbugf :crunch "scroll-copy ~d ~d ~d~%" n height start)
   (cond
     ((plusp n) ; up
      ;; save overwritten lines
@@ -2439,7 +2428,7 @@ duplicated sequences, and can have worst case O(n*m) performance."
     (finish-output wtty)
     ;; @@@ Here's a race condition.
     (when (touched tty)
-      (dbugf :kaka "Did something. ~s~%" (terminal-device-time wtty))
+      ;; (dbugf :kaka "Did something. ~s~%" (terminal-device-time wtty))
       (setf (last-time tty) (terminal-device-time wtty)
 	    (last-time-start-line tty) (start-line tty))
       (setf (touched tty) nil))
@@ -2649,9 +2638,9 @@ duplicated sequences, and can have worst case O(n*m) performance."
 (defun dump-hashes (tty)
   (let ((old-hashes (screen-hashes (old-screen tty)))
 	(new-hashes (screen-hashes (new-screen tty))))
-    (format *trace-output* "Old -> New~%")
+    (format *dbug-output* "Old -> New~%")
     (loop :for i :from 0 :below (length old-hashes) :do
-       (format *trace-output*
+       (format *dbug-output*
 	       "~s ~s~%" (aref old-hashes i) (aref new-hashes i)))))
 
 (defun dump-screen (tty)
@@ -2677,14 +2666,7 @@ duplicated sequences, and can have worst case O(n*m) performance."
 	 (format *dbug-output* "[~a] [~a]~%"
 		 (line-str (aref old-lines i))
 		 (line-str (aref new-lines i))))))
-  (finish-output *trace-output*)
-  )
-      ;; (loop :for i :from 0 :below (length old-lines) :do
-      ;; 	 (format *debug-io* "[~a] [~a]~%"
-      ;; 		 (make-fat-string
-      ;; 		  :string (grid-to-fat-string (aref old-lines i)))
-      ;; 		 (make-fat-string
-      ;; 		  :string (grid-to-fat-string (aref new-lines i)))))))
+  (finish-output *dbug-output*))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
