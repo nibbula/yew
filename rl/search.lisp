@@ -492,7 +492,7 @@ Control-R searches again backward and Control-S searches again forward."
 	     (start-from (or (history-current-get history-context)
 			     (history-head hist)))
 	     (pos point)
-	     end new-hist scanner)
+	     #| end |# new-hist scanner)
 
 	(setf start-from (search-start-backward history-context))
 
@@ -502,7 +502,7 @@ Control-R searches again backward and Control-S searches again forward."
 			  string
 			  :case-insensitive-mode
 			  (use-case-insensitive-p string)))))
-	(multiple-value-setq (new-hist pos end)
+	(multiple-value-setq (new-hist pos #| end |#)
 	  (search-history e string :backward start-from pos
 			  :regexp-scanner scanner))
 	(if new-hist
