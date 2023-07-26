@@ -221,8 +221,8 @@ is NIL, unset the ‘var’, using unsetenv."
 ;; Now, many years after first writing this, it seems as if someone has
 ;; implemented my wish, at least in some BSDs. There is now a mechanism to get
 ;; the names of sysctl items from sysctl itself. However, it seems to be
-;; undocumented. Had it been there all along? If everything works out, this
-;; rant can be tossed in the bins of history.
+;; undocumented. Had it been there all along? If everything works
+;; out, maybe this rant could be tossed in the bins of history.
 ;;
 ;; So far, sysctl seems work best on BSDs, partially on macOS and, not on
 ;; Linux. If performance needs to be improved, we could consider caching the
@@ -425,6 +425,126 @@ is NIL, unset the ‘var’, using unsetenv."
 	 (cffi:mem-ref oldp type))
 	(t
 	 (convert-from-foreign oldp type))))))
+
+;; @@@ Untested Sketch @@@
+#+(or) ;; #+freebsd
+(progn
+  ;; Hopefully this will not be "killed with a big axe" unless they come up
+  ;; with something better. But it's been in freebsd seemingly since 1995.
+  (defstruct sysctl
+    id
+    name
+    type
+    description)
+
+  ;; Isn't this just the same as sysctlnametomib ???
+  (defun sysctl-name-to-id (name)
+    "Return an array of object numbers, a.k.a an OID, corresponding to the
+sysctl string ‘name’."
+    (let (result status)
+      (with-foreign-objects ((oid :int 2)
+			     (size size-t)
+			     (old (:pointer :int)))
+	(with-foreign-string (str name)
+	  (setf (mem-aref oid :int 0) +CTL-SYSCTL+
+		(mem-aref oid :int 1) +CTL-SYSCTL-NAME2OID+
+		size (* +CTL-MAXNAME+ (foreign-type-size :int)))
+	  (syscall (sysctl oid 2 old size str (length name)))
+	  ;; status = sysctl(oid, 2, oidp, &j, name, strlen(name));
+
+	  (setf size (/ size (foreign-type-size :int)))
+	  (setf result (make-array size :element-type fixnum))
+	  (loop :for i :from 0 :below size
+		:do (setf (svref result i) (mem-aref oid :int i)))
+	  result))))
+
+  (defun sysctl-id-to-name (id)
+    "Return a sysctl name string for the object ‘id’ which an array of object
+numbers, a.k.a an OID."
+    (let ((request-length (+ (length id) 2))
+	  result status)
+      (with-foreign-objects ((oid :int request-length)
+			     (size size-t)
+			     (old (:pointer :int))
+			     (name (:pointer :char) 512))
+	(setf (mem-aref oid :int 0) +CTL-SYSCTL+
+	      (mem-aref oid :int 1) +CTL-SYSCTL-NAME+
+	      (mem-ref size size-t) 512)
+	(syscall (sysctl oid request-length name size 0 0))
+	(foreign-string-to-lisp name))))
+
+  (defun sysctl-object-format (object)
+    "Return the kind number and the type string for an object."
+    (let (result status kind)
+      (with-foreign-objects ((oid :int (+ 2 (length object)))
+			     (size size-t)
+			     (old :int)
+			     (buffer :char 512))
+	(with-foreign-string (str name)
+	  (setf (mem-aref oid :int 0) +CTL-SYSCTL+
+		(mem-aref oid :int 1) +CTL-SYSCTL-OIDFMT+)
+	  (loop :for i :from 0 :below (length object)
+		:do (setf (mem-aref oid :int (+ i 2)) (aref object i)))
+
+	  (setf (mem-ref size :int) 512)
+	  (syscall (sysctl oid (+ (length object)) buffer size 0 0))
+
+	  (setf kind (mem-ref buffer :unsigned-int)
+		result
+		(foreign-string-to-lisp
+		 buffer
+		 :offset (foreign-type-size :unsigned-int)))
+	  (values kind result)))))
+
+  (defun sysctl-object-description (object)
+    "Return a description for the sysctl object ‘id’ which an array of object
+numbers, a.k.a an OID."
+    (let ((request-length (+ (length id) 2))
+	  result status)
+      (with-foreign-objects ((oid :int request-length)
+			     (size size-t)
+			     (old (:pointer :int))
+			     (name (:pointer :char) 512))
+	(setf (mem-aref oid :int 0) +CTL-SYSCTL+
+	      (mem-aref oid :int 1) +CTL-SYSCTL-OIDDESCR+
+	      (mem-ref size size-t) 512)
+	(syscall (sysctl oid request-length name size 0 0))
+	(foreign-string-to-lisp name))))
+
+  (defun sysctl-next-id (id &key no-skip)
+    "Return the next sysctl id after ‘id’. If ‘no-skip’ is true, don't skip
+to a different block."
+    (let* ((request-length (+ (length id) 2))
+	   (next-length (+ request-length 5))
+	   result-length
+	   result)
+      (with-foreign-objects ((oid :int request-length)
+			     (next-oid :int next-request-length)
+			     (size size-t)
+			     (next-size size-t))
+	(setf (mem-aref oid :int 0) +CTL-SYSCTL+
+	      (mem-aref oid :int 1) (if no-skip
+					+CTL-SYSCTL-NEXTNOSKIP+
+					+CTL-SYSCTL-NEXT+)
+	      (mem-ref size size-t) request-length
+	      (mem-ref next-size size-t) request-length)
+	(let ((i 2))
+	  (map nil (_ (setf (mem-aref oid :int i) _) (incf i)) id))
+	(syscall (sysctl oid request-length next-oid next-size 0 0))
+	(setf result-length
+	      (truncate next-size (cffi:foreign-type-size :unsigned-int)))
+	(loop :for i :from 0 :below result-length
+	      :collect result))))
+
+  (defun sysctl-list ()
+    (let ((start (list +CTL-KERN+)))
+      (loop :for k = start :then (sysctl-next k)
+	    :while k
+	    :collect
+	       (make-sysctl :id k
+			    :name (sysctl-id-to-name k)
+			    :type (sysctl-object-format k)
+			    :description (sysctl-object-description k))))))
 
 #|
 #+os-t-sysctl-fancy
