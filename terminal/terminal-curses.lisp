@@ -184,6 +184,24 @@ set.")
     (setf (terminal-window-rows tty) curses:*lines*
 	  (terminal-window-columns tty) curses:*cols*))
 
+(defmethod terminal-size ((tty terminal-curses))
+  "Get the window size. Returns a list of (‘height' ‘width’)."
+  (multiple-value-list (terminal-get-size tty)))
+
+(defmethod (setf terminal-size) (size (tty terminal-curses))
+  "Set the window size, if possible. ‘size’ should be an
+ordered-collection of which the first element is the height and the second
+element is the width."
+  (let ((rows (oelt size 0))
+	(cols (oelt size 1)))
+    (setf (slot-value tty 'terminal::window-rows) rows
+	  (slot-value tty 'terminal::window-columns) cols)
+    (resizeterm rows cols)
+    ;; @@@ I don't think terminfo even has a capability for this.
+    ;; So what should we do?
+    ;; (terminal-escape-sequence tty "t" 8 rows cols)
+    ))
+
 ;; This isn't really accurate if any output has been done not through curses,
 ;; so it's not as useful as the one in terminal-ansi.
 
