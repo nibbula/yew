@@ -736,7 +736,9 @@ sizes. It only copies the smaller of the two regions."
 
 (defun size-changed-p (tty)
   (with-slots ((wtty wrapped-terminal)) tty
-    (or (/= (terminal-window-rows tty) (terminal-window-rows wtty))
+    (or (not (slot-boundp tty 'terminal::window-rows))
+	(not (slot-boundp tty 'terminal::window-columns))
+	(/= (terminal-window-rows tty) (terminal-window-rows wtty))
 	(/= (terminal-window-columns tty) (terminal-window-columns wtty)))))
 
 (defun update-size (tty)
@@ -756,8 +758,10 @@ sizes. It only copies the smaller of the two regions."
 				      (terminal-window-columns wtty)))
 	(copy-screen-contents (new-screen tty) screen)
 	(setf (new-screen tty) screen))
-      (setf (terminal-window-rows tty) (terminal-window-rows wtty)
-	    (terminal-window-columns tty) (terminal-window-columns wtty)))))
+      (setf (slot-value tty 'terminal::window-rows)
+	    (terminal-window-rows wtty)
+	    (slot-value tty 'terminal::window-columns)
+	    (terminal-window-columns wtty)))))
 
 (defmethod terminal-get-size ((tty terminal-crunch))
   "Get the window size from the wrapped terminal and store it in tty."
@@ -767,6 +771,33 @@ sizes. It only copies the smaller of the two regions."
       ;; 	   (terminal-window-rows wtty)
       ;; 	   (terminal-window-columns wtty))
       ;; Potentially resize the screens
+      (update-size tty))))
+
+(defmethod terminal-size ((tty terminal-crunch))
+  "Get the window size. Returns a list of (‘height' ‘width’)."
+  (with-slots ((wtty wrapped-terminal)) tty
+    (multiple-value-list (terminal-get-size wtty))))
+
+(defmethod (setf terminal-size) (size (tty terminal-crunch))
+  "Set the window size, if possible. ‘size’ should be an
+ordered-collection of which the first element is the height and the second
+element is the width."
+  (dbugf :crunch "setf terminal-size ~s~%" size)
+  (with-slots ((wtty wrapped-terminal)) tty
+    (setf (terminal-size wtty) size)
+    (update-size tty)
+    size))
+
+(defmethod (setf terminal-window-rows) (rows (tty terminal-crunch))
+  (dbugf :crunch "setf terminal-window-rows ~s~%" rows)
+  (with-slots ((wtty wrapped-terminal)) tty
+    (prog1 (setf (terminal-window-rows wtty) rows)
+      (update-size tty))))
+
+(defmethod (setf terminal-window-columns) (columns (tty terminal-crunch))
+  (dbugf :crunch "setf terminal-window-columns ~s~%" columns)
+  (with-slots ((wtty wrapped-terminal)) tty
+    (prog1 (setf (terminal-window-columns wtty) columns)
       (update-size tty))))
 
 (defmethod terminal-char-at ((tty terminal-crunch) row col)
