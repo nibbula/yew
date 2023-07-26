@@ -240,6 +240,13 @@
     (with-crunch (device-name :start-line line)
       (tiny-repl:tiny-repl :terminal-type :crunch))))
 
+(defun format-hash (c width)
+  (typecase c
+    (integer
+     (format nil "~v,'0x" (or width 16) c))
+    (t
+     (format nil "~vs" (or width 16) c))))
+
 (defun test-hashing ()
   (flet ((hash (x) (terminal-crunch::hash-thing x)))
     (let ((things
@@ -270,7 +277,7 @@
 	     ("fatchar 2"    ,(make-fatchar :c #\x) ,(make-fatchar :c #\X))
 	     ("fatchar 3"    ,(make-fatchar :c #\x :bg :blue)
 			     ,(make-fatchar :c #\x :bg :blue-ish)))))
-      (table-print:print-table
+      ;; (table-print:print-table
        (table:make-table-from
 	(loop :with r1 :and r2
 	   :for thing :in things
@@ -292,8 +299,15 @@
 					     :readably t :pretty nil)
 			    (setf r2 (hash (third thing)))
 			    (if (= r1 r2) "BAD!" "")))
-	:column-names '("Type" "Value 1" "Hash 1" 
-			"Value 2" "Hash 2" "Bad?"))))))
+	:columns `((:name" Type")
+		   (:name "Value 1")
+		   (:name "Hash 1"
+		    :format ,#'format-hash)
+		   (:name "Value 2")
+		   (:name "Hash 2"
+		    :format ,#'format-hash)
+		   (:name" Bad?"))))))
+;; )
 
 (defun test-hash-1 (&optional (n 50))
   (let* ((colors (length dcolor:*simple-colors*))
@@ -326,7 +340,9 @@
       (setf elapsed (dtime- (dtime:get-dtime) start-time))
       (describe-duration elapsed)
       (format t "Hashes per second ~s~%"
-	      (coerce (/ hash-count (dtime-to elapsed :seconds)) 'float)))))
+	      (coerce (/ hash-count (dtime-to elapsed :seconds)) 'float))
+      (format t "Theoretical frames per second ~s~%"
+	      (coerce (/ hash-size (dtime-to elapsed :seconds)) 'float)))))
 
 (defun test-8 (device-name)
   "Test RL in Lish."
@@ -362,14 +378,35 @@
 (defun test-zerg-2 (&key (type :crunch) (n 50))
   (with-terminal (type)
     (with-immediate ()
-      (loop :repeat n :do
-	(loop :for c :from (char-code #\A) :to (char-code #\Z) :do
-	  (tt-home)
-	  ;; (tt-erase-below)
-	  (loop :for y :from 0 :below (tt-height) :do
-	    (loop :for x :from 0 :below (tt-width) :do
-	      (tt-write-char-at y x (code-char c))))
-	  (tt-finish-output))))))
+      (let (start-time elapsed
+	    (w (tt-width)) (h (tt-height))
+	    (frame-count 0)
+	    #| frame-start frame-end |#)
+
+	(setf start-time (get-dtime))
+	(loop :repeat n :do
+	  (loop :for c :from (char-code #\A) :to (char-code #\Z) :do
+	    (tt-home)
+	    (tt-erase-below)
+	    (loop :for y :from 0 :below h :do
+	      (loop :for x :from 0 :below w :do
+	        (tt-write-char-at y x (code-char c))))
+
+	    (tt-finish-output)
+	    (incf frame-count)))
+	(setf elapsed (dtime- (dtime:get-dtime) start-time))
+	(tt-move-to (1- (tt-height)) 0)
+	(tt-newline)
+	(describe-duration elapsed :stream *terminal*)
+	(tt-newline)
+	(tt-format "start ~a~%" start-time)
+	(tt-format "now ~a~%" (dtime:get-dtime))
+	(tt-format "elapsed ~a~%" elapsed)
+	(tt-format "Frames per second: ~s~%"
+		   (coerce (/ frame-count (dtime-to elapsed :seconds))
+			   'float))
+	(tt-finish-output)
+	))))
 
 (defun run ()
   (format t "These have to be run interactively in a terminal. So, no.~%")
