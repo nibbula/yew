@@ -12,8 +12,8 @@
 
 (defpackage :terminal-ansi
   (:documentation "Standard terminal (ANSI).")
-  (:use :cl :cffi :dlib :dlib-misc :terminal :char-util :opsys
-	:dgray :fatchar :dcolor :ansi :terminal-dumb :terminal-crunch
+  (:use :cl :cffi :dlib :collections :dlib-misc :terminal :char-util :opsys
+	:dgray :fatchar :dcolor :ansi :terminal-dumb :terminal-crunch :unicode
 	#+unix :opsys-unix
 	#+windows :opsys-ms)
   (:export
@@ -149,9 +149,23 @@ require terminal driver support."))
   (when (terminal-file-descriptor tty)
     (multiple-value-bind (cols rows)
 	(get-window-size (terminal-file-descriptor tty))
-      (setf (terminal-window-rows tty) rows
-	    (terminal-window-columns tty) cols)
+      (setf (slot-value tty 'terminal::window-rows) rows
+	    (slot-value tty 'terminal::window-columns) cols)
       (values rows cols))))
+
+(defmethod terminal-size ((tty terminal-ansi))
+  "Get the window size. Returns a list of (‘height' ‘width’)."
+  (multiple-value-list (terminal-get-size tty)))
+
+(defmethod (setf terminal-size) (size (tty terminal-ansi))
+  "Set the window size, if possible. ‘size’ should be an
+ordered-collection of which the first element is the height and the second
+element is the width."
+  (let ((rows (oelt size 0))
+	(cols (oelt size 1)))
+    (setf (slot-value tty 'terminal::window-rows) rows
+	  (slot-value tty 'terminal::window-columns) cols)
+    (terminal-escape-sequence tty "t" 8 rows cols)))
 
 (defun add-typeahead (tty thing)
   "Add THING to the typeahead buffer of TTY."
@@ -665,6 +679,14 @@ processing."
       (terminal-raw-format tty "~c(0" #\escape)
       (terminal-raw-format tty "~c(B" #\escape)
       ))
+
+(defmethod (setf terminal-window-rows) (rows (tty terminal-ansi))
+  (prog1 (setf (slot-value tty 'terminal::window-rows) rows)
+    (terminal-escape-sequence tty "t" 8 rows "")))
+
+(defmethod (setf terminal-window-columns) (columns (tty terminal-ansi))
+  (prog1 (setf (slot-value tty 'terminal::window-columns) columns)
+    (terminal-escape-sequence tty "t" 8 "" columns)))
 
 (defvar *allow-resize* nil
   "True to allow throwing resize events.")
