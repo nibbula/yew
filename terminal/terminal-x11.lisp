@@ -1607,27 +1607,27 @@ to the grid. It must be on a single line and have no motion characters."
 	 (i start)
 	 (sub (make-stretchy-vector 10 :element-type 'fatchar))
 	 (last nil)
-	 (fs (make-fat-string :string sub)))
-    ;; (format *dbug-output* "Rus [~s ~s] ~s~%" x y
-    ;; 	    (make-fat-string :string str))
+	 (fs (make-fat-string :string sub))
+	 (char-util:*print-control-char-with-caret* nil))
     (loop
       :while (< i end)
       :do
       (when (and last (not (same-effects (oelt str i) last)))
 	(render-unit-string tty sub :row y :col ix)
-	;; (format *dbug-output* "rUs [~s ~s] ~s~%" ix y
-	;; 	(make-fat-string :string sub))
-	;; (incf ix (char-util:display-length sub))
 	(incf ix (char-util:display-length fs))
 	(stretchy-truncate sub))
-      (stretchy-append sub (oelt str i))
+      (stretchy-append sub
+		       ;; We pretend a #\nul is a #\space, so that the
+		       ;; size counting doesn't get off.
+		       (if (eql #\nul (fatchar-c (oelt str i)))
+			   (let ((c (copy-fatchar (oelt str i))))
+			     (setf (fatchar-c c) #\space)
+			     c)
+			   (oelt str i)))
       (setf last (oelt str i))
       (incf i))
     (when (not (zerop (length sub)))
-      (render-unit-string tty sub :row y :col ix)
-      ;; (format *dbug-output* "ruS [~s ~s] ~s~%" ix y
-      ;; 	      (make-fat-string :string sub))
-      ))
+      (render-unit-string tty sub :row y :col ix)))
   (finish-output *dbug-output*))
 
 ;; (defun %write-fat-string (tty str start end)
