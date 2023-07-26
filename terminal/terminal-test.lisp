@@ -56,52 +56,47 @@
 (defun prompt-next (&key
 		      (message "Press Q to quit, anything else to continue.")
 		      (position :bottom)
-		      redraw-func)
+		      redraw-func input-func)
   "Display ‘message’ and wait for a key press. The message is displayed
 at ‘position’, which can be one of :bottom, :top, or :center. If ‘redraw-func’
 is provided, it will be called to re-draw the scrren, and pressing ^L will
 work. Pressing #\Q will invoke a QUIT restart."
   (with-immediate ()
-    (flet ((show-message ()
-	     (when message
-	       (ecase position
-		 (:bottom
-		  ;; (tt-write-string-at (1- (terminal-window-rows *terminal*)) 0
-		  (tt-write-string-at (1- (z-height)) 0
-				      message))
-		 (:top
-		  (tt-write-string-at 0 0 message))
-		 (:center
-		  (center message 0))))))
+    (labels
+	((show-message ()
+	   (when message
+	     (ecase position
+	       (:bottom
+		;; (tt-write-string-at (1- (terminal-window-rows *terminal*)) 0
+		(tt-write-string-at (1- (z-height)) 0
+				    message))
+	       (:top
+		(tt-write-string-at 0 0 message))
+	       (:center
+		(center message 0)))))
+	 (handle-input ()
+	   (case (tt-get-key)
+	     ((#\Q #\q)
+	      (invoke-restart (find-restart 'quit)))
+	     (#.(ctrl #\L)
+	      redraw-func)
+	     (:resize t))))
+      (when (not input-func)
+	(setf input-func #'handle-input))
       (show-message)
       (tt-finish-output)
       (unwind-protect
-	   (progn
-	     (tt-enable-events :resize)
-	     (loop :with again
-		:do
-		(case (tt-get-key)
-		  ((#\Q #\q)
-		   (invoke-restart (find-restart 'quit)))
-		  (#.(ctrl #\L)
-		   (when redraw-func
-		     (setf again t)))
-		  (:resize
-		   ;; (tt-format "GOT A RESIZE")
-		   ;; (tt-get-key)
-		   ;; (terminal-get-size *terminal*)
-		   ;; (tt-format ":resize to ~s~%"
-		   ;; 	      (terminal-get-size *terminal*))
-		   (setf again t)))
-		:while again
-		:do (setf again nil)
-		:when (and redraw-func
-			   (or (functionp redraw-func)
-			       (and (symbolp redraw-func)
-				    (fboundp redraw-func))))
-		:do
-		(funcall redraw-func)
-		(show-message)))
+        (progn
+	  (tt-enable-events :resize)
+	  (loop
+	    :while (funcall input-func)
+	    :do
+	    (when (and redraw-func
+		       (or (functionp redraw-func)
+			   (and (symbolp redraw-func)
+				(fboundp redraw-func))))
+	      (funcall redraw-func)
+	      (show-message))))
 	(tt-enable-events :none)))))
 
 (defmacro blurp ((&key (position :bottom)) &body body)
@@ -158,14 +153,27 @@ work. Pressing #\Q will invoke a QUIT restart."
   (put-at (- (tt-height) 4) (- (tt-width) 6) *bottom-right* #| :step t |#)
 
   ;; message
-  (center "There should be an 'X' in every corner of the screen.~%" 0)
-  (center "Press Q to quit, anything else to continue." 1)
-  (center "Also try resizing the window." 2)
+  (center "There should be an 'X' in every corner of the screen.~%" -1)
+  (center "Press Q to quit, anything else to continue." 0)
+  (center "Also try resizing the window." 1)
+  (center "hjkl or arrows key might resize the window." 2)
   (tt-finish-output))
+
+(defun test-screen-size-input ()
+  (case (tt-get-key)
+    ((#\Q #\q)
+     (invoke-restart (find-restart 'quit)))
+    (#.(ctrl #\L) (test-screen-size-draw) t)
+    (:resize t)
+    ((#\h #\H :left)  (decf (tt-width)))
+    ((#\j #\J :down)  (incf (tt-height)))
+    ((#\k #\K :up)    (decf (tt-height)))
+    ((#\l #\L :right) (incf (tt-width)))))
 
 (defun test-screen-size ()
   (test-screen-size-draw)
-  (prompt-next :redraw-func #'test-screen-size-draw :message nil)
+  (prompt-next :redraw-func #'test-screen-size-draw :message nil
+	       :input-func #'test-screen-size-input)
   ;; (unwind-protect
   ;;      (progn
   ;; 	 (tt-enable-events :resize)
