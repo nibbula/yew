@@ -26,6 +26,8 @@
     (setf print nil))
   (remf keys :regexp)
   (remf keys :reload)
+  (when (not statistics)
+    (remf keys :statistics))
   (when reload
     (setf *locate-db* nil))
   (when database
