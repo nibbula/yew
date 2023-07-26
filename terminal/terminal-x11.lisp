@@ -468,8 +468,9 @@ are already set."
 	(setf (aref (aref lines i) j) (blank-char))))))
 
 (defun resize-grid (tty)
-  (with-slots (lines (window-rows terminal::window-rows)
-		     (window-columns terminal::window-columns)) tty
+  (with-slots ((window-rows terminal::window-rows)
+	       (window-columns terminal::window-columns)
+	       lines cursor-row cursor-column) tty
     ;; (format *trace-output* "resize-grid ~s ~s~%" window-rows window-columns)
     (flush-buffer tty)
     (let ((old-lines lines))
@@ -493,7 +494,10 @@ are already set."
 	 (setf (osubseq (aref lines i) 0 min-width)
 	       (osubseq (aref old-lines i) 0 min-width)))
       ;; @@@ need to add adjusting scrolling region to fit
-      )))
+
+      ;; Make sure the cursor is in the new size.
+      (clampf cursor-row 0 (1- window-rows))
+      (clampf cursor-column 0 (1- window-columns)))))
 
 (defun dump-grid (tty)
   (with-slots (lines (window-rows terminal::window-rows)
@@ -523,8 +527,8 @@ are already set."
 	   (white (screen-white-pixel screen)))
       (setf
        font (open-font display (slot-value o 'font-name))
-       (terminal-window-columns o) (car *default-window-size*)
-       (terminal-window-rows o) (cdr *default-window-size*)
+       (slot-value o 'terminal::window-columns) (car *default-window-size*)
+       (slot-value o 'terminal::window-rows) (cdr *default-window-size*)
        (values window-width window-height)
        (window-size o (terminal-window-columns o) (terminal-window-rows o))
        pixel-format (get-pixel-format root)
@@ -620,6 +624,52 @@ are already set."
     (set-grid-size-from-pixel-size
      tty (drawable-width window) (drawable-height window))
     (values window-rows window-columns)))
+
+(defmethod terminal-size ((tty terminal-x11))
+  "Get the window size. Returns a list of (‘height' ‘width’)."
+  (multiple-value-list (terminal-get-size tty)))
+
+(defmethod (setf terminal-size) (size (tty terminal-x11))
+  "Set the window size, if possible. ‘size’ should be an
+ordered-collection of which the first element is the height and the second
+element is the width."
+  (with-slots (display window window-width window-height) tty
+    (let ((rows (oelt size 0))
+	  (cols (oelt size 1)))
+      (setf (slot-value tty 'terminal::window-rows) rows
+	    (slot-value tty 'terminal::window-columns) cols)
+      (multiple-value-bind (pixel-width pixel-height)
+	  (window-size tty cols rows)
+	(setf window-width pixel-width
+	      window-height pixel-height
+	      (drawable-width window) pixel-width
+	      (drawable-height window) pixel-height)
+	(resize-grid tty)
+	(display-finish-output display)))))
+
+(defmethod (setf terminal-window-rows) (rows (tty terminal-x11))
+  (with-slots (display window window-height) tty
+    (prog1 rows
+      (setf (slot-value tty 'terminal::window-rows) rows)
+      (multiple-value-bind (pixel-width pixel-height)
+	  (window-size tty (slot-value tty 'terminal::window-columns) rows)
+	(declare (ignore pixel-width))
+	(setf window-height pixel-height
+	      (drawable-height window) pixel-height)
+	(resize-grid tty)
+	(display-finish-output display)))))
+
+(defmethod (setf terminal-window-columns) (columns (tty terminal-x11))
+  (with-slots (display window window-width cell-height cell-width) tty
+    (prog1 columns
+      (setf (slot-value tty 'terminal::window-columns) columns)
+      (multiple-value-bind (pixel-width pixel-height)
+	  (window-size tty columns (slot-value tty 'terminal::window-rows))
+	(declare (ignore pixel-height))
+	(setf window-width pixel-width
+	      (drawable-width window) pixel-width)
+	(resize-grid tty)
+	(display-finish-output display)))))
 
 (defmethod terminal-get-cursor-position ((tty terminal-x11))
   "Get the row of the screen the cursor is on. Returns the two values ROW and
