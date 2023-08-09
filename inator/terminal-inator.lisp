@@ -64,6 +64,8 @@
 		     :button-release
 		     (s+ (string (tt-mouse-button ev))
 			 "-press")))))))
+      (tt-focus-in-event :focus-in)
+      (tt-focus-out-event :focus-out)
       (t (setf last-event ev)))
     last-event))
 
