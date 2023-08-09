@@ -2472,6 +2472,15 @@ handler cases."
       (case event-key
 	((:exposure :configure-notify :visibility-notify :client-message)
 	 (apply #'window-handler slots))
+	((:focus-in :focus-out)
+	 (when (find-if (_ (member _ `(:focus :focus-in :focus-out)))
+			(terminal-events-enabled tty))
+	   (setf result (make-instance (if (eq event-key :focus-in)
+					   'tt-focus-in-event
+					   'tt-focus-out-event)
+				       :terminal tty)
+		 *input-available* t))
+	 (or result t))
 	(:button-press
 	 (event-slots (slots code x y state)
            (let ((cx (floor x cell-width))
@@ -3035,50 +3044,51 @@ links highlight differently?"
   (with-slots (window) tty
     ;; @@@ But actually we probably don't want to really change the
     ;; window event masks, only change what we report from tt-get-key
-    (case event
-      (:mouse-buttons
-       (setf (window-event-mask window)
-	     (if state
-		 (logior (window-event-mask window)
-			 (make-event-mask :button-press :button-release
-					  :button-motion))
-		 (logand (window-event-mask window)
-			 (lognot
-			  (make-event-mask :button-press :button-release
-					   :button-motion))))))
-      (:mouse-motion
-       (setf (window-event-mask window)
-	     (if state
-		 (logior (window-event-mask window)
-			 (make-event-mask :pointer-motion))
-		 (logand (window-event-mask window)
-			 (lognot (make-event-mask :pointer-motion)))))))))
+    (flet ((set-events (&rest events)
+	     (setf (window-event-mask window)
+		   (if state
+		       (logior (window-event-mask window)
+			       (apply #'make-event-mask events))
+		       (logand (window-event-mask window)
+			       (lognot
+				(apply #'make-event-mask events)))))))
+      (case event
+	((:focus :focus-in :focus-out)
+	 (set-events :focus-change))
+	(:mouse-buttons
+	 (set-events :button-press :button-release :button-motion))
+	(:mouse-motion
+	 (set-events :pointer-motion))))))
 
 (defmethod terminal-events-supported ((tty terminal-x11))
   "Return a list of events supported."
-  (list :resize :mouse-buttons :mouse-motion))
+  (list :resize :mouse-buttons :mouse-motion :focus))
 
 (defmethod terminal-enable-event ((tty terminal-x11) event)
   "Enable event and return true if the terminal can enable event."
   (let (result)
-    (when (member event '(:resize :mouse-buttons :mouse-motion))
+    (when (member event '(:resize :mouse-buttons :mouse-motion :focus :focus-in
+			  :focus-out))
       (pushnew event (terminal-events-enabled tty))
       (setf result t))
     (case event
       (:mouse-buttons (set-mouse-event tty :mouse-buttons t))
-      (:mouse-motion (set-mouse-event tty :mouse-motion t)))
+      (:mouse-motion (set-mouse-event tty :mouse-motion t))
+      ((:focus :focus-in :focus-out) (set-mouse-event tty :focus t)))
     result))
 
 (defmethod terminal-disable-event ((tty terminal-x11) event)
   "Enable event and return true if the terminal can disable event."
   (let (result)
-    (when (member event '(:resize :mouse-buttons :mouse-motion))
+    (when (member event '(:resize :mouse-buttons :mouse-motion :focus :focus-in
+			  :focus-out))
        (setf (terminal-events-enabled tty)
 	     (remove event (terminal-events-enabled tty)))
       (setf result t))
     (case event
       (:mouse-buttons (set-mouse-event tty :mouse-buttons nil))
-      (:mouse-motion (set-mouse-event tty :mouse-motion nil)))
+      (:mouse-motion (set-mouse-event tty :mouse-motion nil))
+      ((:focus :focus-in :focus-out) (set-mouse-event tty :focus nil)))
     result))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
