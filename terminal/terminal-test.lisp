@@ -1257,7 +1257,7 @@ drawing, which will get overwritten."
   (let ((saved-events (terminal-events-enabled *terminal*)))
     (unwind-protect
 	 (with-immediate ()
-	   (tt-enable-events '(:mouse-buttons #|:mouse-motion|# :resize))
+	   (tt-enable-events '(:mouse-buttons #|:mouse-motion|# :resize :focus))
 	   (loop :with escape-count = 0
 	      :and c
 	      :do
@@ -1274,7 +1274,7 @@ drawing, which will get overwritten."
 		  (incf escape-count)
 		  (setf escape-count 0))
 	      :while (< escape-count 4)))
-      (tt-disable-events '(:mouse-buttons :mouse-motion :resize))
+      (tt-disable-events '(:mouse-buttons :mouse-motion :resize :focus))
       (tt-enable-events saved-events))))
 
 (defun test-events ()
