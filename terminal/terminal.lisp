@@ -118,6 +118,7 @@
    #:tt-mouse-button-event #:tt-mouse-button #:tt-mouse-modifiers
    #:tt-mouse-button-press #:tt-mouse-button-release #:tt-mouse-button-motion
    #:tt-mouse-motion #:tt-resize-event
+   #:tt-focus-event #:tt-focus-in-event #:tt-focus-out-event
    #:tt-alternate-characters	  #:terminal-alternate-characters
    #:with-saved-cursor
    #:with-terminal-output-to-string
@@ -923,6 +924,18 @@ doesn't support it.")
 (defclass tt-resize-event (tt-event)
   () ;; I'm sorry, but you'll have to get the size separately.
   (:documentation "The window changed size."))
+
+(defclass tt-focus-event (tt-event)
+  ()
+  (:documentation "Keyboard focus changed."))
+
+(defclass tt-focus-in-event (tt-focus-event)
+  ()
+  (:documentation "Keyboard focus gained."))
+
+(defclass tt-focus-out-event (tt-focus-event)
+  ()
+  (:documentation "Keyboard focus lost."))
 
 (deftt enable-events (events)
   "Allow tt-get-* to return non-key events. EVENTS is a keyword or list of
