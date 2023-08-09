@@ -1734,6 +1734,10 @@ characters to the typeahead."
 	 #\escape)
 	((char= c #\M) 			; mouse
 	 (get-mouse-event tty))
+	((char= c #\I) 			; focus in
+	 (make-instance 'tt-focus-in-event :terminal tty))
+	((char= c #\O) 			; focus out
+	 (make-instance 'tt-focus-out-event :terminal tty))
 	((char= c #\[) 			; linux function key
 	 (case (setf c (get-char tty :timeout 1))
 	   (#\A :f1)
@@ -1858,6 +1862,7 @@ and add the characters the typeahead."
 	     "[?47l"   ;; Use normal screen buffer
 	     "[?1002l" ;; Turn off mouse button events
 	     "[?1003l" ;; Turn off mouse motion events
+	     "[?1004l" ;; Turn off focus events
 	     ))
     (terminal-finish-output tty)))
 
@@ -2271,39 +2276,46 @@ links highlight differently?"
     (:mouse-buttons
      (terminal-raw-format tty "~a?1002~c" +csi+ (if state #\h #\l)))
     (:mouse-motion
-     (terminal-raw-format tty "~a?1003~c" +csi+ (if state #\h #\l)))))
+     (terminal-raw-format tty "~a?1003~c" +csi+ (if state #\h #\l)))
+    (:focus
+     (terminal-raw-format tty "~a?1004~c" +csi+ (if state #\h #\l)))))
 
 (defmethod terminal-events-supported ((tty terminal-ansi))
-  (list :resize :mouse-buttons :mouse-motion))
+  (list :resize :mouse-buttons :mouse-motion :focus))
 
 (defmethod terminal-enable-event ((tty terminal-ansi) event)
   "Enable event and return true if the terminal can enable event."
   (let (result)
-    (when (member event '(:resize :mouse-buttons :mouse-motion :all))
+    (when (member event '(:resize :mouse-buttons :mouse-motion :focus :focus-in
+			  :focus-out :all))
       (pushnew event (terminal-events-enabled tty))
       (setf result t))
     (case event
       (:mouse-buttons (set-mouse-event tty :mouse-buttons t))
       (:mouse-motion (set-mouse-event tty :mouse-motion t))
+      ((:focus :focus-in :focus-out) (set-mouse-event tty :focus t))
       (:all
        (set-mouse-event tty :mouse-buttons t)
        ;; (set-mouse-event tty :mouse-motion t)
-       ))
+       (set-mouse-event tty :focus t)))
     result))
 
 (defmethod terminal-disable-event ((tty terminal-ansi) event)
   "Enable event and return true if the terminal can disable event."
   (let (result)
-    (when (member event '(:resize :mouse-buttons :mouse-motion :all))
+    (when (member event '(:resize :mouse-buttons :mouse-motion :focus :focus-in
+			  :focus-out :all))
        (setf (terminal-events-enabled tty)
 	     (remove event (terminal-events-enabled tty)))
       (setf result t))
     (case event
       (:mouse-buttons (set-mouse-event tty :mouse-buttons nil))
       (:mouse-motion (set-mouse-event tty :mouse-motion nil))
+      ((:focus :focus-in :focus-out) (set-mouse-event tty :focus nil))
       (:all
-       (set-mouse-event tty :mouse-motion nil))
-       (set-mouse-event tty :mouse-buttons nil))
+       (set-mouse-event tty :mouse-motion nil)
+       (set-mouse-event tty :mouse-buttons nil)
+       (set-mouse-event tty :focus nil)))
     result))
 
 (defgeneric write-double-width-line (terminal line)
