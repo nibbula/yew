@@ -162,7 +162,7 @@ or NIL is there is none."
 ;; XXX this sucks, and is probably the wrong approach
 (defun in-emacs-p ()
   "Return true if we're being run under Emacs, like probably in SLIME."
-  (nos:env "EMACS"))
+  (and (nos:env "EMACS") t))
 
 (defun dumb-terminal-p ()
   "Return true if we're in some kind of dumb terminal which we shouldn't expect
@@ -348,7 +348,16 @@ auto-wrap and no autowrap delay."
   (let ((start 0))
     (flet ((write-gutter ()
 	     (when (not (zerop start))
-	       (dotimes (i width) (tt-write-char gutter-char)))))
+	       (dotimes (i width) (tt-write-char gutter-char))))
+	   (next-line (col char-pos)
+	     (when (and (< char-pos (olength string))
+			(plusp char-pos)
+			(< (+ col (display-length (ochar string char-pos)))
+			   (- cols width)))
+	       (tt-write-char #\newline)
+	       ;; skip over the newline, if it's there
+	       (when (ochar= (ochar string start) #\newline)
+		 (incf start)))))
       ;; Write the pieces of the string.
       (loop
         :for (char-pos . col) :in (reverse endings)
@@ -356,9 +365,7 @@ auto-wrap and no autowrap delay."
         (write-gutter)
         (tt-write-string string :start start :end (1+ char-pos))
         (setf start (+ char-pos 1))
-        (when (< col (- cols width 1))
-          (tt-write-char #\newline)
-	  (incf start))) ;; skip over the newline
+	(next-line col char-pos))
       ;; Do the last piece
       (when (< start (olength string))
 	(write-gutter)
