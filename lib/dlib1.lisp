@@ -2,9 +2,6 @@
 ;;; dlib1.lisp - Utilities of redundant doom, first file.
 ;;;
 
-;; Util libraries are a problem. I strongly dislike all of them, including
-;; this one.
-;;
 ;;  - Don't add any dependencies.
 ;;  - Try to be "minimal".
 
@@ -105,6 +102,8 @@
    #:do-alist
    #:do-kv-list
    #:flatten
+   #:circular-equal
+   #:circular-equalp
    #:with-collecting
    #:with-collecting-into
    #:collect
@@ -1239,6 +1238,37 @@ of LIST is an atom, assume it's a plist, otherwise it's an alist."
     (if preserve-nils
 	result
 	(delete nil result))))
+
+;; Many thanks to Gilbert Baumann, but blame to me for stealing it, or if it
+;; doesn't really work.
+(defun all-objects-in-thing (thing)
+  "Collect all objects in the `thing'. Glorious hack due to Gilbert. Thanks."
+  (let (result (orig *print-pprint-dispatch*))
+    (handler-bind
+      ((error (lambda (cond)
+                (let ((*print-pprint-dispatch* orig))
+                  (error cond)))))
+      (with-standard-io-syntax
+	(let ((default-table (copy-pprint-dispatch nil))
+              (*print-pprint-dispatch* (copy-pprint-dispatch nil))
+              (*print-pretty* t)
+              (*print-circle* t))
+          (set-pprint-dispatch 't
+	    (lambda (stream object)
+              (if (not (consp object))
+                  (push object result)
+                  (funcall (pprint-dispatch object default-table)
+			   stream object))))
+          (pprint thing (make-broadcast-stream))
+          result)))))
+
+(defun circular-equal (a b)
+  "Like ‘equal’, but handle circularity in lists."
+  (equal (all-objects-in-thing a) (all-objects-in-thing b)))
+
+(defun circular-equalp (a b)
+  "Like ‘equalp’, but handle circularity in lists."
+  (equalp (all-objects-in-thing a) (all-objects-in-thing b)))
 
 (defmacro with-collecting ((&key (collector 'collect)) &body body)
   "Define a function ‘collector’, by default named ‘collect’, which when
