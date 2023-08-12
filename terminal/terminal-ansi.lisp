@@ -1387,9 +1387,9 @@ i.e. the terminal is 'line buffered'."
 (defparameter *emulators*
   #((19     330 :xterm)
     ( 0     115 :konsole) ;; or maybe qterminal
-    ;; ( 0     95 :iterm)
+    ( 0      95 :iterm)
     ( 1    3600 :vte)
-    ;; ( 1     95 :terminal.app)
+    ( 1      95 :terminal.app)
     (24     279 :mlterm)
     (41     285 :terminology)
     (63      14 :ctx)
@@ -1411,9 +1411,24 @@ i.e. the terminal is 'line buffered'."
 	      (declare (ignore rom rest))
 	      (let ((e (find type *emulators* :key #'car)))
 		(if e
-		    (make-emulator :type type
-				   :firmware firmware
-				   :name (third e))
+		    ;; If there's more than one with the type
+		    (if (> (count type *emulators* :key #'car) 1)
+			(let (ee)
+			  (if (setf ee (find-if
+					(_ (equal `(,type ,firmware)
+						  `(,(first _) ,(second _))))
+					*emulators*))
+			      ;; Pick a firmware that matches
+			      (make-emulator :type type
+					     :firmware firmware
+					     :name (third ee))
+			      ;; otherwise, use the first one
+			      (make-emulator :type type
+					     :firmware firmware
+					     :name (third e))))
+			(make-emulator :type type
+				       :firmware firmware
+				       :name (third e)))
 		    (let ((device-attributes
 			   (query-parameters "0c" :tty tty :timeout 0.05
 					     :errorp nil)))
@@ -1436,10 +1451,12 @@ i.e. the terminal is 'line buffered'."
        ;; @@@ This is wrong for tmux, screen, and others, because it depends
        ;; on the underlying terminal. How can we figure it out?
        nil)
-      (:rxvt	  nil)
-      (:ctx	  t)
-      (:st	  t)			; Is this true? It has no versions?
-      (:lisp-term t)
+      (:rxvt	         nil)
+      (:ctx	         t)
+      (:st	         t)		; Is this true? It has no versions?
+      (:lisp-term        t)
+      (:iterm            t)		; assume newer versions
+      (:terminal.app     nil)		; still no
       (otherwise nil))))
 
 (defmethod terminal-colors ((tty terminal-ansi-stream))
