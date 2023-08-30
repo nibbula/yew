@@ -6,6 +6,7 @@
   (:documentation "Localization")
   (:use :cl :dlib :opsys)
   (:export
+   #:*locale*
    #:locale
    #:locale-language #:locale-region #:locale-time-format #:locale-calendar
    #:ensure-locale
