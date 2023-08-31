@@ -213,4 +213,4 @@ of the buffer."
       (with-slots (buf) e
 	(>= point (olength buf))))))
 
-;; EOF
+;; End

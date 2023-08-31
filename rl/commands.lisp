@@ -1581,4 +1581,4 @@ invoked."
   (let* ((expr (ask-expr)))
     (insert e (prin1-to-string (eval expr)))))
 
-;; EOF
+;; End

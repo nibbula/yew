@@ -664,6 +664,8 @@ but perhaps reuse some resources."))
   (when (line-editor-package e)
     (delete-package (line-editor-package e)))
 
+  ;; Note that pushed-buffers should probably not be cleared so the
+  ;; park-it command can work.
   (setf (fill-pointer (buf e))	0
 	(exit-flag e)		nil
 	(queued-input e)	nil
@@ -695,7 +697,6 @@ but perhaps reuse some resources."))
 	(saved-matching-char e) nil
 	(recording-p e)		nil
 	(replay-count e)	0
-	(pushed-buffers e)	nil
 	(line-ending-cache e)	nil
 	(line-editor-package e) nil
 
