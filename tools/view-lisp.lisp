@@ -11,6 +11,7 @@
    #:view-lisp
    #:!view-lisp
    #:view-packages
+   #:view-package
    ))
 (in-package :view-lisp)
 
@@ -257,6 +258,7 @@
 		     :open nil))))
 
 (defun view-packages ()
+  "View all packages in the tree browser."
   (view-tree (package-contents-tree)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
