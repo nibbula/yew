@@ -396,14 +396,17 @@ assumed to be a prefix for all bindings in the keymap. ‘stream’ defaults to
 		     action)
 	     (format stream "  ~@[~a ~]~a~20t ~(~a~)~%"
 		     prefix (nice-char key) action))
-	 (if (and (symbolp action) (boundp action)
-		  (typep (symbol-value action) 'keymap))
-	     (describe-keymap (symbol-value action)
-			      :stream stream :prefix (nice-char key)))))
+	 (cond
+	   ((and (symbolp action) (boundp action)
+		 (typep (symbol-value action) 'keymap))
+	    (describe-keymap (symbol-value action)
+			     :stream stream :prefix (nice-char key)))
+	   ((keymap-p action)
+	    (describe-keymap action :stream stream :prefix (nice-char key))))))
    map)
   (when (and (slot-boundp map 'default-binding)
 	     (keymap-default-binding map))
-    (format stream "Default: ~(~a~)~%" (keymap-default-binding map)))
+    (format stream "  Default: ~(~a~)~%" (keymap-default-binding map)))
   map)
 
 (defmethod describe-object ((o keymap) stream)
