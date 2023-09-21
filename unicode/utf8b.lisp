@@ -13,13 +13,21 @@
 ;; UTF-8 character. I think we would have to define our own encoding e.g. with
 ;; define-character-encoding, but then the whole system would have to use it??
 
+#+ccl
+(defun force-code-char (c)
+  "Force code-char of ‘c’ even if it's not a valid character in the encoding."
+  (declare (optimize (speed 3) (safety 0))
+	   (type (unsigned-byte 32) c))
+  (let ((s (make-string 1)))
+    (setf (aref (the (simple-array (unsigned-byte 32) (*)) s) 0) c)
+    (aref s 0)))
+
 (defmacro %get-utf8b-char (byte-getter char-setter)
   (with-names (bonk pull splort u1 u2 u3 u4 u5)
     `(macrolet ((,bonk (&rest args)
 		  "Put the xor'd args as a char."
 		  `(,',char-setter
-		    #+ccl (or (code-char (logior ,@args))
-			   (error "Sorry. UTF8B encoding doesn't work on CCL."))
+		    #+ccl (force-code-char (logior ,@args))
 		    #-ccl (code-char (logior ,@args))))
 		(,splort ()
 		  "Put any alredy read bytes as invalid chars and return."

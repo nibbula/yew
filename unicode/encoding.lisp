@@ -45,6 +45,15 @@ be a keyword."
       (error "Bad type of encoding function name: ~s" type)))
    :package package))
 
+#+ccl
+(defun force-set-char (string code index)
+  "Force ‘string’ to contain char-code ‘code’, even if it's not a valid character."
+  (declare (optimize (speed 3) (safety 0))
+	   (type (unsigned-byte 32) code)
+	   (type fixnum index))
+  (setf (aref (the (simple-array (unsigned-byte 32) (*)) string) index) code)
+  (aref string index))
+
 (defmacro define-string-converters (charset-name)
   "Define two functions ‘string-to-<charset-name>-bytes’ and
 ‘<charset-name>-bytes-to-string.’. They use 3 functions or macros which must be
@@ -90,7 +99,10 @@ is happening. So:
 	   (declare (type fixnum i byte-num result-length))
 	   (labels ((getter () (char string i))
 		    (putter (c)
-		      (setf (aref result byte-num) c)
+		      #+ccl
+		      ;; Yet another awesome fix hack thanks to gilberth!
+		      (force-set-char result (char-code c) byte-num)
+		      #-ccl (setf (aref result byte-num) c)
 		      (incf byte-num)))
 	     (dotimes (x (length string))
 	       (,putter-name getter putter)
