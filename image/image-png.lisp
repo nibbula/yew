@@ -49,9 +49,23 @@
 
 (defun png-data-ref (image y x &optional z)
   #+t-png-read
-  (if z
-      (aref (png-read:image-data image) x y z)
-      (aref (png-read:image-data image) x y))
+  (let ((result
+	  (if z
+	      (aref (png-read:image-data image) x y z)
+	      (aref (png-read:image-data image) x y))))
+    ;; We have to scale to 256
+    (case (png-read:bit-depth image)
+      (1 (if (plusp result) #xff 0))
+      (2 (logior (logand result #b11)
+		 (ash (logand result #b11) 2)
+		 (ash (logand result #b11) 4)
+		 (ash (logand result #b11) 6)))
+      (4 (if (eq (png-read:colour-type image) :indexed-colour)
+	     result
+	     (logior (logand result #b1111)
+		     (ash (logand result #b1111) 4))))
+      (8 result)
+      (16 (ash (logand #xff00 result) -8))))
   #-t-png-read
   (if z
       (aref (pngload:data image) y x z)
