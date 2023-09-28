@@ -6,6 +6,7 @@
   (:documentation "Localization data.")
   (:use :cl :calendar :locale)
   (:export
+   #:english-us
    ))
 (in-package :locale-data)
 
