@@ -182,7 +182,7 @@ entered.")
     :documentation "Function to call before entering the event loop.
 The function receives a 'pick' as an argument."))
   (:default-initargs
-   :local-keymap *pick-list-keymap*)
+   :default-keymap *pick-list-keymap*)
   (:documentation "State for a pick-list-inator."))
 
 ;; (defmethod initialize-instance
@@ -759,7 +759,7 @@ The function receives a 'pick' as an argument."))
 	    :before-hook     ,before-hook))
 	(*pick*))
     (when keymap-provided-p
-      (setf (getf initargs :keymap) keymap))
+      (setf (getf initargs :local-keymap) keymap))
     (setf *pick*
 	  (apply #'make-instance
 		 (or type (if popup 'popup-pick 'full-pick))
