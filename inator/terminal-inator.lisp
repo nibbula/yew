@@ -89,7 +89,7 @@
 
 (defun inator-doc-finder (i func)
   "Find documentation for an inator (subclass) method."
-  (when (fboundp func)
+  (when (and (or (functionp func) (symbolp func)) (fboundp func))
     (let ((method
 	   (and (typep (symbol-function func) 'generic-function)
 		(find-method (symbol-function func) '()
