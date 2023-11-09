@@ -409,10 +409,11 @@ complain. Otherwise just warn, and don't redefine it."
       (when value
 	(ct:free value)))
     result)
+  #+npt (gethash s npt-system::*environment*)
   #+mezzano (declare (ignore s))
   #+mezzano nil ; no such thing, not missing
   #-(or clisp sbcl openmcl cmu ecl excl lispworks gcl abcl clasp cormanlisp
-	mezzano)
+	mezzano npt)
   (missing-implementation 'd-getenv))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -1349,8 +1350,9 @@ Otherwise, return N."
   #+(or ecl clasp) :clos
   #+cormanlisp :cl
   #+mezzano :mezzano.clos
+  #+npt :npt-clos
   #-(or mop sbcl cmu ccl lispworks gcl ecl clasp cormanlisp abcl mezzano excl
-        clasp)
+        clasp npt)
   (error "GIVE ME MOP!!")
   "The package in which the traditional Meta Object Protocol resides.")
 
@@ -1606,7 +1608,7 @@ and elements are equal."
     (let* ((pkg (find-package original))
 	   (new-nicks (cons alias (package-nicknames pkg))))
       ;; Hopefully this trick works on most implementations.
-      (rename-package original (package-name original) new-nicks)))
+      #-npt (rename-package original (package-name original) new-nicks)))
   (:method (alias (original symbol) (alias-type (eql 'class)))
     (define-alias alias (find-class original) alias-type))
   (:method (alias (original standard-class) alias-type)
@@ -2843,6 +2845,6 @@ architecture, computer vendor, operating system, and operating system version.")
 ;; Before you add stuff here, consider whether to put it in dlib-misc instead.
 ;; For example stuff that requires opsys should go in there.
 
-#+debug-rc (progn (format t " 1") (force-output *standard-output*))
+;; #+debug-rc (progn (format t " 1") (force-output *standard-output*))
 
 ;; End
