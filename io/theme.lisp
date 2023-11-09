@@ -476,6 +476,12 @@ this loses information, such as descriptions and titles."
 			:children children))))))
 
 (defun print-theme (theme &key as-tree readably (stream *standard-output*))
+  "Print ‘theme’ to ‘stream’. By default print in a linear dotted format, like:
+foo.bar.baz: value. If ‘as-tree’ is true, print it as an s-exp tree.
+If ‘readably’ is true, try to print it so it can be read by the reader.
+If theme is NIL, use *theme*."
+  (when (null theme)
+    (setf theme *theme*))
   (cond
     (readably
      (print (serialize theme +theme-version+) stream))
