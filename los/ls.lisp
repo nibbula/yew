@@ -432,16 +432,21 @@ by nos:read-directory."))
 	(a-year (ls-state-about-a-year *ls-state*)))
     (setf date-format (keywordify date-format)
 	  size-format (keywordify size-format))
-    (flet ((get-info (file)
-	     (with-error-handling ()
-	       #+unix (uos:lstat (item-full-path file))
-	       #-unix (nos:get-file-info (item-full-path file))))
-	   #+unix
-	   (link-name (file)
-	     (handler-case
-		 (uos:readlink (item-full-path file))
-	       (opsys-error (c)
-		 (ß `(:red ,(error-message (opsys-error-code c))))))))
+    (labels ((get-info (file)
+	       (with-error-handling ()
+		 #+unix (uos:lstat (item-full-path file))
+		 #-unix (nos:get-file-info (item-full-path file))))
+	     (broken (f)
+	       (themed-string '(:file :type :broken-link :style) f))
+	     #+unix
+	     (link-name (file)
+	       (handler-case
+		   (let ((name (uos:readlink (item-full-path file))))
+		     (if (file-exists name)
+			 name
+			 (broken name)))
+		 (opsys-error (c)
+		   (broken (error-message (opsys-error-code c)))))))
     #+unix
     (make-table-from
      (loop :with s
