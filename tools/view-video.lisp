@@ -2,7 +2,7 @@
 ;;; view-video.lisp - Video viewer.
 ;;;
 
-;; @@@ This is a totaly fake wrapper around ffplay.
+;; @@@ This is a totaly fake wrapper around your video player.
 ;; Someday this might be a wrapper around libav.
 ;; It would be amazing if someday this isn't a wrapper around any non-Lisp code.
 
@@ -10,14 +10,25 @@
   (:documentation "Video viewer. This is just a wrapper for now.")
   (:use :cl :lish)
   (:export
+   #:*video-player-command*
+   #:play-it
    #:view-video
    #:view-videos
    #:!view-video
    ))
 (in-package :view-video)
 
-(defun play-it (file)
-  (!= "ffplay" "-loglevel" "-8" file))
+(defvar *video-player-command*
+  ;; `("ffplay" "-loglevel" "-8")
+  `("mpv" "--really-quiet")
+  "Command to play a video. A lish command line as a list with separate
+arguments, as accepted by the != function. Must accept the filename as the last
+argument.")
+
+(defgeneric play-it (file)
+  (:documentation "Play the video ‘file’.")
+  (:method (file)
+    (apply #'!= (append *video-player-command* (list file)))))
 
 (defun view-video (media-designator &key file-list own-window)
   "View a video described by MEDIA-DESIGNATOR.
