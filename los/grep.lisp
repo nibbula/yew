@@ -13,6 +13,10 @@
    #:grep-result
    #:grep-result-file #:grep-result-line-number #:grep-result-line
    #:make-grep-result
+   #:*grep-directory-defaults*
+   #:add-default
+   #:get-default
+   #:set-defaults
    ))
 (in-package :grep)
 
@@ -22,9 +26,10 @@
 ;; (declaim (optimize (speed 3) (safety 0) (debug 0)
 ;; 		   (space 2) (compilation-speed 0)))
 
-;;;(define-constant +color-loop+
-(defparameter +color-loop+
-    '#1=(:red :yellow :blue :green :magenta :cyan :white . #1#))
+(define-constant +color-loop+
+    '#1=(:red :yellow :blue :green :magenta :cyan :white . #1#)
+  "Endless colors."
+  #'circular-equalp)
 
 (defparameter *grep-error-output* nil)
 
@@ -156,6 +161,32 @@ removeed."
        (:program :grep :separator :style)   (:cyan)))
     tt))
 
+(defparameter *grep-directory-defaults* nil
+  "Collection of argument defaults for grep-files when")
+
+(defun add-default (directory default-args)
+  "Add default arguments for starting grep in ‘directory’."
+  (when (not *grep-directory-defaults*)
+    (setf *grep-directory-defaults* (make-hash-table :test #'equal)))
+  (check-type default-args list)
+  ;; (when (not (listp default-args))
+  ;;   (error "default-args should be a list."))
+  (setf (gethash directory *grep-directory-defaults*)
+	(append (gethash directory *grep-directory-defaults*) default-args)))
+
+(defun get-defaults (directory)
+  "Return the grep argument defaults for ‘directory’, or nil if there are none."
+  (gethash directory *grep-directory-defaults*))
+
+(defun set-defaults (alist)
+  "Set the grep default arugments from the ‘alist’ of (directory . arg-list),
+e.g. 
+   ((\"/home/anon/src\" . '(:files \"**/*.lisp\"))
+    (\"/mnt/blurp\" . '(:files \"**/*.txt\" :ignore-case t)))"
+  (setf *grep-directory-defaults* nil)
+  (loop :for (dir . args) :in alist :do
+    (add-default dir args)))
+
 (defmethod print-object ((object grep-result) stream)
   "Print a grep-result to STREAM."
   (with-slots (file line-number line) object
@@ -237,6 +268,26 @@ GREP-RESULTS."
 				   (grep-result-line r) nr)))))
 		      (,thunk)))))))))))
 
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (define-constant +grep-args-doc+
+"
+  ‘output-stream’       Where to print the output, Defaults to *STANDARD-OUTPUT*.
+  ‘count’               True to show a count of matches.
+  ‘extended’            True to use extended regular expressions.
+  ‘fixed’               True to search for fixed strings only, not regexps.
+  ‘ignore-case’         True to ignore character case when matching.
+  ‘quiet’               True to not print matches.
+  ‘invert’              True to only print lines that don't match.
+  ‘line-numer’          True to precede matching lines by a line number.
+  ‘files-with-match’    True to print only the file name for matches.
+  ‘files-without-match’ True to print only the file name for matches.
+  ‘filename’            Name of the file to print before the matching line.
+  ‘use-color’           True to highlight substrings in color.
+  ‘collect’             True to return the results.
+  ‘scanner’             A PPCRE scanner as returned by CREATE-SCANNER.
+  ‘filter’              A function to apply to strings before comparing.
+"))
+
 (defun grep (pattern file-or-stream
 	     &key
 	       (output-stream *standard-output*)
@@ -246,29 +297,19 @@ GREP-RESULTS."
 	       scanner
 	       unicode-normalize unicode-remove-combining filter
 	       &allow-other-keys)
-  "Print occurances of the regular expression PATTERN in STREAM.
-Aruguments are:
-  OUTPUT-STREAM       - Where to print the output, Defaults to *STANDARD-OUTPUT*.
-  COUNT               - True to show a count of matches.
-  EXTENDED            - True to use extended regular expressions.
-  FIXED               - True to search for fixed strings only, not regexps.
-  IGNORE-CASE         - True to ignore character case when matching.
-  QUIET               - True to not print matches.
-  INVERT              - True to only print lines that don't match.
-  LINE-NUMER          - True to precede matching lines by a line number.
-  FILES-WITH-MATCH    - True to print only the file name for matches.
-  FILES-WITHOUT-MATCH - True to print only the file name for matches.
-  FILENAME            - Name of the file to print before the matching line.
-  USE-COLOR           - True to highlight substrings in color.
-  COLLECT             - True to return the results.
-  SCANNER	      - A PPCRE scanner as returned by CREATE-SCANNER.
-The first value is:
-  if COLLECT is true, a list of GREP-RESULT,
-  if COUNT is true the number of matches,
-  if neither COLLECT or COUNT is true, a boolean indicating if there were any
-  matches.
-Second value is the scanner that was used.
-"  
+  #.(s+
+"Print occurances of the regular expression ‘pattern’ in ‘stream’.
+Aruguments are:"
++grep-args-doc+
+"Return values:
+  First value:
+    If ‘collect’ is true, a list of GREP-RESULT.
+    If ‘count’ is true the number of matches.
+    If neither ‘collect’ or ‘count’ is true, a boolean indicating if there were
+    any matches.
+  Second value:
+    The regexp scanner that was used.
+")
   (declare (ignore file) ;; @@@
 	   #| (type stream output-stream) |#)
   (when (or files-with-match files-without-match)
@@ -387,14 +428,20 @@ Second value is the scanner that was used.
 		     line-number files-with-match files-without-match
 		     use-color collect no-filename signal-errors print-errors
 		     unicode-normalize unicode-remove-combining filter)
-  "Call GREP with PATTERN on FILES. Arguments are:
-  FILES       - A list of files to search.
-  RECURSIVE   - If FILES contain directory names, recursively search them.
-  INPUT-LINES - A sequence of lines to use instead of *standard-input*.
- See the documentation for GREP for an explanation the other arguments."
+  #.(s+ "Call GREP with ‘pattern’ on ‘files’. Arguments are:
+  ‘files’       - A list of files to search.
+  ‘recursive’   - If ‘files’ contain directory names, recursively search them.
+  ‘input-lines’ - A sequence of lines to use instead of *standard-input*."
+	+grep-args-doc+)
   (declare (ignorable count extended ignore-case invert
 		      recursive line-number use-color fixed
 		      unicode-normalize unicode-remove-combining filter)) ;; @@@
+  (when *grep-directory-defaults*
+    (let ((defs (get-defaults (nos:current-directory))))
+      (do-plist (key value defs)
+	(set (intern (string key)) value)
+	(setf (getf keywords key) value))))
+
   (let ((*grep-error-output* (if print-errors *error-output* nil))
 	results scanner result)
     (labels ((call-grep (pattern stream &optional args)
