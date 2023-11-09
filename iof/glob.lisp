@@ -515,7 +515,9 @@ match & dir  - f(prefix: boo) readir boo
   "Return true if the ENTRY in is a directory. ENTRY is a DIR-ENTRY structure."
   (or (eq :directory (dir-entry-type entry))
       ;; If it's a link, we have to stat it to check.
-      (and (eq :link (dir-entry-type entry))
+      (and (or (eq :link (dir-entry-type entry))
+	       ;; Some filesystems (like UDF DVDs) return :unknown for dirs.
+	       (eq :unknown (dir-entry-type entry)))
 	   (let ((s (ignore-errors
 		      (get-file-info (s+ dir *directory-separator*
 					 (dir-entry-name entry))))))
