@@ -10,6 +10,8 @@
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "View JSON as a tree."
-    :depends-on (:dlib :opsys :dlib-misc :unicode :lish :tree-viewer :jsown)
+    :depends-on (:dlib :opsys :dlib-misc :unicode :lish :tree-viewer
+		 :table-viewer
+		 :json)
     :components
     ((:file "view-json")))
