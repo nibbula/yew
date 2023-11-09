@@ -62,6 +62,7 @@ You can probably get by with just providing methods for ‘update-display’ and
    #:select
    #:default-action
    #:describe-key-briefly
+   #:show-menu
 
    ;; Output
    #:message
@@ -184,6 +185,7 @@ You can probably get by with just providing methods for ‘update-display’ and
     (,(meta-char #\s)	. sort-command)	; ?
     (,(meta-char #\j)	. jump-command)	; ?
     (,(meta-char #\=)   . describe-key-briefly)
+    (,(meta-char #\m)	. show-menu)
     (#\return		. accept)
     (,(ctrl #\l)	. redraw)
     (,(ctrl #\g)	. quit)
@@ -292,6 +294,9 @@ You can probably get by with just providing methods for ‘update-display’ and
 
 (defgeneric describe-key-briefly (inator)
   (:documentation "Describe what a key does very briefly."))
+
+(defgeneric show-menu (inator)
+  (:documentation "Show a menu of commands."))
 
 ;; Whole Inator functions
 (defgeneric event-loop (inator)
