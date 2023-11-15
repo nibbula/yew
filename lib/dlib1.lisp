@@ -146,6 +146,7 @@
    #:and-<> #:<> #:-> #:->> #:-<>>
    #:symbolify
    #:keywordify
+   #:unkeywordify
    #:likely-callable
    ;; #-lispworks #:lambda-list
    #:argument-list
@@ -1781,6 +1782,16 @@ Package can be NIL in which case it returns an un-interned symbol."
   "Make a keyword from a string."
   (or (and (keywordp string) string)
       (intern (string-upcase string) :keyword)))
+
+(defun unkeywordify (keyword)
+  "Return a symbol in the current package from a keyword."
+  (cond
+    ((and (symbolp keyword) (keywordp keyword))
+     (intern (symbol-name keyword)))
+    ((symbolp keyword)
+     keyword)				; It's already not a keyword symbol.
+    (t
+     (error 'type-error :datum keyword :expected-type 'keyword))))
 
 (defun likely-callable (f)
   "Return true if F is a function or an FBOUNDP symbol. This does not mean you
