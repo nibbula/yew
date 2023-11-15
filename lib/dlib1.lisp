@@ -2513,16 +2513,29 @@ FILE-OR-STREAM can be a stream or a pathname or namestring."
 	     (with-open-file (,outer-stream-var ,stream-var)
 	       (,line-loop ,outer-stream-var)))))))
 
-(defun get-lines (file-or-stream)
-  "Return a list of the lines read from FILE-OR-STREAM."
-  (flet ((stream-loop (stream)
-	   (loop :with l
-	      :while (setf l (read-line stream nil nil))
-	      :collect l)))
-    (if (streamp file-or-stream)
-	(stream-loop file-or-stream)
-	(with-open-file (stream file-or-stream)
-	  (stream-loop stream)))))
+(defun get-lines (file-or-stream &key (type 'list))
+  "Return a list of the lines read from ‘file-or-stream’. ‘type’ specifies the
+result type, which can be ‘list’ or ‘vector’, defaulting to ‘list’."
+  (let ((real-type (unkeywordify (symbolify type))))
+    (when (not (member real-type '(list vector array)))
+      (error 'type-error :datum type :expected-type '(member list vector array)))
+    (flet ((stream-loop (stream)
+	     (case real-type
+	       (list
+		(loop :with l
+		      :while (setf l (read-line stream nil nil))
+		      :collect l))
+	       ((vector array)
+		;; I'm guessing it's better not to have an string element type.
+		(let ((result (make-array 32 :adjustable t :fill-pointer 0)))
+		  (loop :with l
+			:while (setf l (read-line stream nil nil))
+			:do (vector-push-extend l result))
+		  result)))))
+      (if (streamp file-or-stream)
+	  (stream-loop file-or-stream)
+	  (with-open-file (stream file-or-stream)
+	    (stream-loop stream))))))
 
 (defalias 'file-lines 'get-lines)
 
