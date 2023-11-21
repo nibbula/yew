@@ -37,6 +37,7 @@
    #:map-into-column
    #:table-column
    #:table-column-as
+   #:table-item
    #:sub-table
    #:pick-columns
    #:insert-column
@@ -457,14 +458,33 @@ that has START and START-P and END and END-P."
 				   :count count
 				   :key key))))
 
-(defun column-ref (table column-designator &optional (n 0))
+(defun column-ref (table column-designator &key (n 0) (test #'equalp))
   "Return the column number for ‘column-designator’, which can be an integer
 or a column name as a symbol or string. For convenience ‘n’ is added to the
 result."
   (+ n (etypecase column-designator
 	 (integer column-designator)
-	 (symbol (table-column-number (string column-designator) table))
-	 (string (table-column-number column-designator table)))))
+	 (symbol (table-column-number (string column-designator) table
+				      :test test))
+	 (string (table-column-number column-designator table :test test)))))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defparameter *table-item-doc*
+    "item in ‘row’ and ‘column’ from ‘table’.
+‘row’ is an unsigned integer and ‘column’ is a column-designator, which can be
+a column name or number."))
+
+(defgeneric table-item (row column table)
+  (:documentation #.(s+ "Return the " *table-item-doc*))
+  (:method (row column table)
+    (let ((n (column-ref table column)))
+      (oelt (oelt table row) n))))
+
+(defgeneric (setf table-item) (value row column table)
+  (:documentation #.(s+ "Set the " *table-item-doc*))
+  (:method (value row column table)
+    (let ((n (column-ref table column)))
+      (setf (oelt (oelt table row) n) value))))
 
 (defgeneric sub-table (table &key start-row end-row start-col end-col)
   (:documentation "Return a new table as sub-table of ‘table’, containing rows
@@ -475,7 +495,7 @@ inclusive limit, otherwise it's an exclusive limit."))
 (defmethod sub-table ((table mem-table)
 		      &key (start-row 0) end-row (start-col 0) end-col)
   (flet ((col-num (col &optional (n 0))
-	   (if (null col) n (column-ref table col n))))
+	   (if (null col) n (column-ref table col :n n))))
     (let* ((start (col-num start-col))
 	   (end (col-num end-col 1))
 	   (result
@@ -508,7 +528,7 @@ inclusive limit, otherwise it's an exclusive limit."))
 ;; More complicated features should probably be done elsewhere and by macros.
 (defmethod select-from ((table mem-table) columns &key where order-by limit)
   (flet ((col-num (col &optional (n 0))
-	   (if (null col) n (column-ref table col n))))
+	   (if (null col) n (column-ref table col :n n))))
     (let ((cols (if (eq columns t)
 		    (loop :for i :from 0 :below (olength (table-columns table))
 			  :collect i)
