@@ -10,7 +10,7 @@
 (defpackage :man
   (:documentation "Show a manual entry.")
   (:use :cl :dlib :dlib-misc :opsys :glob :grout :lish :pager :pick-list
-	:table :collections :fatchar-io)
+	:table :collections :fatchar-io :tree-viewer :view-generic)
   (:export
    #:*man-sections*
    #:get-manual-sections
@@ -125,13 +125,21 @@
   "Cached manual entries. Set it to NIL again to recalculate them.")
 
 (defvar *man-entries-table* nil
-  "Cached manual entries hash table. keys are the.")
+  "Cached manual entries hash table. Keys are the entry name. Values are the
+file or list of files.")
+
+(defparameter *man-tree-init* '("Manuals")
+  "Initial value for the manual browsing tree.")
+
+(defvar *man-tree* (copy-list *man-tree-init*)
+  "Tree of sections and entries.")
 
 (defun get-manual-entries (&key rehash)
   "Approximate and flawed method for finding manual entries."
   (when rehash
     (setf *man-sections* nil
-	  *man-entries* nil))
+	  *man-entries* nil
+	  *man-tree* (copy-list *man-tree-init*)))
   (or *man-entries*
       (progn
 	;; (format t "Getting manual entries...~%") (finish-output)
@@ -141,11 +149,16 @@
 		(loop :for d :in (manpath-list)
 		   ;; :do (format t "  ~s~%" d) (finish-output)
 		   :append
-		   (loop :with result
+		   (loop :with result :and section
 		      :for s :in (get-manual-sections)
 		      :do
 		      ;;(format t "   ~s ~%" s) (finish-output)
 		      (spin)
+		      (setf section (list s))
+		      (pushnew section (cdr *man-tree*)
+			       :key #'car :test #'equal)
+		      (setf section (find s (cdr *man-tree*)
+					  :key #'car :test #'equal))
 		      (setf result
 			    (loop :with key :and val
 			       :for ff :in
@@ -156,6 +169,8 @@
 			       (setf key (remove-man-page-suffixes
 					  (basename ff))
 				     val (gethash key *man-entries-table*))
+			       (pushnew key (cdr section) :test #'equal)
+			       ;; (setf (cdr (cdr sec
 			       (if val
 				   (if (listp val)
 				       (push ff
@@ -167,6 +182,11 @@
 		      :append result)
 		   ;; :do (terpri)
 		   )))
+	(setf (cdr *man-tree*)
+	      (sort-muffled (cdr *man-tree*) #'string-lessp :key #'car))
+	(loop :for section :in (cdr *man-tree*)
+	      :do (setf (cdr section) (sort-muffled (cdr section)
+						    #'string-lessp)))
 	;;(format t "  Sorting...~%") (finish-output)
 	(setf *man-entries* (sort-muffled *man-entries* #'string-lessp))
 	;;(format t "  De-duping...~%") (finish-output)
@@ -230,6 +250,20 @@ Return a list of (<entry> <section>), or just ENTRY if something goes wrong."
    :test #'string=
    :choice-func #'get-manual-entries))
 
+(defun section-p (string)
+  "Return true if the ‘string’ matches a manual section."
+  (find-if (_ (begins-with _ string)) man::*man-sections*))
+
+(defclass manual-node (object-node)
+  ((section :initarg :section :accessor manual-node-section :initform nil)))
+
+(defmethod view ((node manual-node))
+  (dbugf :foo "chowza ~s ~s~%" node (type-of node))
+  (!man :entry (node-object node) :section (manual-node-section node)))
+
+(defun view-manuals ()
+  (view-tree (convert-tree *man-tree* :type 'manual-node)))
+
 ;; @@@ This needs work
 (defcommand man
    ((apropos   string :short-arg #\k :help "Search page titles for a string.")
@@ -241,16 +275,36 @@ Return a list of (<entry> <section>), or just ENTRY if something goes wrong."
     (path string :short-arg #\M
      :help "Colon separated path to search for pages.")
     ;; (entry manual-entry :optional t :help "Name of manual entry.")
-    (entry manual-entry :help "Name of manual entry.")
-    )
+    (entry manual-entry :rest t :help "Name of manual entry."))
   "Display a manual page for a command. With -k search for a matching page."
   :accepts '(arg-manual-entry)
-  (when (not (or entry apropos))
-    (return-from !man (values)))
+
+  (when (and *input* (not entry))
+    (setf entry (if (listp *input*) *input* (list *input*))))
+
+  ;; Try to pull out a section from the entries.
+  (when (> (length entry) 1)
+    (cond
+      ((or (section-p (first entry))
+	   (integerp (first entry)))
+       (setf section (first entry))
+       (pop entry))
+      ((or (section-p (second entry))
+	   (integerp (second entry)))
+       (setf section (second entry)
+	     entry (first entry)))))
+
   (when rehash
     (setf *man-entries* (get-manual-entries :rehash t)))
-  (when (and *input* (not entry))
-    (setf entry *input*))
+
+  (when (and (listp entry) (= 1 (length entry)))
+    (setf entry (first entry)))
+
+  (when (not (or entry apropos))
+    ;; (format t "But what manual page do you want?~%")
+    (when (not rehash)
+      (view-manuals))
+    (return-from !man (values)))
 
   (let* ((base (s+ *prog* " " #-(or netbsd openbsd) "-P cat "))
 	 (cmd (make-array (list (length base))
