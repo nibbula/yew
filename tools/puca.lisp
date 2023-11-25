@@ -75,6 +75,9 @@
    (extra
     :initarg :extra :accessor puca-extra :initform nil
     :documentation "extra lines")
+   (command
+    :initarg :command :accessor puca-command :initform nil
+    :documentation "The current command.")
    (message
     :initarg :has-message :accessor puca-message :initform nil
     :documentation "A message to show.")
@@ -797,13 +800,61 @@ if an item was added."
       (draw-message *puca*)
       (setf message nil)))))
   
+(defgeneric error-dialog (puca error)
+  (:documentation "Have a dialog about ‘error’ in ‘puca’."))
+
+(defun do-error-dialog (puca condition lines)
+  (if (puca-debug puca)
+      (invoke-debugger condition)
+      (info-window "Error" lines)))
+
+(defmethod error-dialog ((p puca) (error error))
+  (do-error-dialog p error
+    (mapcar #'span-to-fat-string
+	    `((:red (:underline ,(type-of error)))
+	      ("The command \"" (:cyan ,(or (puca-command p)
+					    (inator-last-command p)))
+				"\" got an error:")
+	      (:red ,(format nil "~a" error)))))
+  (invoke-restart 'continue))
+
+(define-condition info-error (error) ())
+
+(defmethod error-dialog ((p puca) (error info-error))
+  (do-error-dialog p error (list (ß `(:red ,(format nil "~a" error)))))
+  (invoke-restart 'continue))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro with-error-handling ((puca &key preamble) &body body)
+    "Use our error handling for ‘puca’ in ‘body’."
+    (with-names (c)
+      `(loop :with result :and restarted
+	     :do (setf (values result restarted)
+		       (with-simple-restart (continue "Keep going")
+			 (handler-case
+			     (progn ,@body)
+			   (error (,c)
+			     ,@preamble
+			     (error-dialog ,puca ,c)))))
+	     :while restarted))))
+
+(define-condition items-required (info-error) ()
+  (:report "This command requires at least one item."))
+
+(defun check-items (p)
+  "Error if there are no items."
+  (with-slots (items) p
+    (when (or (not items) (zerop (olength items)))
+      (error 'items-required))))
+
 (defun do-literal-command (format-str format-args
 			   &key (relist t) (do-pause t) confirm)
   "Do the command resulting from applying FORMAT-ARGS to FORMAT-STRING.
 If RELIST is true (the default), regenerate the file list. If DO-PAUSE is true,
 pause after the command's output. If CONFIRM is true, ask the user for
 confirmation first."
-  (let* ((command (apply #'format nil format-str format-args)))
+  (with-slots (command) *puca*
+    (setf command (apply #'format nil format-str format-args))
     (handler-case
       (progn
 	(tt-clear)
@@ -836,14 +887,7 @@ confirmation first."
 	  (get-list *puca*))
 	(tt-clear)
 	(draw-screen *puca*)
-	(if (puca-debug *puca*)
-	    (invoke-debugger c)
-	    (info-window
-	     "Error"
-	     (mapcar #'span-to-fat-string
-		     `((:red (:underline ,(type-of c)))
-		       ("The command \"" (:cyan ,command) "\" got an error:")
-		       (:red ,(format nil "~a" c))))))))))
+	(error-dialog *puca* c)))))
 
 (defun do-command (command format-args
 		   &rest keys &key (relist t) (do-pause t) confirm)
@@ -990,6 +1034,7 @@ for the command-function).")
 
 (defun show-extra (p)
   "Show messages / errors"
+  (check-items p)
   (with-slots (items) p
     (let ((ext (and items
 		    (item-extra-lines (svref items (inator-point *puca*))))))
@@ -1019,44 +1064,44 @@ for the command-function).")
 
 (defun add-command (p)
   "Add file"
-  (declare (ignore p))
+  (check-items p)
   (do-command #'backend-add (list (selected-files))))
 
 (defun reset-command (p)
   "Revert file (undo an add)"
-  (declare (ignore p))
+  (check-items p)
   (do-command #'backend-reset (list (selected-files)) :confirm t))
 
 (defun checkout-command (p)
   "Check out the committed version. Forget current changes."
-  (declare (ignore p))
+  (check-items p)
   (do-command #'backend-checkout (list (selected-files)) :confirm t))
 
 (defun diff-command (p)
   "Diff"
-  (declare (ignore p))
+  (check-items p)
   (do-command #'backend-diff (list (selected-files))
     :relist nil :do-pause nil))
 
 (defun diff-repo-command (p)
   "Diff against commited (-r HEAD)"
-  (declare (ignore p))
+  (check-items p)
   (do-command #'backend-diff-repo (list (selected-files))
 	      :relist nil :do-pause nil))
 
 (defun commit-command (p)
   "Commit selected"
-  (declare (ignore p))
+  (check-items p)
   (do-command #'backend-commit (list (selected-files))))
 
 (defun commit-interactive-command (p)
   "Commit selected interactively for each change in the file."
-  (declare (ignore p))
+  (check-items p)
   (do-command #'backend-commit-interactive (list (selected-files))))
 
 (defun update-command (p)
   "Update selected"
-  (declare (ignore p))
+  (check-items p)
   (do-command #'backend-update (list (selected-files))))
 
 (defun update-all-command (p)
@@ -1071,6 +1116,7 @@ for the command-function).")
 
 (defun add-ignore-command (p)
   "Ignore"
+  (check-items p)
   (loop :for f :in (selected-files :relative-p t)
      :do (add-ignore (puca-backend p) f)))
 
@@ -1081,7 +1127,7 @@ for the command-function).")
 
 (defun amend-file-command (p)
   "Amend last commit message for selected"
-  (declare (ignore p))
+  (check-items p)
   (do-command #'backend-amend-file (list (selected-files))))
 
 (defun pick-branch (p)
@@ -1102,12 +1148,12 @@ for the command-function).")
 
 (defun view-file (p)
   "View file"
-  (declare (ignore p))
+  (check-items p)
   (view:view-things (selected-files)))
 
 (defun view-raw-file (p)
   "View the file's raw data."
-  (declare (ignore p))
+  (check-items p)
   (view:view-raw-things (selected-files)))
 
 (defmethod previous ((p puca-app))
@@ -1198,6 +1244,7 @@ for the command-function).")
 
 (defun toggle-line (p)
   "Toggle line"
+  (check-items p)
   (with-slots ((point inator::point) items) p
     (when items
       (setf (item-selected (elt items point))
@@ -1233,7 +1280,7 @@ for the command-function).")
 
 (defun toggle-debug (p)
   (setf (puca-debug p) (not (puca-debug p)))
-  (debug-msg "Debugging turned on."))
+  (debug-msg "Debugging turned ~:[off~;on~]." (puca-debug p)))
 
 (defparameter *option-setting*
   #((#\a show-all-tracked)))
@@ -1268,6 +1315,7 @@ for the command-function).")
     (osearch string (item-filename item) :test #'ochar-equal)))
 
 (defmethod search-command ((p puca-app))
+  (check-items p)
   (with-slots (items (point inator::point) top bottom search-string) p
     (tt-move-to (- (tt-height) 2) 3)
     (tt-finish-output)
@@ -1662,6 +1710,8 @@ point in time (a.k.a. revision hash).")
 
 (defun history-command (p &optional all)
   "Show history."
+  (when (not all)
+    (check-items p))
   (let ((files (unless all (selected-files))))
     (with-inator (*puca* 'puca-history
 			 :files (if all nil files)
@@ -1841,6 +1891,23 @@ point in time (a.k.a. revision hash).")
   (tt-scroll-down 2)
   (tt-finish-output))
 
+(defmethod event-loop ((inator puca-app))
+  "A custom event loop for puca, so we can add in our error handling."
+  (unwind-protect
+       (progn
+	 (start-inator inator)
+	 (update-display inator)
+	 (with-error-handling (inator)
+	   (loop :with event
+	      :do
+	      (when (setf event (await-event inator))
+		(process-event inator event))
+	      :while (not (inator-quit-flag inator))
+	      :do
+	      (setf (puca-command inator) nil)
+	      (update-display inator)))
+    (finish-inator inator))))
+
 (defun puca (&key backend-type)
   (let ((backend (pick-backend backend-type)))
     (if backend
@@ -1848,9 +1915,15 @@ point in time (a.k.a. revision hash).")
 	    (*puca* 'puca
 	     :keymap (list *puca-keymap* *default-inator-keymap*)
 	     :backend backend)
-	  (event-loop *puca*))
+	    (event-loop *puca*))
 	(error
   "The current directory is not under a source control system I know about."))))
+
+#|
+This probably wouldn't work well given all the things we have to
+lish:make-standalone-executable. It would probably be better to make a proper
+inator to executable, or command to executable, or both. For now one can do
+a link with a fully loaded lish.
 
 (defun make-standalone (&optional (name "puca"))
   "FUFKFUFUFUFUFF"
@@ -1861,6 +1934,7 @@ point in time (a.k.a. revision hash).")
   #-(or sbcl clisp) (declare (ignore name))
   #-(or sbcl clisp) (missing-implementation 'make-standalone)
   )
+|#
 
 (lish:defcommand puca
   (("cvs" boolean :short-arg #\c :help "True to use CVS.")
@@ -1873,4 +1947,4 @@ Arguments are: -c for CVS, -s for SVN, -g GIT, -m Mercurial."
 
 ; Joe would probably like the name but not the software.
 
-;; EOF
+;; End
