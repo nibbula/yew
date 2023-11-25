@@ -208,6 +208,12 @@ with class.")
   (:documentation "Return a character with the given code attribute and type.")
   (:method (code (type (eql 'character))) (code-char code)))
 
+(defgeneric ochar-code-limit (type)
+  (:documentation "Return the maximum value of ochar-code for an ochar type, or
+NIL if we don't know.")
+  (:method (type) nil)
+  (:method ((type (eql 'character))) char-code-limit))
+
 (defgeneric ochar-name (character)
   (:documentation "Return a string that is the name of the character.")
   (:method ((character character)) (char-name character)))
