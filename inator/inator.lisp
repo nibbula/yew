@@ -396,7 +396,7 @@ list ‘args’ as the subsequent arguments."
 ;; @@@ This is quite hairy and not really reflected in keymap.lisp
 ;; @@@ clean up keymap traversal in here and keymap.lisp
 (defmethod process-event ((inator inator) event &optional keymap-in)
-  "Default way to process an event. If KEYMAP-IN is specified, use it instead
+  "Default way to process an event. If ‘keymap-in’ is specified, use it instead
 of the inator's keymap."
   (with-slots (command last-command event-sequence keymap) inator
     (setf last-command command
@@ -534,8 +534,8 @@ UPDATE-DISPLAY and and AWAIT-EVENT methods."
 |#
 
 (defmacro with-inator ((var type &rest args) &body body)
-  "Evaluate BODY with a new inator of type TYPE, made with ARGS passed to
-MAKE-INSTANCE, with VAR bound to the new instance."
+  "Evaluate ‘body’ with a new inator of type ‘type’, made with ‘args’ passed to
+MAKE-INSTANCE, and with ‘var’ bound to the new instance."
   `(let ((,var (make-instance ,type ,@args)))
      ,@body))
 
@@ -545,17 +545,17 @@ MAKE-INSTANCE, with VAR bound to the new instance."
   "The current inator.")
 
 (defgeneric run (inator &rest keys &key &allow-other-keys)
-  (:documentation "Enter the event loop of INATOR. Return when it exits."))
+  (:documentation "Enter the event loop of ‘inator’. Return when it exits."))
 
 (defmethod run ((inator inator) &rest keys &key &allow-other-keys)
   (declare (ignore keys))
   (event-loop inator))
 
 (defgeneric invoke (type &rest keys &key &allow-other-keys)
-  (:documentation "Create and run an inator of TYPE."))
+  (:documentation "Create and run an inator of ‘type’."))
 
 (defmethod invoke (type &rest keys &key &allow-other-keys)
   (let ((*inator* (apply 'make-instance type keys)))
     (run *inator*)))
 
-;; EOF
+;; End

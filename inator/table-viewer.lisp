@@ -908,6 +908,7 @@ at which it's found or NIL if it's not found."
   ;; @@@
   )
 
+;; This would need rl, or a prefix-argument,
 ;; (defmethod jump-command ((o table-viewer))
 ;;   )
 

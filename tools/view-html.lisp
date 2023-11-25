@@ -79,7 +79,7 @@
   (:documentation "Enter the viewing event loop. Return NIL to exit."))
 
 (defgeneric view-document (view)
-  (:documentation "Initialize VIEW to view the loaded document."))
+  (:documentation "Initialize ‘view’ to view the loaded document."))
 
 (defgeneric reset-view (view)
   (:documentation "Reset the view for viewing a different tree."))
@@ -160,7 +160,7 @@
 ;; Tree displaying
 
 (defgeneric display-thing (obj stream)
-  (:documentation "Display a plump element OBJ to STREAM."))
+  (:documentation "Display a plump element ‘obj’ to ‘stream’."))
 
 (defmethod display-thing ((obj t) stream)
   "Display an anything."
@@ -747,7 +747,7 @@ tree.")
        (format t "Status code ~s: ~s" status reason)))))
 
 (defun coerce-to-parseable (file)
-  "Make FILE into something parseable by PLUMP:PARSE."
+  "Make ‘file’ into something parseable by ‘plump:parse’."
   (block nil
     (etypecase file
       (string
@@ -774,6 +774,10 @@ tree.")
 		  (or (pick-list:pick-file)
 		      (return nil))))))))
 
+;; (defun read-document (location)
+;;   (with-slots (document) *html-viewer*
+;;     ))
+
 (defun load-document (location)
   "Load the document at ‘location’."
   ;; (with-slots ((root tree-viewer::root)) *viewer*
@@ -788,7 +792,7 @@ tree.")
   (with-slots (document) *html-viewer*
     ;; (let ((parseable-document (or (coerce-to-parseable location)
     ;; 				  (return-from load-document nil))))
-    (let ((parseable-document (coerce-to-parseable location)))
+    (let* ((parseable-document (coerce-to-parseable location)))
       (when (not parseable-document)
 	(error "~s doesn't seem like something we can handle." location))
       (setf document (plump:parse parseable-document)))))
