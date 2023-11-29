@@ -270,21 +270,40 @@ from theme value (:program :empty-line-indicator :style)")
    :keymap `(,*normal-keymap* ,*default-file-inator-keymap*))
   (:documentation "An instance of a pager."))
 
-(defclass text-pager (pager)
+(defclass line-set ()
   ((lines
-    :initarg :lines :accessor pager-lines :initform '()
-    :documentation "List of lines")
+    :initarg :lines :accessor line-set-lines :initform '()
+    :documentation "List of lines.")
    (count
-    :initarg :count :accessor pager-count :initform 0
+    :initarg :count :accessor line-set-count :initform 0
     :documentation "Number of lines")
    (line
-    :initarg :line :accessor pager-line :initform 0
+    :initarg :line :accessor line-set-line :initform 0
     :documentation "Current line at the top of the screen.")
    (missing-newline
-    :initarg :missing-newline :accessor missing-newline
+    :initarg :missing-newline :accessor line-set-missing-newline
     :initform nil :type boolean
     :documentation "True if the last line was missing a newline."))
+  (:documentation "A set of lines."))
+
+(defun make-line-set (&rest initargs &key &allow-other-keys)
+  (apply #'make-instance 'line-set initargs))
+
+(defclass text-pager (pager)
+  ((base
+    :initarg :base :accessor pager-base :initform (make-line-set)
+    :documentation "The original set of lines.")
+   (current
+    :initarg :current :accessor pager-current :initform nil
+    :documentation
+    "The current set of lines, possibly filtered from the ‘base’."))
   (:documentation "Text pager."))
+
+(defmethod initialize-instance
+    :after ((o text-pager) &rest initargs &key &allow-other-keys)
+  (declare (ignore initargs))
+  ;; Make the current line set be the base.
+  (setf (pager-current o) (pager-base o)))
 
 (defun make-empty-buffer ()
   (make-array 0 :element-type '(unsigned-byte 8)))
@@ -516,22 +535,34 @@ but perhaps reuse some resources."))
 
 (defgeneric read-input (pager count)
   (:documentation
-   "Read new input from the stream. Stop after COUNT units. If COUNT is zero,
-read until we get an EOF."))
+   "Read new input from the stream. Stop after ‘count’ units. If ‘count’ is
+zero, read until we get an EOF."))
+
+(defun add-lines (pager lines count)
+  ;; (dbugf :pager "add-lines ~s~%" count)
+  (symbol-macrolet ((the-lines (line-set-lines (pager-base pager))))
+    (let ((first-line (first lines)))
+      ;; Set the previous of the new chunk to be the end of rest
+      ;; @@@ we should keep a last pointer so this is faster
+      (setf (line-prev first-line) (car (last the-lines))
+	    ;; and attach them.
+	    the-lines (nconc the-lines lines)
+	    ;; update the count
+	    (line-set-count (pager-base pager)) count))))
 
 (defmethod read-input ((pager text-pager) line-count)
-  "Read new lines from the stream. Stop after COUNT lines. If COUNT is zero,
+  "Read new lines from the stream. Stop after ‘count’ lines. If ‘count’ is zero,
 read until we get an EOF."
-  (with-slots (got-eof count stream raw-output missing-newline) pager
-    (handler-case
-	(progn
-	  (when (not got-eof)
-	    (let ((n 0)
-		  (i count)
-		  line last-line cur-line
-		  (lines '())
-		  (pos (or (and (not got-eof) (file-position stream)) 0)))
-
+  (with-slots (got-eof stream raw-output) pager
+    (with-slots (count missing-newline) (pager-base pager)
+      (handler-case
+	(when (not got-eof)
+	  (let ((n 0)
+		(i count)
+		line last-line cur-line
+		(lines '())
+		(pos (or (and (not got-eof) (file-position stream)) 0)))
+	    (with-collecting-into (lines)
 	      (flet ((make-the-line ()
 		       (setf cur-line
 			     (make-line :number i
@@ -542,7 +573,8 @@ read until we get an EOF."
 						  line
 						  (process-line line))))
 		       ;; (dbugf :pager "cur-line ~s~%" cur-line)
-		       (push cur-line lines)
+		       ;; (push cur-line lines)
+		       (collect cur-line)
 		       (setf last-line cur-line)))
 		(unwind-protect
 		   (loop
@@ -568,31 +600,23 @@ read until we get an EOF."
 		   ;; (setf missing-newline (and cur-line line t))
 		   ))
 		(when lines
-		  (let ((last-line
-			 (car (last lines)))) ;; really first of the chunk
-		    (setf
-		     ;; Set the previous of the new chunk to be the end of rest
-		     (line-prev last-line) (car (last (pager-lines *pager*)))
-		     ;; and then reverse and attach them.
-		     (pager-lines *pager*) (nconc (pager-lines *pager*)
-						  (nreverse lines))
-		     count i))))))))
-      (end-of-file (c)
-	;; Be quiet about EOFs. Some systems seem to get them more than others.
-	(declare (ignore c))
-	;; (dbugf :pager "eof signaled~%")
-	(setf got-eof t))
-      (stream-error (c)
-	(setf got-eof t)
-	(message pager "Got an error: ~a on the stream." c)))
-    ;;(dbugf :pager "done and got eof ~s ~s~%" got-eof count)
-    ))
+		  (add-lines pager lines i)))))))
+	(end-of-file (c)
+	  ;; Be quiet about EOFs. Some systems seem to get them more than others.
+	  (declare (ignore c))
+	  ;; (dbugf :pager "eof signaled~%")
+	  (setf got-eof t))
+	(stream-error (c)
+	  (setf got-eof t)
+	  (message pager "Got an error: ~a on the stream." c)))
+      ;;(dbugf :pager "done and got eof ~s ~s~%" got-eof count)
+      )))
 
 (defmethod read-input ((pager binary-pager) line-count)
-  "Read new lines from the stream. Stop after COUNT lines. If COUNT is zero,
-read until we get an EOF."
+  "Read new lines from the stream. Stop after COUNT lines. If ‘line-count’ is
+zero, read until we get an EOF."
   (declare (ignore line-count)) ;; @@@
-  (with-slots (got-eof count stream raw-output seekable
+  (with-slots (got-eof #|count|# stream raw-output seekable
 	       buffer buffer-start byte-count byte-pos) pager
     ;; (setf seekable (seekable-p))
     (handler-case
@@ -660,9 +684,8 @@ read until we get an EOF."
 (defgeneric bytes-current (pager)
   (:documentation "Return bytes at current position.")
   (:method ((pager text-pager))
-    (with-slots (line lines) pager
-      (let ((l (nth line lines)))
-	(if l (line-position l) "?"))))
+    (let ((l (nth (pager-line pager) (pager-lines pager))))
+      (if l (line-position l) "?")))
   (:method ((pager binary-pager))
     ;; (+ (pager-buffer-start pager) (pager-byte-pos pager))))
     (pager-byte-pos pager)))
@@ -692,9 +715,10 @@ read until we get an EOF."
 (defgeneric percentage (pager)
   (:documentation "Return the current percentage in the file.")
   (:method ((pager text-pager))
-    (with-slots (line page-size count) pager
-      (round (/ (* (min (+ line page-size) count) 100)
-		count))))
+    (with-slots (page-size) pager
+      (with-slots (line count) (pager-current pager)
+	(round (/ (* (min (+ line page-size) count) 100)
+		  count)))))
   (:method ((pager binary-pager))
     (with-slots (byte-count) pager
       (round (/ (* (bytes-current pager) 100)
@@ -709,7 +733,7 @@ replacements. So far we support:
   %f       File name
   %%       A percent character '%'.
 "
-  (with-slots (stream count page-size filter-exprs keep-expr)
+  (with-slots (stream #|count|# page-size filter-exprs keep-expr)
       pager
     (with-output-to-string (str)
       (loop :with c :for i :from 0 :below (olength prompt) :do
@@ -1007,48 +1031,49 @@ line : |----||-------||---------||---|
 
 (defmethod update-display ((pager text-pager))
   "Display the lines already read, starting from the current."
-  (with-slots (line lines left page-size message modeline-style show-modeline
-	       search-match-char empty-indicator-char empty-indicator-style
-	       missing-newline count)
+  (with-slots (left page-size message modeline-style show-modeline
+	       search-match-char empty-indicator-char empty-indicator-style)
       pager
-    (get-theme-settings pager)
-    (tt-move-to 0 0)
-    (tt-erase-below)
-    (let ((y 0)
-	  (bottom page-size)
-	  (i (1+ line))
-	  l #| last-line |#)
-      (when (and (>= line 0) lines)
-	(setf l (nthcdr line lines))
-	(loop
-	   :while (and (< y bottom) (car l))
-	   :do
-	     (tt-move-to y 0)
-	     ;; janky filtering
-	     (when (not (filter-this (car l)))
-	       (incf y (display-line i (car l)))
-	       (incf i))
-	     (setf #| last-line l |#
-		   l (cdr l))))
-      ;; (dbugf :pager "final y = ~s~%" y)
-      ;; Fill the rest of the screen with twiddles to indicate emptiness.
-      ;; (when (and missing-newline last-line (= (1- i) count))
-      ;; 	(tt-move-to (1- y) 0)
-      ;; 	;; Since we didn't save the rendered width, we have to display it
-      ;; 	;; again.
-      ;; 	(display-line i (car last-line))
-      ;; 	(tt-write-span `(,@empty-indicator-style ,empty-indicator-char)))
-      (when (< y page-size)
-	(loop :for i :from y :below page-size
-	   :do
-	     (tt-move-to i 0)
-	     (tt-write-span `(,@empty-indicator-style ,empty-indicator-char))))
-      (if message
-	  (progn
-	    (display-message (quote-format message))
-	    (setf message nil))
-	  (when show-modeline
-	    (display-prompt pager))))))
+    (with-slots (line lines #|count missing-newline|#) (pager-current pager)
+      (get-theme-settings pager)
+      (tt-move-to 0 0)
+      (tt-erase-below)
+      (let ((y 0)
+	    (bottom page-size)
+	    (i (1+ line))
+	    l #| last-line |#)
+	(when (and (>= line 0) lines)
+	  (setf l (nthcdr line lines))
+	  (loop
+	    :while (and (< y bottom) (car l))
+	    :do
+	      (tt-move-to y 0)
+	      ;; janky filtering
+	      ;; (when (not (filter-this (car l)))
+	      ;; 	(incf y (display-line i (car l)))
+	      ;; 	(incf i))
+	      (incf y (display-line i (car l)))
+	      (incf i)
+	      (setf #| last-line l |#
+		    l (cdr l))))
+	;; (dbugf :pager "final y = ~s~%" y)
+	;; Fill the rest of the screen with twiddles to indicate emptiness.
+	;; (when (and missing-newline last-line (= (1- i) count))
+	;;   (tt-move-to (1- y) 0)
+	;;   ;; Since we didn't save the rendered width, we have to display it
+	;;   ;; again.
+	;;   (display-line i (car last-line))
+	;;   (tt-write-span `(,@empty-indicator-style ,empty-indicator-char)))
+	(when (< y page-size)
+	  (loop :for i :from y :below page-size :do
+	    (tt-move-to i 0)
+	    (tt-write-span `(,@empty-indicator-style ,empty-indicator-char))))
+	(if message
+	    (progn
+	      (display-message (quote-format message))
+	      (setf message nil))
+	    (when show-modeline
+	      (display-prompt pager)))))))
 
 (defun hex-len ()
   ;;(- (truncate (* 3/4 (tt-width))) 4)
@@ -1182,14 +1207,15 @@ end."
 
 (defmethod resize ((pager text-pager))
   "Resize the page and read more lines if necessary."
-  (with-slots (page-size line count show-modeline) pager
-    (let ((normal-page-size (if show-modeline (1- (tt-height)) (tt-height))))
-      (when (/= page-size normal-page-size)
-	(setf page-size normal-page-size)
-	;;(message-pause "new page size ~d" page-size)
-	(when (< count (+ line page-size))
-	  ;;(message-pause "read lines ~d" (- (+ line page-size) count))
-	  (read-input pager (- (+ line page-size) count)))))))
+  (with-slots (page-size #|line count|# show-modeline) pager
+    (with-slots (line count) (pager-current pager)
+      (let ((normal-page-size (if show-modeline (1- (tt-height)) (tt-height))))
+	(when (/= page-size normal-page-size)
+	  (setf page-size normal-page-size)
+	  ;;(message-pause "new page size ~d" page-size)
+	  (when (< count (+ line page-size))
+	    ;;(message-pause "read lines ~d" (- (+ line page-size) count))
+	    (read-input pager (- (+ line page-size) count))))))))
 
 (defmethod resize ((pager binary-pager))
   "Resize the page and read more lines if necessary."
@@ -1288,40 +1314,42 @@ list containing strings and lists."
 :forward."))
 
 (defmethod search-for ((pager text-pager) str &key (direction :forward) start)
-  (with-slots (lines count line page-size ignore-case) *pager*
-    (when (not str)
-      (user-error "Search string isn't set."))
-    (when (not start)
-      (setf start (if (eq direction :forward) (1+ line) (1- line))))
-    (let ((search-regexp (if ignore-case (s+ "(?i)" str) str))
-	  ll l)
-      (case direction
-	(:forward
-	 (setf ll (nthcdr start lines))
-	 (loop
-	    :do
-	    (setf l (car ll))
-	    (when (and l (>= (line-number l) (max 0 (- count page-size))))
-	      (read-input *pager* page-size))
-	    :while (and l (< (line-number l) count)
-			(not (search-line search-regexp (line-text l))))
-	    :do
-	    (setf ll (cdr ll)))
-	 (if (and l (< (line-number l) count))
-	     (setf line (line-number l))
-	     nil))
-	(:backward
-	 (setf l (nth start lines))
-	 (loop
-	    :while (and l (>= (line-number l) 0)
-			(not (search-line search-regexp (line-text l))))
-	    :do
-	    (setf l (line-prev l)))
-	 (if l
-	     (setf line (line-number l))
-	     nil))
-	(otherwise
-	 (error "Search direction should be either :forward or :backward."))))))
+  (with-slots (page-size ignore-case) *pager*
+    (with-slots (lines count line) (pager-current pager)
+      (when (not str)
+	(user-error "Search string isn't set."))
+      (when (not start)
+	(setf start (if (eq direction :forward) (1+ line) (1- line))))
+      (let ((search-regexp (if ignore-case (s+ "(?i)" str) str))
+	    ll l)
+	(case direction
+	  (:forward
+	   (setf ll (nthcdr start lines))
+	   (loop
+	     :do
+	       (setf l (car ll))
+	       (when (and l (>= (line-number l) (max 0 (- count page-size))))
+		 (read-input *pager* page-size))
+	     :while (and l (< (line-number l) count)
+			 (not (search-line search-regexp (line-text l))))
+	     :do
+	       (setf ll (cdr ll)))
+	   (if (and l (< (line-number l) count))
+	       (setf line (line-number l))
+	       nil))
+	  (:backward
+	   (setf l (nth start lines))
+	   (loop
+	     :while (and l (>= (line-number l) 0)
+			 (not (search-line search-regexp (line-text l))))
+	     :do
+		(setf l (line-prev l)))
+	   (if l
+	       (setf line (line-number l))
+	       nil))
+	  (otherwise
+	   (error
+	    "Search direction should be either :forward or :backward.")))))))
 
 (defmethod search-for ((pager binary-pager) str &key (direction :forward) start)
   (with-slots (buffer buffer-start byte-count byte-pos page-size ignore-case
@@ -1377,23 +1405,60 @@ list containing strings and lists."
 	(otherwise
 	 (error "Search direction should be either :forward or :backward."))))))
 
+(defun filter-buffer (pager)
+  "Remove filtered lines from the buffer. Create a new line-set if needed."
+  (with-slots (current base) pager
+    ;; Make a new line set if we're using the base.
+    (when (eq current base)
+      (setf current (make-line-set)))
+
+    ;; Make the line-set have only the unfiltered lines.
+    (with-slots (lines count line) current
+      (let ((i 0))
+	(setf lines
+	      (loop :for l :in (line-set-lines base)
+		    :unless (filter-this l)
+		    :collect l
+		    :and
+		    :do (incf i))
+	      count i
+	      line (min line count))))))
+
 (defun keep-lines (pager)
   "Show only lines matching a regular expression."
-  (let ((filter (ask "Show only lines matching: ")))
-    (setf (pager-keep-expr pager)
-	  (and filter (length filter) filter))))
+  (with-slots (keep-expr filter-exprs base current) pager
+    (let ((filter (ask "Show only lines matching: "))
+	  (original keep-expr))
+      (setf keep-expr
+	    (and filter (plusp (length filter)) filter))
+      (cond
+	((and keep-expr (not (equal original keep-expr)))
+	 (filter-buffer pager))
+	((and (null keep-expr) (null filter-exprs))
+	 (setf current base))))))
 
 (defun filter-lines (pager)
   "Hide lines matching a regular expression."
-  (let ((filter (ask "Hide lines matching: ")))
-    (setf (pager-filter-exprs pager)
-	  (if filter (list filter) nil))))
+  (with-slots (keep-expr filter-exprs base current) pager
+    (let ((filter (ask "Hide lines matching: "))
+	  (original filter-exprs))
+      (setf filter-exprs
+	    (if filter (list filter) nil))
+      (cond
+	((and filter-exprs (not (equal original filter-exprs)))
+	 (filter-buffer pager))
+	((and (null keep-expr) (null filter-exprs))
+	 (setf current base))))))
 
 (defun filter-more (pager)
   "Add to the list of regular expressions for hiding lines."
-  (let ((filter (ask "Hide lines also mathing: ")))
-    (when filter
-      (push filter (pager-filter-exprs pager)))))
+  (with-slots (filter-exprs) pager
+    (let ((filter (ask "Hide lines also mathing: "))
+	  (original filter-exprs))
+      (when filter
+	(push filter filter-exprs)
+	(when (and filter-exprs (not (equal original filter-exprs)))
+	  (filter-buffer pager))))))
 
 (defun set-option (pager)
   "Set a pager option. Propmpts for what option to toggle."
@@ -1475,19 +1540,20 @@ Returns the the open stream or NIL."
 
 (defmethod %open-file ((pager text-pager) filename &key (offset 0))
   "Open the given FILENAME."
-  (with-slots (count lines line got-eof stream page-size binary seekable) pager
-    (let ((new-stream (open-lossy filename :binary binary)))
-      (when new-stream
-	(when stream
-	  (close stream))
-	(setf stream new-stream
-	      lines '()
-	      count 0
-	      line offset
-	      got-eof nil
-	      seekable (seekable-p))
-	(read-input pager (+ page-size offset)))
-      new-stream)))
+  (with-slots (got-eof stream page-size binary seekable) pager
+    (with-slots (lines count line) (pager-current pager)
+      (let ((new-stream (open-lossy filename :binary binary)))
+	(when new-stream
+	  (when stream
+	    (close stream))
+	  (setf stream new-stream
+		lines '()
+		count 0
+		line offset
+		got-eof nil
+		seekable (seekable-p))
+	  (read-input pager (+ page-size offset)))
+	new-stream))))
 
 (defmethod %open-file ((pager binary-pager) filename &key (offset 0))
   "Open the given FILENAME."
@@ -1522,7 +1588,7 @@ Returns the the open stream or NIL."
 
 (defmethod save-file ((pager text-pager))
   "Save the stream to a file."
-  (with-slots (stream lines) pager
+  (with-slots (stream) pager
     (when (not (stream-file-p stream))
       (let ((filename (quote-filename (ask-for-file "Save stream to file: "))))
 	(if (probe-file filename)
@@ -1532,7 +1598,7 @@ Returns the the open stream or NIL."
 	      (when (block nil
 		      (handler-case
 			  (with-open-file (str filename :direction :output)
-			    (loop :for l :in lines :do
+			    (loop :for l :in (pager-lines pager) :do
 				 (write-line (simplify-line l) str)))
 			((or file-error stream-error opsys-error
 			     directory-error) (c)
@@ -1695,9 +1761,10 @@ byte-pos."
   (:documentation "Go to line N."))
 
 (defmethod go-to-line ((pager text-pager) n)
-  (with-slots (count line page-size) pager
-    (read-input pager (max 1 (- (+ n page-size) count)))
-    (setf line (1- n))))
+  (with-slots (page-size) pager
+    (with-slots (count line) (pager-current pager)
+      (read-input pager (max 1 (- (+ n page-size) count)))
+      (setf line (1- n)))))
 
 (defmethod go-to-line ((pager binary-pager) n)
   (with-slots (page-size byte-pos byte-count) pager
@@ -1719,12 +1786,13 @@ byte-pos."
 
 (defmethod next-page ((pager text-pager))
   "Display the next page."
-  (with-slots (line page-size count got-eof) pager
-    (incf line page-size)
-    (when (> (+ line page-size) count)
-      (read-input *pager* page-size))
-    (when (and (>= line count) got-eof)
-      (setf line (1- count)))))
+  (with-slots (page-size got-eof) pager
+    (with-slots (line count) (pager-current pager)
+      (incf line page-size)
+      (when (> (+ line page-size) count)
+	(read-input *pager* page-size))
+      (when (and (>= line count) got-eof)
+	(setf line (1- count))))))
 
 (defmethod next-page ((pager binary-pager))
   "Display the next page."
@@ -1735,13 +1803,14 @@ byte-pos."
 
 (defmethod next ((pager text-pager))
   "Display the next line."
-  (with-slots (line page-size count prefix-arg got-eof) pager
-    (let ((n (or prefix-arg 1)))
-      (incf line n)
-      (if (> (+ line page-size) count)
-	  (read-input *pager* n))
-      (when (and (>= line count) got-eof)
-	(setf line (1- count))))))
+  (with-slots (page-size prefix-arg got-eof) pager
+    (with-slots (line count) (pager-current pager)
+      (let ((n (or prefix-arg 1)))
+	(incf line n)
+	(if (> (+ line page-size) count)
+	    (read-input *pager* n))
+	(when (and (>= line count) got-eof)
+	  (setf line (1- count)))))))
 
 (defmethod next ((pager binary-pager))
   "Display the next line."
@@ -1751,8 +1820,9 @@ byte-pos."
       (byte-pos-changed pager))))
 
 (defmethod previous-page ((pager text-pager))
-  (with-slots (line page-size) pager
-    (setf line (max 0 (- line page-size)))))
+  (with-slots (page-size) pager
+    (with-slots (line) (pager-current pager)
+      (setf line (max 0 (- line page-size))))))
 
 (defmethod previous-page ((pager binary-pager))
     (with-slots (byte-pos page-size stream) pager
@@ -1764,9 +1834,10 @@ byte-pos."
 
 (defmethod previous ((pager text-pager))
   "Display the previous line."
-  (with-slots (prefix-arg line) pager
-    (let ((n (or prefix-arg 1)))
-      (setf line (max 0 (- line n))))))
+  (with-slots (prefix-arg) pager
+    (with-slots (line) (pager-current pager)
+      (let ((n (or prefix-arg 1)))
+	(setf line (max 0 (- line n)))))))
 
 (defmethod previous ((pager binary-pager))
   "Display the previous line."
@@ -1788,19 +1859,21 @@ byte-pos."
 (defgeneric scroll-up (pager)
   (:documentation "Scroll the pager back some lines.")
   (:method ((pager text-pager))
-    (with-slots (line) pager
+    (with-slots (line) (pager-current pager)
       (setf line (max 0 (- line 5)))))
   (:method ((pager binary-pager))
-    (with-slots (line prefix-arg) pager
-      (setf prefix-arg 5)
-      (previous pager))))
+    (with-slots (prefix-arg) pager
+      (with-slots (line) (pager-current pager)
+	(setf prefix-arg 5)
+	(previous pager)))))
 
 (defgeneric scroll-down (pager)
   (:documentation "Scroll the pager forward some lines.")
   (:method ((pager text-pager))
-    (with-slots (line prefix-arg) pager
-      (setf prefix-arg 5)
-      (next pager)))
+    (with-slots (prefix-arg) pager
+      (with-slots (line) (pager-current pager)
+	(setf prefix-arg 5)
+	(next pager))))
   (:method ((pager binary-pager))
     (with-slots (prefix-arg) pager
       (setf prefix-arg 5)
@@ -1821,33 +1894,34 @@ byte-pos."
 ;; clipping, but we do have to consider it when finding the maximum.
 (defmethod scroll-end ((pager text-pager))
   "Scroll the pager window to the rightmost edge of the text."
-  (with-slots (line lines left page-size show-line-numbers) pager
-    (let ((max-col 0))
-      (loop
-	 :with y = 0
-	 :and l = (nthcdr line lines)
-	 :and i = line
-	 :and the-line
-	 :while (and (<= y (1- page-size)) (car l))
-	 :do
-	 ;;(message-pause-for 70 "~s ~s ~s ~s" max-col y i l)
-	 (setf the-line (line-text (car l))
-	       (fill-pointer *fat-buf*) 0
-	       max-col
-	       (max max-col
-		    (+ (if show-line-numbers
-			   (length (format nil "~d: " i))
-			   0)
-		       (length
-			(if (stringp the-line)
-			    the-line
-			    (span-to-fatchar-string
-			     the-line :fatchar-string *fat-buf*))))))
-	 (incf y)
-	 (incf i)
-	 (setf l (cdr l)))
-      ;; (message pager "max-col = ~d" max-col)
-      (setf left (max 0 (- max-col (tt-width)))))))
+  (with-slots (left page-size show-line-numbers) pager
+    (with-slots (line lines) (pager-current pager)
+      (let ((max-col 0))
+	(loop
+	  :with y = 0
+	  :and l = (nthcdr line lines)
+	  :and i = line
+	  :and the-line
+	  :while (and (<= y (1- page-size)) (car l))
+	  :do
+	  ;;(message-pause-for 70 "~s ~s ~s ~s" max-col y i l)
+	  (setf the-line (line-text (car l))
+		(fill-pointer *fat-buf*) 0
+		max-col
+		(max max-col
+		     (+ (if show-line-numbers
+			    (length (format nil "~d: " i))
+			    0)
+			(length
+			 (if (stringp the-line)
+			     the-line
+			     (span-to-fatchar-string
+			      the-line :fatchar-string *fat-buf*))))))
+	  (incf y)
+	  (incf i)
+	  (setf l (cdr l)))
+	;; (message pager "max-col = ~d" max-col)
+	(setf left (max 0 (- max-col (tt-width))))))))
 
 (defmethod scroll-end ((pager binary-pager))
   "This doesn't do anything, since the binary width is fixed."
@@ -1855,10 +1929,11 @@ byte-pos."
 
 (defmethod move-to-top ((pager text-pager))
   "Go to the beginning of the stream, or the PREFIX-ARG'th line."
-  (with-slots (prefix-arg line) pager
-    (if prefix-arg
-	(go-to-line pager prefix-arg)
-	(setf line 0))))
+  (with-slots (prefix-arg) pager
+    (with-slots (line) (pager-current pager)
+      (if prefix-arg
+	  (go-to-line pager prefix-arg)
+	  (setf line 0)))))
 
 (defmethod move-to-top ((pager binary-pager))
   "Go to the beginning of the stream, or the PREFIX-ARG'th line."
@@ -1871,11 +1946,12 @@ byte-pos."
 (defmethod move-to-bottom ((pager text-pager))
   "Go to the end of the stream, or the PREFIX-ARG'th line."
   (with-slots (prefix-arg count line page-size) pager
-    (if prefix-arg
-	(go-to-line pager prefix-arg)
-	(progn
-	  (read-input *pager* 0)
-	  (setf line (max 0 (- count page-size)))))))
+    (with-slots (count line) (pager-current pager)
+      (if prefix-arg
+	  (go-to-line pager prefix-arg)
+	  (progn
+	    (read-input *pager* 0)
+	    (setf line (max 0 (- count page-size))))))))
 
 (defmethod move-to-bottom ((pager binary-pager))
   "Go to the end of the stream, or the PREFIX-ARG'th line."
@@ -1925,9 +2001,10 @@ byte-pos."
 
 (defmethod search-next ((pager text-pager))
   "Search for the next occurrence of the current search in the stream."
-  (with-slots (line search-string) pager
-    (when (not (search-for pager search-string))
-      (message pager "--Not found--"))))
+  (with-slots (search-string) pager
+    (with-slots (line) (pager-current pager)
+      (when (not (search-for pager search-string))
+	(message pager "--Not found--")))))
 
 (defmethod search-next ((pager binary-pager))
   "Search for the next occurrence of the current search in the stream."
@@ -1944,12 +2021,13 @@ byte-pos."
 
 (defmethod search-previous ((pager text-pager))
   "Search for the previous occurance of the current search in the stream."
-  (with-slots (line search-string) pager
-    (if (not (zerop line))
-	(progn
-	  (when (not (search-for pager search-string :direction :backward))
-	    (message pager "--Not found--")))
-	(message pager "Search stopped at the first line."))))
+  (with-slots (search-string) pager
+    (with-slots (line) (pager-current pager)
+      (if (not (zerop line))
+	  (progn
+	    (when (not (search-for pager search-string :direction :backward))
+	      (message pager "--Not found--")))
+	  (message pager "Search stopped at the first line.")))))
 
 (defmethod search-previous ((pager binary-pager))
   "Search for the previous occurance of the current search in the stream."
@@ -1981,19 +2059,20 @@ byte-pos."
 
 (defun show-detailed-info (pager)
   "Show information about the stream."
-  (with-slots (stream count page-size filter-exprs keep-expr seekable) pager
-    (fui:with-typeout (str :title "Pager Buffer Information")
-      (print-properties
-       `("Name"             ,(stream-name stream)
-	 "Current position" ,(bytes-current pager)
-         "Total Length"     ,(total-bytes pager)
-	 "Current line"     ,(current-line pager)
-	 "Maximum line"     ,(maximum-line pager)
-	 "Percentage"       ,(percentage pager)
-	 "Filters"          ,filter-exprs
-	 "Keep"		    ,keep-expr
-	 "Seekable?"        ,seekable)
-       :stream str))))
+  (with-slots (stream page-size filter-exprs keep-expr seekable) pager
+    (with-slots (count) (pager-current pager)
+      (fui:with-typeout (str :title "Pager Buffer Information")
+	(print-properties
+	 `("Name"             ,(stream-name stream)
+	   "Current position" ,(bytes-current pager)
+	   "Total Length"     ,(total-bytes pager)
+	   "Current line"     ,(current-line pager)
+	   "Maximum line"     ,(maximum-line pager)
+	   "Percentage"       ,(percentage pager)
+	   "Filters"          ,filter-exprs
+	   "Keep"             ,keep-expr
+	   "Seekable?"        ,seekable)
+	 :stream str)))))
 
 ;; This is very bogus.
 (defun show-version (pager)
@@ -2010,19 +2089,20 @@ byte-pos."
 
 ;; @@@ fix for binary
 (defun reread (pager)
-  (with-slots (stream line lines got-eof count page-size seekable) pager
-    (if seekable
-	(let ((l (nth line lines)))
-	  (file-position stream (or (and l (line-position l)) 0))
-	  (setf got-eof nil)
-	  (if (= line 0)
-	      (setf lines nil count 0)
-	      (progn
-		(setf count line)
-		;; drop all following lines
-		(rplacd (nthcdr (1- line) lines) nil)))
-	  (read-input pager page-size))
-	(message pager "Can't re-read an unseekable stream."))))
+  (with-slots (stream got-eof page-size seekable) pager
+    (with-slots (line lines count) (pager-current pager)
+      (if seekable
+	  (let ((l (nth line lines)))
+	    (file-position stream (or (and l (line-position l)) 0))
+	    (setf got-eof nil)
+	    (if (= line 0)
+		(setf lines nil count 0)
+		(progn
+		  (setf count line)
+		  ;; drop all following lines
+		  (rplacd (nthcdr (1- line) lines) nil)))
+	    (read-input pager page-size))
+	  (message pager "Can't re-read an unseekable stream.")))))
 
 (defun digit-argument (pager)
   "Accumulate digits for the PREFIX-ARG."
@@ -2550,4 +2630,4 @@ a view method."
 	   :color-bytes color-bytes
 	   :follow-mode follow-mode)))
 
-;; EOF
+;; End
