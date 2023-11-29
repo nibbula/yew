@@ -377,10 +377,8 @@ but perhaps reuse some resources."))
 
 (defmethod freshen ((o text-pager))
   (call-next-method)
-  (setf (pager-lines o) nil
-	(pager-count o) 0
-	(pager-line o) 0
-	(missing-newline o) nil))
+  (setf (pager-base o) (make-line-set)
+	(pager-current o) (pager-base o)))
 
 (defmethod freshen ((o binary-pager))
   (call-next-method)
@@ -684,8 +682,9 @@ zero, read until we get an EOF."
 (defgeneric bytes-current (pager)
   (:documentation "Return bytes at current position.")
   (:method ((pager text-pager))
-    (let ((l (nth (pager-line pager) (pager-lines pager))))
-      (if l (line-position l) "?")))
+    (with-slots (line lines) (pager-current pager)
+      (let ((l (nth line lines)))
+	(if l (line-position l) "?"))))
   (:method ((pager binary-pager))
     ;; (+ (pager-buffer-start pager) (pager-byte-pos pager))))
     (pager-byte-pos pager)))
@@ -701,14 +700,14 @@ zero, read until we get an EOF."
 (defgeneric current-line (pager)
   (:documentation "Return the current line number.")
   (:method ((pager text-pager))
-    (pager-line pager))
+    (line-set-line (pager-current pager)))
   (:method ((pager binary-pager))
     (round (/ (bytes-current pager) (line-bytes)))))
 
 (defgeneric maximum-line (pager)
   (:documentation "Return the maximum line.")
   (:method ((pager text-pager))
-    (pager-count pager))
+    (line-set-count (pager-current pager)))
   (:method ((pager binary-pager))
     (round (/ (total-bytes pager) (line-bytes)))))
 
@@ -1598,8 +1597,8 @@ Returns the the open stream or NIL."
 	      (when (block nil
 		      (handler-case
 			  (with-open-file (str filename :direction :output)
-			    (loop :for l :in (pager-lines pager) :do
-				 (write-line (simplify-line l) str)))
+			    (loop :for l :in (line-set-lines (pager-base pager))
+				  :do (write-line (simplify-line l) str)))
 			((or file-error stream-error opsys-error
 			     directory-error) (c)
 			  (message pager "Error saving file: ~a" c)
