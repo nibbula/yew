@@ -442,7 +442,12 @@ by nos:read-directory."))
 	     (link-name (file)
 	       (handler-case
 		   (let ((name (uos:readlink (item-full-path file))))
-		     (if (file-exists name)
+		     (if (file-exists
+			  (if (path-absolute-p name)
+			      name
+			      (path-append (path-directory-name
+					    (item-full-path file))
+					   name)))
 			 name
 			 (broken name)))
 		 (opsys-error (c)
