@@ -1272,6 +1272,9 @@ of LIST is an atom, assume it's a plist, otherwise it's an alist."
   "Like ‘equalp’, but handle circularity in lists."
   (equalp (all-objects-in-thing a) (all-objects-in-thing b)))
 
+;; These are really just because using collect inside loop has problems and
+;; I'm afraid to start using iterate even though it fixes this.
+
 (defmacro with-collecting ((&key (collector 'collect)) &body body)
   "Define a function ‘collector’, by default named ‘collect’, which when
 called with a value, adds it to the end of a list and returns the value.
@@ -1286,15 +1289,20 @@ Return the list."
          ,@body
          (cdr ,head)))))
 
-;; Note this doesn't let you use ‘var’ in the loop, so it's just for making
-;; the calling code look nicer. Also this and the other one are really just
-;; because using collect inside loop sucks and I'm afraid to start using
-;; iterate even though it fixes this.
 (defmacro with-collecting-into ((var &key (collector 'collect)) &body body)
   "Define a function ‘collector’, by default named ‘collect’, which when
-called with a value, adds it to the end of a list and returns the value.
-Set ‘var’ to the list and return it."
-  `(setf ,var (with-collecting (:collector ,collector) ,@body)))
+called with a value in the ‘body’, adds it to the end of a list and sets ‘var’
+to the list. Return the list."
+  (with-unique-names (head tail)
+    `(let* ((,head (list nil)) ;; or actually just before the head
+            (,tail ,head))
+       ;; This could be macrolet, but is there a good reason?
+       (flet ((,collector (thing)
+                (rplacd ,tail (setf ,tail (list thing)))
+		(setf ,var (cdr ,head))
+                thing))
+         ,@body
+         ,var))))
 
 ;; See also: (alexandria:iota n &key (start 0) (step 1))
 
