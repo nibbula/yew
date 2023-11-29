@@ -16,4 +16,9 @@
 		 ;; #+unix :terminal-curses
 		 :fui :view-generic)
     :components
-    ((:file "pick-list")))
+    ((:file "pick-list")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "pick-list-cmds"))
+      :depends-on ("pick-list"))))
