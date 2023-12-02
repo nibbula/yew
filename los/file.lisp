@@ -14,20 +14,25 @@
 (declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
 
 (defun print-content-type (thing type &key full (stream t))
-  "Print the content type to STREAM. TYPE should be magic:content-type
-structure. If FULL is true print all the data, otherwise just print the
+  "Print the content type to ‘stream’. ‘type’ should be magic:content-type
+structure. If ‘full’ is true print all the data, otherwise just print the
 description."
   (if full
-      (progn
-	(print-properties
-	 (append `((file . ,thing))
-		 (mapcar (_ (cons _ (funcall
-				     (symbolify (s+ "content-type-" _)
-						:package :magic) type)))
-			 '(name category description file-name-match encoding
-			   properties)))
-	 :stream stream)
-	(terpri))
+      (with-grout ()
+	(grout-print-table
+	 (make-table-from
+	  (append `(("File" . ,(s+ ": " thing)))
+		  (mapcar (_ (cons (string-capitalize _)
+				   (s+ ": "
+				       (funcall
+					(symbolify (s+ "content-type-" _)
+						   :package :magic) type))))
+			  '(name category description file-name-match encoding
+			    properties)))
+	  :columns '((:name "Name") (:name "Value" :align :wrap)))
+	 :stream stream
+	 :print-titles nil)
+	(grout-princ #\newline))
       (format stream "~a~%" (content-type-description type))))
 
 (defparameter *signal-errors* nil
@@ -62,4 +67,4 @@ on metadata."
       (print-content-type thing type :full full :stream stream))
     type))
 
-;; EOF
+;; End

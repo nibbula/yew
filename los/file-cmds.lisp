@@ -60,7 +60,8 @@
 				 (push (list f type)
 				       results)
 				 (content-type-description
-				  (second (car results)))))))
+				  (second (car results))))))
+		      :columns '((:name "Name") (:name "Value" :align :wrap)))
 		     #| :trailing-spaces nil |#
 		     :print-titles nil)))))
 	(when lish:*input*
@@ -99,7 +100,7 @@
 		     '((:name "File")
 		       (:name "Type")
 		       (:name "Category")
-		       (:name "Description")
+		       (:name "Description" :align :wrap)
 		       (:name "Match")
 		       (:name "Encoding")
 		       (:name "Properties")))
