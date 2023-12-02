@@ -39,6 +39,7 @@
    #:table-column-as
    #:table-item
    #:sub-table
+   #:row-to-table
    #:pick-columns
    #:insert-column
    #:make-table-from
@@ -516,6 +517,31 @@ inclusive limit, otherwise it's an exclusive limit."))
 		   (osubseq table start-row))))))
       result)))
 
+(defgeneric row-to-table (row table)
+  (:documentation
+   "Return ‘row’ of ‘table’ as a table of column-names and values. ‘row’ can be
+a collection or a row number.")
+  (:method (row (table mem-table))
+    (let ((the-row
+	    (typecase row
+	      (unsigned-byte (oelt table row))
+	      (t
+	       (when (not (collection-p row))
+		 ;; This is wrong, since collection ≠ collection-p
+		 ;; but should we do it anyway?
+		 ;; (error 'type-error
+		 ;; 	:datum row
+		 ;; 	:expected-type '(or unsigned-byte collection))
+		 (error "Expecting a unsigned-byte or a collection."))
+	       row))))
+      (make-table-from
+       (with-collecting ()
+	 (let ((c (table-columns table)))
+	   (omap (_ (prog1 (collect (vector (column-name (car c)) _))
+		      (setf c (cdr c))))
+		 the-row)))
+       :column-names '("Name" "Value")))))
+
 #|
 (defmacro do-elements ((elements sequence) &body body)
   `(typecase sequence
@@ -762,4 +788,4 @@ type as the first table."
 
 |#
 
-;; EOF
+;; End
