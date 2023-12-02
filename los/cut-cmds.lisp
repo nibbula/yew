@@ -45,11 +45,11 @@
 	    (push (call-cut f) results)
 	    (call-cut f)))
       (when collect
-	(setf *output* (nreverse results))
-	(when (= (length *output*) 1)
-	  (setf *output* (first *output*)))
+	(setf lish:*output* (nreverse results))
+	(when (= (length lish:*output*) 1)
+	  (setf lish:*output* (first lish:*output*)))
 	(if table
-	    (setf *output* (make-table-from *output*))
-	    *output*)))))
+	    (setf lish:*output* (make-table-from lish:*output*))
+	    lish:*output*)))))
 
 ;; End
