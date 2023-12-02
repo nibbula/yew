@@ -35,7 +35,7 @@
     (when quicklisp-only (setf types '(:quicklisp)))
     (when type (setf types (list type)))
     (if collect
-	(setf *output*
+	(setf lish:*output*
 	      (mondo-apropos :thing thing :types types :package package
 			     :external-only external-only :collect collect
 			     :compound compound))
