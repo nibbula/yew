@@ -234,6 +234,7 @@
    #:posix-preadv
    #:posix-pwritev
    #:posix-rename
+   #:copy-file-range
    #:with-posix-file
    #:with-os-file
    #:with-temporary-thing

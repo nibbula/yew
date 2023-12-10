@@ -1172,6 +1172,19 @@ already exists, it will be replaced, effectively deleting it."
   ;; (syscall (posix-rename (safe-namestring from) (safe-namestring to))))
   (syscall (posix-rename from to)))
 
+#+linux
+(defcfun copy-file-range ssize-t
+  "Perform an in-kernel copy between two file descriptors. Copy ‘len’ bytes
+from ‘fd-in’ to ‘fd-out’, overwiting any data in the range. ‘off-in’ is the
+offset to read from or NULL for the beginning. ‘off-out’ is where to write to,
+or NULL for the beginning."
+  (fd-in :int)
+  (off-in (:pointer :int64)) ;; (off64_t *)
+  (fd-out :int)
+  (off-out (:pointer :int64)) ;; (off64_t *)
+  (len ssize-t)
+  (flags :int))
+
 ;; @@@ Renamed.
 ;; (defalias simple-delete-file os-delete-file
 ;;   "Delete a file.")
@@ -1785,22 +1798,26 @@ recommended to use with-temporary-file instead."
     (when (flag-root-restricted flags) (princ "restricted "	str))
     (when (flag-root-snapshot   flags) (princ "snapshot "	str))))
 
- #|
+#|
 ;;; @@@ totally not done yet and messed up
 (defun change-mode (orig-mode new-mode)
   "Change a mode by the symbolic mode changing syntax, as in chmod."
-  (let ((result orig-mode) (i 0) user group others op)
-    (labels ((change-one ()
+  (let ((result orig-mode) (i 0) user group others all op)
+    (labels ((do-op (op a b)
+               (cond
+                 ((= op
+             (change-one ()
 	       (loop :with done
 		  :while (not done)
 		  :for c :in (subseq new-mode i) :do
 		  (case c
 		    (#\u (setf user t))
-		    (#\u (setf group t))
-		    ((#\o #\a) (setf others t))
-		    (#\+ (setf op #'logior  done t))
-		    (#\- (setf op #'logiand done t))
-		    (#\= (setf op #'done t))
+		    (#\g (setf group t))
+		    (#\o (setf others t))
+		    (#\a (setf all t))
+		    (#\+ (setf op boole-ior done t))
+		    (#\- (setf op boole-nand done t))
+		    (#\= (setf op boole-set done t))
 		    (t (error "Unknown permission type character '~c'." c)))
 		  (incf i))
 	       (loop :with done
