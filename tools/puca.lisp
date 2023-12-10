@@ -75,7 +75,7 @@
    (extra
     :initarg :extra :accessor puca-extra :initform nil
     :documentation "extra lines")
-   (command
+   (puca-command
     :initarg :command :accessor puca-command :initform nil
     :documentation "The current command.")
    (message
@@ -853,8 +853,8 @@ if an item was added."
 If RELIST is true (the default), regenerate the file list. If DO-PAUSE is true,
 pause after the command's output. If CONFIRM is true, ask the user for
 confirmation first."
-  (with-slots (command) *puca*
-    (setf command (apply #'format nil format-str format-args))
+  (with-slots (puca-command) *puca*
+    (setf puca-command (apply #'format nil format-str format-args))
     (handler-case
       (progn
 	(tt-clear)
@@ -862,12 +862,12 @@ confirmation first."
 	(terminal-end *terminal*)
 	;; (setf (terminal-input-mode *terminal*) :line)
 	(when confirm
-	  (format t "~a~%" command) (finish-output)
+	  (format t "~a~%" puca-command) (finish-output)
 	  (when (not (yes-or-no-p "Are you sure? "))
 	    (terminal-reinitialize *terminal*)
 	    (return-from do-literal-command (values))))
-	;; (debug-msg "command ~s" command)
-	(lish:! command)
+	;; (debug-msg "command ~s" puca-command)
+	(lish:! puca-command)
 	(when do-pause
 	  (write-line "[Press Return]")
 	  (finish-output)
