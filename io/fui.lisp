@@ -411,7 +411,7 @@ X Y         Top left coordinates of the window."
       (map-keymap #'add-key keymap))
     rev-hash))
 
-(defun help-list (keymap &optional special-doc-finder)
+(defun help-list (keymap &optional special-doc-finder prefix)
   "Return a list of key binding help lines, suitable for the HELP function.
 The optional SPECIAL-DOC-FINDER is a function which looks up documentation for
 keymap bindings."
@@ -474,11 +474,11 @@ keymap bindings."
 			      (boundp func)
 			      (keymap-p (symbol-value func))
 			      (string-downcase func))
-			 (and (keymap-p func)
-			      (princ-to-string func))
 			 nil))
-       :collect
-       (format nil "~va - ~a" key-col-len keys doc))))
+	  :collect
+	     (format nil "~@[~a ~]~va - ~a" prefix key-col-len keys doc)
+	:else :if (and (not doc) (keymap-p func))
+	  :append (help-list func special-doc-finder keys))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
