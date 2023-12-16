@@ -11,8 +11,7 @@
     :source-control	:git
     :long-description   "Blah blah blah"
     :depends-on (:dlib :opsys :glob :collections :char-util :dlib-misc
-		 :reader-ext :syntax-lisp :terminal #| :terminal-ansi |#
-		 :prefix-tree
+		 :string-expand :reader-ext :syntax-lisp :terminal :prefix-tree
 		 #+use-re :re
 		 #-use-re :cl-ppcre
 		 :theme :fatchar :style)

@@ -52,8 +52,8 @@ Note that this means the sequence can't contain NIL.
 Dictionary completion:
   [not documented yet]
 ")
-  (:use :cl :dlib :opsys :glob :collections :char-util :dlib-misc :reader-ext
-	:syntax :syntax-lisp :terminal #|:terminal-ansi |#
+  (:use :cl :dlib :opsys :glob :collections :char-util :dlib-misc
+        :string-expand :reader-ext :syntax :syntax-lisp :terminal
 	#+use-regex :regex
 	#-use-regex :cl-ppcre
 	:theme :fatchar :style)
@@ -89,6 +89,8 @@ Dictionary completion:
    ;; filenames
    #:complete-filename
    #:complete-directory
+   #:*filename-completion-value-funcs*
+   #:*filename-completion-value-allowed*
    ;; dictionary
    #:*dictionary*
    #:*default-word-file*
@@ -1053,6 +1055,19 @@ defaults to the current package. Return how many symbols there were."
      full-match)))
 |#
 
+(defvar *filename-completion-value-funcs* `(,#'nos:env)
+  "List of value functions to be provided to ‘expand-variables’.")
+
+(defvar *filename-completion-value-allowed* nil
+  "A boolean function of a single character or a string specifiying what
+characters are allowed in the variable expansion.")
+
+(defun expand-things (s)
+  "Do string expansion on ‘s’."
+  (expand-tilde (expand-variables s
+		  :value-funcs *filename-completion-value-funcs*
+		  :allowed *filename-completion-value-allowed*)))
+
 (defun filename-completion (word &optional extra-test)
   "Return the first completion for WORD in the current directory's files ~
  or nil if none was found. The second value is true if the first value ~
@@ -1066,7 +1081,7 @@ defaults to the current package. Return how many symbols there were."
 	 ;; It's a kludge so complete-filename-command can work.
 	 (start         (position-if (_ (position _ "\"")) word :from-end t))
 	 ;;(w             (expand-tilde word))
-	 (w             (expand-tilde
+	 (w             (expand-things
 			 (subseq word (or (and start (1+ start)) 0))))
 	 (dir-part      (dirname w))
 	 (dir-part-path (dirname word))
@@ -1108,7 +1123,7 @@ defaults to the current package. Return how many symbols there were."
 			  (s+ nos:*directory-separator* match-sub)
 			  (path-append dir-part-path match-sub))
 		      match-sub)))
-	    (if (and full-match (directory-p (expand-tilde result-path)))
+	    (if (and full-match (directory-p (expand-things result-path)))
 		(s+ result-path nos:*directory-separator*)
 		result-path)))
      :unique full-match)))
@@ -1118,7 +1133,7 @@ defaults to the current package. Return how many symbols there were."
   (let* (pos
 	 (count 0)
 	 (result-list '())
-	 (word (expand-tilde w))
+	 (word (expand-things w))
 ;	 (dir-part (directory-namestring (pathname word)))
 ;	 (file-part (file-namestring (pathname word)))
 	 (dir-part (or (and word (path-directory-name word)) ""))
