@@ -907,7 +907,8 @@ TTY is a file descriptor."
      )
 
 (defun listen-for-terminal (seconds terminal)
-  "Wait for SECONDS or any input available on TERMINAL."
+  "Wait for ‘seconds’ or any input available on ‘terminal’. Return true if
+there is input available."
   (with-foreign-objects ((f-start-time 'ULARGE_INTEGER)
 			 (time 'ULARGE_INTEGER))
     (%get-system-time-as-file-time f-start-time)
@@ -1613,11 +1614,20 @@ get it."
   (declare (ignore fd))
   nil)
 
-(defun terminal-query (query &key max tty)
-  "Output the string to the terminal and wait for a response. Read up to MAX
-characters. If we don't get anything after a while, just return what we got."
-  (declare (ignore query max tty))
-  ;; @@@ XXX
+;; (defun terminal-query (query &key max tty)
+;;   "Output the string to the terminal and wait for a response. Read up to MAX
+;; characters. If we don't get anything after a while, just return what we got."
+;;   (declare (ignore query max tty))
+;;   ;; @@@ XXX
+;;   "")
+(defun terminal-query (fd query end-tag &key buffer-size (timeout 2.5))
+  ;; (declare (ignore buffer-size))	; @@@
+  ;; (write-terminal-string fd query)
+  ;; (if (listen-for-terminal timeout fd)
+  ;;     (read-until fd end-tag :timeout (or timeout 2.5))
+  ;;     ""))
+  ;; @@@ keep faking it for now
+  (declare (ignore fd query end-tag buffer-size timeout))
   "")
 
 (defmacro with-terminal-signals (() &body body)
