@@ -809,7 +809,7 @@ if an item was added."
       (invoke-debugger condition)
       (info-window "Error" lines)))
 
-(defmethod error-dialog ((p puca) (error error))
+(defmethod error-dialog ((p puca-app) (error error))
   (do-error-dialog p error
     (mapcar #'span-to-fat-string
 	    `((:red (:underline ,(type-of error)))
@@ -821,7 +821,7 @@ if an item was added."
 
 (define-condition info-error (error) ())
 
-(defmethod error-dialog ((p puca) (error info-error))
+(defmethod error-dialog ((p puca-app) (error info-error))
   (do-error-dialog p error (list (ß `(:red ,(format nil "~a" error)))))
   (invoke-restart 'continue))
 
