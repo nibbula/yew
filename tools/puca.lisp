@@ -453,11 +453,12 @@ if an item was added."
       (setf (git-saved-counts git)
 	    (let (output)
 	      (if (and remote
-		       (not (begins-with
-			     "fatal"
-			     (setf output
-				   (lish:!- "git rev-list --left-right --count "
-					    remote "..." local)))))
+		       (progn
+			 (setf output
+			       (lish:!- "git rev-list --left-right --count "
+					remote "..." local))
+			 (and (not (begins-with "fatal" output))
+			      (not (begins-with "error" output)))))
 		  (mapcar #'parse-integer (split "\\s" output))
 		  '(0 0)))))) ; fake
 
