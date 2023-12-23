@@ -520,7 +520,7 @@ Options:
       (when (or (not min-depth) (>= depth min-depth))
 	(loop :for f :in dir-list
 	   :if (not (ignored-file-name-p #|(dir-entry-name f)|# f)) :do
-	   (let* ((n #|(dir-entry-name f)|# f)
+	   (let* ((n #|(dir-entry-name f)|# (basename f))
 		  (full #|(path-append dir n) |# f)
 		  (name-matched
 		   (or (not name) (compare name n verbose case-insensitivity
