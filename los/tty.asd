@@ -12,4 +12,9 @@
     :long-description   "Print the name of the terminal."
     :depends-on (:terminal :opsys :lish)
     :components
-    ((:file "tty")))
+    ((:file "tty")
+     (:module "cmds"
+      :pathname ""
+      :if-feature :lish
+      :components ((:file "tty-cmds"))
+      :depends-on ("tty"))))
