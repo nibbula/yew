@@ -191,6 +191,18 @@ removeed."
     (:device	    #\c)
     (:other	    #\o)))
 
+;; This is really just to allow compatibility with unix find which uses #\f
+;; instead of #\r for regular files.
+(defun type-char-equal (c1 c2)
+  "Return true if file type characters ‘c1’ and ‘c1’ are equal."
+  (cond
+    ((eql #\f c1)
+     (type-char-equal #\r c2))
+    ((eql #\f c2)
+     (type-char-equal c1 #\r))
+    (t
+     (char-equal c1 c2))))
+
 (defun compare-type (info type)
   "Return true if the type matches."
   ;; (format t "compare-type ~s ~s ~s~%" (type-char info) type)
@@ -198,11 +210,11 @@ removeed."
     (cond
       ((stringp type)
        (when (> (length type) 0)
-	 (char-equal c (char type 0))))
+	 (type-char-equal c (char type 0))))
       ((characterp type)
-       (char-equal c type))
+       (type-char-equal c type))
       ((symbolp type)
-       (or (and c (char-equal c (char (string type) 0)))))
+       (or (and c (type-char-equal c (char (string type) 0)))))
 	   ;; (and (eq type @@@ match keyword!
       (t
        (error "Unknown file type ~s ~a" type (type-of type))))))
