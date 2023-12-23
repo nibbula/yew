@@ -1207,6 +1207,12 @@ for the command-function).")
     (when (> top 0)
       (setf top 0))))
 
+(defmethod move-to-beginning ((p puca-app))
+  (move-to-top p))
+
+(defmethod move-to-end ((p puca-app))
+  (move-to-bottom p))
+
 (defun scroll-up (p &optional (n 5))
   "Scroll up by N items."
   (with-slots ((point inator::point) item-count top bottom) p
