@@ -185,9 +185,6 @@ fatchar:span-to-fat-string.")
 |#
 
 (defun shell-output-accepts-grotty ()
-  ;;(dbugf :accepts "*accepts* = ~s~%" lish:*accepts*)
-  ;; (dbugf :accepts "Grotty yo = ~s~%"
-  ;; 	 (symbol-call :lish :accepts :grotty-stream))
   (when (find-package :lish)
     (symbol-call :lish :accepts :grotty-stream)))
 
@@ -199,30 +196,23 @@ fatchar:span-to-fat-string.")
 (defun make-grout (&optional (stream *standard-output* stream-provided))
   "Return an appropriate grout instance. Try to figure out what kind to make
 from the STREAM. STREAM defaults to *STANDARD-OUTPUT*."
-  ;; (dbugf :grout "make-grout ~s ~s~%" stream stream-provided)
   (cond
     ((shell-output-accepts-grotty)
-     ;; (dbugf :grout "using ansi-stream~%")
      (make-instance 'grout-ansi-stream :stream stream))
     ;; Use the current *terminal*?
     ((and (not stream-provided) *terminal*
 	  ;; crunch seems a bad choice for now
 	  (and (not (string= (type-of *terminal*) :terminal-crunch))))
-     ;; (dbugf :grout "using generic-term *terminal*~%")
      (make-instance 'grout-generic-term :stream *terminal*))
     ((and stream-provided (typep stream 'terminal))
-     ;; (dbugf :grout "using generic-term provided ~s~%" (type-of stream))
      (make-instance 'grout-generic-term :stream stream))
     ((has-terminal-attributes stream)
-     ;; (dbugf :grout "using generic-term~%")
      (make-instance 'grout-generic-term :stream stream))
     ((and (nos:environment-variable "EMACS")
 	  (find-package :slime))
      ;; @@@ should really test the stream
-     ;; (dbugf :grout "using slime~%")
      (make-instance 'grout-slime :stream stream))
     (t
-     ;; (dbugf :grout "using dumb~%")
      (make-instance 'grout-dumb :stream stream))))
 
 (defmacro with-grout ((&optional (var '*grout*) (stream nil stream-provided))
@@ -402,12 +392,10 @@ generic functions (i.e. %GROUT-*) directly."
   (setf (slot-value o 'term-stream)
 	(if (typep (slot-value o 'stream) 'terminal-stream)
 	    (progn
-	      ;; (dbugf :grout "Grout re-using stream.~%")
-	      ;; (finish-output *debug-io*)
+	      ;; Re-use the steam
 	      (slot-value o 'stream))
 	    (progn
-	      ;; (dbugf :grout "Grout making a new stream.~%")
-	      ;; (finish-output *debug-io*)
+	      ;; Make a new stream
 	      (make-instance ;'terminal-ansi-stream
 	                     'terminal-dumb-color
 			     :output-stream (slot-value o 'stream))))))
@@ -560,12 +548,8 @@ generic functions (i.e. %GROUT-*) directly."
   (setf (slot-value o 'term)
 	(if (typep (slot-value o 'stream) 'terminal-stream)
 	    (progn
-	      ;; (dbugf :grout "Grout re-using stream.~%")
-	      ;; (finish-output *debug-io*)
 	      (slot-value o 'stream))
 	    (progn
-	      ;; (dbugf :grout "Grout making a new stream.~%")
-	      ;; (finish-output *debug-io*)
 	      (setf (slot-value o 'own-term) t)
 	      (make-instance 'terminal-ansi)
 	      )))
@@ -708,13 +692,8 @@ generic functions (i.e. %GROUT-*) directly."
   (setf (slot-value o 'term)
 	(if (typep (slot-value o 'stream) 'terminal-stream)
 	    (progn
-	      ;; (dbugf :grout "Grout re-using stream.~%")
-	      ;; (finish-output *debug-io*)
 	      (slot-value o 'stream))
 	    (progn
-	      ;; (dbugf :grout "Grout making a new stream ~s.~%"
-	      ;; 	     (slot-value o 'stream))
-	      ;; (finish-output *debug-io*)
 	      (setf (slot-value o 'own-term) t)
 	      (make-instance
 	       (find-terminal-class-for-type (platform-default-terminal-type))
