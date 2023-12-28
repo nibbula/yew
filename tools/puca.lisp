@@ -879,7 +879,9 @@ if an item was added."
     (mapcar #'span-to-fat-string
 	    `((:red (:underline ,(type-of error)))
 	      ("The command \"" (:cyan ,(or (puca-command p)
-					    (inator-last-command p)))
+					    (inator-last-command p)
+					    "Chowza"
+					    ))
 				"\" got an error:")
 	      (:red ,(format nil "~a" error)))))
   (invoke-restart 'continue))
@@ -897,11 +899,12 @@ if an item was added."
       `(loop :with result :and restarted
 	     :do (setf (values result restarted)
 		       (with-simple-restart (continue "Keep going")
-			 (handler-case
-			     (progn ,@body)
-			   (error (,c)
-			     ,@preamble
-			     (error-dialog ,puca ,c)))))
+			 (handler-bind
+			     ((error
+				(lambda (,c)
+				  ,@preamble
+				  (error-dialog ,puca ,c))))
+			   (progn ,@body))))
 	     :while restarted))))
 
 (define-condition items-required (info-error) ()
@@ -1009,7 +1012,7 @@ instead of the default of absolute paths."
 (defun debug-msg (fmt &rest args)
   "For debugging."
   (tt-move-to (- (tt-height) 2) 2)
-;  (clrtoeol)
+  (tt-erase-to-eol)
   (apply #'terminal-format *terminal* fmt args)
   (tt-get-char))
 
@@ -1662,7 +1665,7 @@ point in time (a.k.a. revision hash).")
 		   (:name "Email" :width ,*email-small-width*
 		    :format ,#'email-small-formatter)
 		   ;; (:name "Date" :format ,(table-cell-type-formatter
-		   ;; 			   'number #'date-cell-formatter))
+		   ;; 		        'number #'date-cell-formatter))
 		   (:name "Date" :format ,#'raw-date-cell-formatter)
 		   (:name "Message" :format ,#'message-top-line-filter))))
     (when (>= point item-count)
@@ -1706,9 +1709,10 @@ point in time (a.k.a. revision hash).")
 		       (> (length (puca-history-files p)) 5))))
       (when (or (not a-bunch)
 		(popup-y-or-n-p
-		 (span-to-fat-string `("Do you really want to view "
-				       (:cyan ,(or (puca-history-files p) "ALL"))
-				       " files?"))))
+		 (span-to-fat-string
+		  `("Do you really want to view "
+		    (:cyan ,(or (puca-history-files p) "ALL"))
+		    " files?"))))
 	(do-command #'backend-cat-history
 	  ;; @@@ Not sure how to do multiple yet..
 	  ;; (loop :for f :in files
