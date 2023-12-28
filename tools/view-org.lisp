@@ -426,11 +426,6 @@ dashes (a.k.a. #\\hyphen-minus), convert it to the symbol |-|."
 
 (defclass org-viewer (tree-viewer file-inator)
   ()
-  (:default-initargs
-   :keymap `(,tree-viewer::*tree-keymap*
-	     ,*default-file-inator-keymap*
-	     ,*default-inator-keymap*
-	     ))
   (:documentation "A viewer for Emacs Org Mode files."))
 
 (defmethod revert-file ((o org-viewer))
