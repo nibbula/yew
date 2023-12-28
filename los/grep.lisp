@@ -133,11 +133,13 @@ removeed."
     :documentation "Text of the line."))
   (:documentation "Result of grepping."))
 
+#|
 (defmethod print-object ((object grep-result) stream)
   "Print a file-item to ‘stream’."
   (with-slots (file line-number) object
     (print-unreadable-object (object stream :type t)
       (format stream "~a:~a" file line-number))))
+|#
 
 (defun make-grep-result (&rest keys &key file line-number line)
   (declare (ignorable file line-number line))
