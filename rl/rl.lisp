@@ -463,6 +463,8 @@ Keyword arguments:
       (let ((result nil))
 	(unwind-protect
 	     (progn
+	       ;; Make sure the terminal has accurate size and cursor position.
+	       (terminal-reinitialize *terminal*)
 	       ;; (tt-fresh-line)
 	       ;; (when (not re-edit)
 	       ;; 	 (pre-read e))
