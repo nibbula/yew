@@ -116,7 +116,7 @@
 (defvar *puca* nil
   "The current puca instance.")
 
-(defclass puca-app (terminal-inator options-mixin)
+(defclass puca-app (fancy-inator:fancy-inator options-mixin)
   ((backend
     :initarg :backend :accessor puca-backend :initform nil
     :documentation "The revision control system backend that we are using.")
