@@ -120,7 +120,7 @@
     :initform (lookup-color :black)
     :documentation "Background color of the window."))
   (:default-initargs
-   :keymap	`(,*image-viewer-keymap* ,*default-inator-keymap*))
+   :default-keymap *image-viewer-keymap*)
   (:documentation "An image viewer."))
 
 (defvar *image-viewer* nil
