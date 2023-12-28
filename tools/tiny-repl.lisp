@@ -401,13 +401,15 @@ to quit everything. Arguments are:
 	 (old-debugger-hook *debugger-hook*)
 	 ;; (start-level (incf *repl-level*))
 	 start-level
-	 (rl:*history-context* :repl))
+	 (rl:*history-context* :repl)
+	 old-input-mode)
     (when (not theme:*theme*)
       (setf theme:*theme* (theme-default:default-theme)))
 
     (with-repl-terminal (terminal)
       ;; This is where 'the trouble' likes to start:
-      (setf (tt-input-mode) :line)
+      (setf old-input-mode (tt-input-mode)
+	    (tt-input-mode) :line)
 
       ;; Activate the debugger if it's loaded.
       (when (and debug (find-package :deblarg))
@@ -470,7 +472,8 @@ to quit everything. Arguments are:
 		  ((eq result 'repl-exit) (format output "*Exit*~%")    nil)
 		  (t t))))
 	(setf *debugger-hook* old-debugger-hook)
+	(setf (tt-input-mode) old-input-mode)
 	(decf *repl-level*))
       want-to-quit)))
 
-;; EOF
+;; End
