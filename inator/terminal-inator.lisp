@@ -99,12 +99,14 @@
 (defmethod help ((i terminal-inator))
   "Show help for the inator."
   (let* ((doc-string (documentation (class-of i) t))
-	 (inator-doc (or (and doc-string (list doc-string "")) nil)))
+	 (inator-doc (and doc-string (list doc-string))))
     (typecase (inator-keymap i)
       (keymap
        (display-text
 	(format nil "~:(~a~) Help" (type-of i))
 	`(,@inator-doc
+	  ""
+	  ;; ,(format nil "~(~a~)~%" (keymap-name (inator-keymap i)))
 	  ,@(help-list (inator-keymap i) (_ (inator-doc-finder i _))))
 	:justify nil))
       (list
@@ -112,7 +114,7 @@
 	(format nil "~:(~a~) Help" (type-of i))
 	`(,@inator-doc
 	  ,@(loop :for k :in (inator-keymap i)
-	      ;; :append (list (princ-to-string k))
+	      :collect (format nil "~%~(~a~)" (keymap-name k))
 	      :append
 		(help-list k (_ (inator-doc-finder i _)))))
 	:justify nil)))))
