@@ -389,6 +389,9 @@ starting at START. If not found, return START."
 
 ;; We have to add in the default-inator-keymap because we want a modified keymap
 ;; with a default binding.
+;;
+;; @@@ Maybe we should just try to use the :default-keymap stuff instead of
+;; doing all this??
 (defparameter *char-picker-keymap*
   (let ((copy (copy-keymap *default-inator-keymap*
 			   :name '*char-picker-keymap*)))
