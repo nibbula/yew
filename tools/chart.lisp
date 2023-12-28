@@ -230,7 +230,7 @@ The columns can be specified as column names or numbers."
     :initarg :chart :accessor chart-viewer-chart :initform nil
     :documentation "The chart to view."))
   (:default-initargs
-   :keymap `(,*chart-viewer-keymap* ,*default-inator-keymap*))
+   :default-keymap *chart-viewer-keymap*)
   (:documentation "View a chart."))
 
 (defmethod update-display ((o chart-viewer))

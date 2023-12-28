@@ -25,35 +25,6 @@
    ))
 (in-package :file-inator)
 
-(defclass file-inator (inator)
-  ((file-name
-    :initarg :file-name :accessor file-inator-file-name :initform nil
-    :documentation "The name of the current file being edited."))
-  (:documentation "An inator that uses files."))
-
-;; File operations
-
-(defgeneric next-file (file-inator)
-  (:documentation "Go to the next file.")
-  (:method ((inator file-inator))
-    (when (find-restart 'next-file)
-      (invoke-restart 'next-file))))
-
-(defgeneric previous-file (file-inator)
-  (:documentation "Go to the previous file.")
-  (:method ((inator file-inator))
-    (when (find-restart 'previous-file)
-      (invoke-restart 'previous-file))))
-
-(defgeneric save-file (file-inator)
-  (:documentation "Save the current file."))
-(defgeneric save-as-file (file-inator)
-  (:documentation "Save the current file as a different name."))
-(defgeneric revert-file (file-inator)
-  (:documentation "Revert the current buffer"))
-(defgeneric open-file (file-inator)
-  (:documentation "Open a file."))
-
 ;; Keymaps are copies of the default inator ones, with our additions.
 
 (defkeymap *default-file-inator-keymap-additions* ()
@@ -81,6 +52,37 @@
     (,(ctrl #\W)	. save-as-file)
     (,(ctrl #\R)	. revert-file)
     (,(ctrl #\F)	. open-file)))
+
+(defclass file-inator (inator)
+  ((file-name
+    :initarg :file-name :accessor file-inator-file-name :initform nil
+    :documentation "The name of the current file being edited."))
+  (:default-initargs
+   :default-keymap *default-file-inator-keymap-additions*)
+  (:documentation "An inator that uses files."))
+
+;; File operations
+
+(defgeneric next-file (file-inator)
+  (:documentation "Go to the next file.")
+  (:method ((inator file-inator))
+    (when (find-restart 'next-file)
+      (invoke-restart 'next-file))))
+
+(defgeneric previous-file (file-inator)
+  (:documentation "Go to the previous file.")
+  (:method ((inator file-inator))
+    (when (find-restart 'previous-file)
+      (invoke-restart 'previous-file))))
+
+(defgeneric save-file (file-inator)
+  (:documentation "Save the current file."))
+(defgeneric save-as-file (file-inator)
+  (:documentation "Save the current file as a different name."))
+(defgeneric revert-file (file-inator)
+  (:documentation "Revert the current buffer"))
+(defgeneric open-file (file-inator)
+  (:documentation "Open a file."))
 
 ;; This doesn't really have to be an inator specific thing, but it is useful
 ;; for them. The names of the restarts _do_ have to come from somewhere.

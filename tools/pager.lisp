@@ -267,7 +267,7 @@ from theme value (:program :empty-line-indicator :style)")
     :initform nil :type boolean
     :documentation "True for color bytes mode."))
   (:default-initargs
-   :keymap `(,*normal-keymap* ,*default-file-inator-keymap*))
+   :default-keymap *normal-keymap*)
   (:documentation "An instance of a pager."))
 
 (defclass line-set ()
@@ -2302,6 +2302,23 @@ q - Abort")
 	  (:button-4 (setf result :scroll-up))
 	  (:button-5 (setf result :scroll-down)))))
     result))
+
+#|
+(defun follow-loop ((inator pager))
+  (unwind-protect
+       (progn
+	 (start-inator inator)
+	 (update-display inator)
+	 (loop :with event
+	    :do
+	    (when (tt-listen-for 1)
+	      (when (setf event (await-event pager))
+		(process-event inator event))
+	    :while (not (inator-quit-flag inator))
+	    :do
+	    (update-display inator))))
+    (finish-inator inator)))
+|#
 
 (defvar *sub-pager* nil
   "Indicator that we're in a pager inside a pager.")

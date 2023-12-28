@@ -310,8 +310,7 @@
     :initarg :max-line :accessor text-view-max-line :initform 0 :type fixnum
     :documentation "Line number of the the bottom."))
   (:default-initargs
-   :keymap (list *text-view-keymap*
-		 inator:*default-inator-keymap*))
+   :default-keymap *text-view-keymap*)
   (:documentation "View the document as a text."))
 
 ;; (defmethod initialize-instance

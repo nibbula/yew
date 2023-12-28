@@ -518,8 +518,7 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
     :initarg :default-action :accessor tree-viewer-default-action :initform nil
     :documentation "The default action to perform when the user accepts."))
   (:default-initargs
-   :keymap (list *tree-keymap*
-		 inator:*default-inator-keymap*)
+   :default-keymap *tree-keymap*
    :open-indicator (theme:value '(:program :tree :open-indicator))
    :closed-indicator (theme:value '(:program :tree :closed-indicator)))
   (:documentation "A tree viewer."))

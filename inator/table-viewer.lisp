@@ -104,7 +104,7 @@ for a range of rows, or a table-point for a specific item,"
     :documentation "Last search string or NIL."))
   (:default-initargs
    :point (make-table-point :row 0)
-   :keymap `(,*table-viewer-keymap* ,*default-inator-keymap*))
+   :default-keymap *table-viewer-keymap*)
   (:documentation "View a table."))
 
 (defgeneric table-length (table-viewer)

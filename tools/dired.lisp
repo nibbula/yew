@@ -138,8 +138,7 @@
     :documentation
     "Cons of X and Y position of the start of the pointer click."))
   (:default-initargs
-   :keymap `(,*dired-keymap* ,table-viewer::*table-viewer-keymap*
-	     ,*default-inator-keymap*))
+   :default-keymap *dired-keymap*)
   (:documentation "A directory editor."))
 
 (defun file-cell (row)

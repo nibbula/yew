@@ -34,9 +34,7 @@
     "The default type of nodes created, which should probably be a subclass of
 object-node."))
   (:default-initargs
-   :keymap (list *tree-edit-keymap*
-		 tree-viewer::*tree-keymap*
-		 inator:*default-inator-keymap*))
+   :default-keymap *tree-edit-keymap*)
   (:documentation "Editor for trees."))
 
 (defun ensure-widget (e)
@@ -227,9 +225,6 @@ object-node."))
 	      (ensure-root)
 	      (event-loop *viewer*))
 	    (with-inator (*viewer* 'tree-editor
-				   :keymap (list *tree-edit-keymap*
-						 tb::*tree-keymap*
-						 inator:*default-inator-keymap*)
 				   :bottom (- (tt-height) 2)
 				   :root (if (listp tree)
 					     (convert-tree tree) tree))

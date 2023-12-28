@@ -734,7 +734,7 @@ The function receives a 'pick' as an argument."))
  ‘default-value’   Return if no item is selected.
  ‘selected-item’   Item to have initially selected.
  ‘typing-searches’ True to have alphanumeric input search for the item.
- ‘keymap’          Add a custom keymap.
+ ‘keymap’          Add a custom local keymap.
  ‘multiple’        True to allow multiple items to be selected.
  ‘popup’           True to use a pop-up window, in which case provide X and Y.
  ‘before-hook’     A function to call before entering the event loop.
@@ -747,10 +747,7 @@ The function receives a 'pick' as an argument."))
 	    :default-value   ,default-value
 	    :selected-item   ,selected-item
 	    :typing-searches ,typing-searches
-	    ;; If a keymap is given, put it in front of the standard ones.
-	    ;; :keymap          (when keymap
-	    ;; 		    (list keymap
-	    ;; 		     *pick-list-keymap* *default-inator-keymap*))
+	    :local-keymap    ,keymap
 	    :multiple        ,multiple
 	    :popup           ,popup
 	    :x               ,x

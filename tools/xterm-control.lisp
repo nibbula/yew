@@ -12,8 +12,6 @@
    ))
 (in-package :xterm-control)
 
-;; (declaim (optimize (speed 0) (safety 0) (debug 3) (space 0) (compilation-speed 0)))
-
 (defun raw-format (control &rest args)
   (let ((tt (or (terminal-wrapped-terminal *terminal*) *terminal*)))
     (apply #'terminal-format tt control args)
@@ -324,6 +322,8 @@
     :initarg :initialize-all :accessor xterminator-initialize-all
     :initform t :type boolean
     :documentation "True to initialize all parameters."))
+  (:default-initargs
+   :default-keymap *xterminator-keymap*)
   (:documentation "XTerm compatible terminal manipulator."))
 
 (defun get-xterm-parameter (o parameter)
@@ -677,9 +677,7 @@
 (defun control-xterm ()
   (with-terminal ( #| :ansi |#)
     (let ((*xterminator*
-	   (make-instance 'xterminator
-			  :keymap (list *xterminator-keymap*
-					*default-inator-keymap*))))
+	   (make-instance 'xterminator)))
       (event-loop *xterminator*))))
 
 #+lish
@@ -757,4 +755,4 @@ interactive control mode."
 			 :collect (slot-value x p)))))))
       (control-xterm)))
 
-;; EOF
+;; End
