@@ -206,7 +206,8 @@
 	       (setf (buffer-chunk-data chunk) nil) ;; just to be sure
 	       ;; @@@ this should probably be an error since it indicates
 	       ;; an inconsistency
-	       ;;(format t "already read chunk?~%"))
+	       ;;(format t "already read chunk?~%)
+	       )
 	     ;; read out of the chunk
 	     (progn
 	       (setf start (- read-point
