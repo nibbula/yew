@@ -10,6 +10,6 @@
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "A pipe buffer of some sort."
-;;    :depends-on (none)
+    :depends-on (:opsys)
     :components
     ((:file "pipe-buffer")))

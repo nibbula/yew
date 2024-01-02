@@ -25,11 +25,11 @@
 ;;
 ;; @@@ We should work out a "fast path" for single elements.
 
-(defparameter *chunk-max-size* #.(* 1024 1024 4)
-  "Limit on the size of chunks.")
-
-(defparameter *chunk-min-size* #.(* 1024 4) ; @@@ should be system page size
+(defparameter *chunk-min-size* (nos:memory-page-size)
   "Starting size of chunks.")
+
+(defparameter *chunk-max-size* (* 1024 (nos:memory-page-size))
+  "Limit on the size of chunks.")
 
 (defparameter *default-element-type* 'character
   "Default element type of data.")
