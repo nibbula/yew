@@ -1452,7 +1452,7 @@ list containing strings and lists."
 (defun filter-more (pager)
   "Add to the list of regular expressions for hiding lines."
   (with-slots (filter-exprs) pager
-    (let ((filter (ask "Hide lines also mathing: "))
+    (let ((filter (ask "Hide lines also matching: "))
 	  (original filter-exprs))
       (when filter
 	(push filter filter-exprs)
