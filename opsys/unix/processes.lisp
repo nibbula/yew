@@ -743,6 +743,9 @@ the current process."
 ;; Warning: very un-hygenic.
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defmacro with-priority-args ((user pid group) &body body)
+    "Evaluate ‘body’ with ‘who’ and ‘which’ set appropriately for ‘getpriority’.
+Only one of ‘user’, ‘pid’, and ‘group’ should be the associated ID number. The
+rest should be nil. If they're all NIL, default to the current process."
     (with-names (args val)
       `(let* ((,args `((,,user  . ,+PRIO-USER+)
 		       (,,pid   . ,+PRIO-PROCESS+)
@@ -769,6 +772,9 @@ the current process."
     (with-priority-args (user pid group)
       (%set-errno 0) ;; so fucking stupid.
       (setf result (getpriority which who))
+      ;; If any system call happens between the previous and next line, then
+      ;; this might not work. It seesm like it would be trouble to block all
+      ;; interrupts.
       (when (and (= result -1) (not (zerop (errno))))
 	(error-check result))
       result)))
@@ -780,8 +786,7 @@ the current process."
 (defsetf os-process-priority (&rest args &key user pid group &allow-other-keys)
   (value)
   (declare (ignorable user pid group))
-;;  `(apply #'set-os-process-priority ,value (list ,@args)))
-  `(apply #'set-os-process-priority ,value ,args))
+  `(set-os-process-priority ,value ,@args))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; job control thingys
