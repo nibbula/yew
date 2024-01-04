@@ -61,6 +61,12 @@
     ("text"                  		. (:pager :pager))
     ))
 
+(defparameter *lisp-viewer-alist*
+  `((package            . (:view-lisp :view-package))
+    (asdf:system        . (:view-list :view-system))
+    )
+  "Alist of (type . view-designator) for Lisp object types.")
+
 (defparameter *file-name-types*
   `(("csv"          . ("text"		. "csv"))
     ("org"	    . ("text"		. "org"))
@@ -209,6 +215,14 @@ or a system command, designated by either a string, or a list of
 (defmethod view ((thing stream))
   (view-file thing))
 
+;; This is mostly if the viewer package isn't loaded yet. When the viewer
+;; package is loaded, it can provide it's own ‘view’ method, so this default
+;; one won't get invoked.
+(defmethod view (thing)
+  (let ((entry (assoc (type-of thing) *lisp-viewer-alist*)))
+    (when entry
+      (invoke-viewer (make-viewer-from (cdr entry)) thing))))
+
 (defun view-things (things)
   (loop :for thing :in things :do
      (with-simple-restart (continue "View the next thing.")
@@ -234,7 +248,10 @@ or a system command, designated by either a string, or a list of
 ;; This is really stubby yet.
 #+lish
 (lish:defcommand view
-  ((things pathname :repeating t :optional t :help "The things to view."))
+  ((raw boolean :short-arg #\r :help "View the raw data.")
+   ;; (things pathname :repeating t :optional t :help "The things to view.")
+   (things object :repeating t :optional t :help "The things to view.")
+   )
   "Look at something."
   (when (not things)
     (setf things (or (and lish:*input*
@@ -242,6 +259,8 @@ or a system command, designated by either a string, or a list of
 			      lish:*input*
 			      (list lish:*input*)))
 		     (list (pick-file)))))
-  (view-things things))
+  (if raw
+      (view-raw-things things)
+      (view-things things)))
 
-;; EOF
+;; End
