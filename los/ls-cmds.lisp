@@ -10,14 +10,14 @@
 
 (lish:defcommand ls
   ((files pathname :repeating t :help "The file(s) to list.")
-   (long boolean :short-arg #\l :help "True to list in long format.")
+   (long boolean :short-arg #\l :help "List in long format.")
    (1-column boolean :short-arg #\1 :use-supplied-flag t
-    :help "True to list one file per line.")
+    :help "List one file per line.")
    (wide boolean :short-arg #\w
-    :help "True to not truncate the output to the terminal width.")
-   (hidden boolean :short-arg #\a :help "True to list hidden files.")
+    :help "Don't truncate the output to the terminal width.")
+   (hidden boolean :short-arg #\a :help "List hidden files.")
    (directory boolean :short-arg #\d
-    :help "True to list the directory itself, not its contents.")
+    :help "List the directory itself, not its contents.")
    (case-insensitive boolean :short-arg #\C
     :help "Sorting by name is case insensitive.")
    (sort-by choice :long-arg "sort" :help "Field to sort by."
@@ -29,9 +29,9 @@
     :default "normal"
     :choices '("normal" "nibby"))
    (reverse boolean :short-arg #\r :help "Reverse sort order.")
-   (show-size boolean :short-arg #\s :help "True to show the file size.")
-   (non-human-size boolean :short-arg #\h :help "True to show sizes in bytes.")
-   (omit-headers boolean :short-arg #\H :help "True to omit table headers.")
+   (show-size boolean :short-arg #\s :help "Show the file size.")
+   (non-human-size boolean :short-arg #\h :help "Show sizes in bytes.")
+   (omit-headers boolean :short-arg #\H :help "Omit the table headers.")
    (size-format lenient-choice :long-arg "size-format" :default "human"
 		:choices '("human" "bytes")
 		:help "Format to show sizes with.")
@@ -42,7 +42,7 @@
    (quiet boolean :short-arg #\q :help "Suppress output.")
    (recursive boolean :short-arg #\R :help "Recursively list sub-directories.")
    (signal-errors boolean :short-arg #\E
-    :help "True to signal errors. Otherwise print them to *error-output*.")
+    :help "Signal errors. Otherwise print them to *error-output*.")
    ;; Short cut sort args:
    (by-extension boolean :short-arg #\X :help "Sort by file name extension.")
    (by-size boolean :short-arg #\S :help "Sort by size, largest first.")
