@@ -12,6 +12,8 @@
    #:!view-lisp
    #:view-packages
    #:view-package
+   #:view-system
+   #:view-systems
    ))
 (in-package :view-lisp)
 
@@ -413,10 +415,21 @@
       :object (asdf::registered-system s)
       :open nil)))
 
+(defun system-contents-tree ()
+  "Return a tree viewer tree of all systems."
+  (make-object-node
+   :object "All Systems"
+   :open t
+   :branches (systems-contents nil)))
+
 (defun view-system (system)
   (view-tree (make-instance 'system-node
 			    :object (asdf:find-system system)
 			    :open t)))
+
+(defun view-systems ()
+  "View all systems in the tree browser."
+  (view-tree (system-contents-tree)))
 
 ;; (defmethod view ((thing asdf:cl-source-file))
 (defmethod view ((thing asdf:component))
