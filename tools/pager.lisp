@@ -1862,9 +1862,8 @@ byte-pos."
       (setf line (max 0 (- line 5)))))
   (:method ((pager binary-pager))
     (with-slots (prefix-arg) pager
-      (with-slots (line) (pager-current pager)
-	(setf prefix-arg 5)
-	(previous pager)))))
+      (setf prefix-arg 5)
+      (previous pager))))
 
 (defgeneric scroll-down (pager)
   (:documentation "Scroll the pager forward some lines.")
