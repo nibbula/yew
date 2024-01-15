@@ -11,6 +11,6 @@
     :source-control	:git
     :long-description   "Grab Quicklisp statistics files."
     :depends-on (:dlib :dlib-misc :opsys :collections :glob :dtt :table-viewer
-		 :fui :drakma :chart)
+		 :fui :drakma :chart :cl-ppcre)
     :components
     ((:file "ql-stats")))

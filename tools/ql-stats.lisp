@@ -12,6 +12,9 @@
    #:view-it
    #:chart-it
    #:!ql-stats
+   #:*ql-projects-dir*
+   #:quicklisp-hosts
+   #:!ql-origin
    ))
 (in-package :ql-stats)
 
@@ -229,5 +232,151 @@ current month."
 			     'chart::horizontal-bar
 			     'chart::vertical-bar)
 			 chart)))))
+
+;; quicklisp-projects utilities
+;; @@@ maybe we should chage the name of this package to ql-utils or something
+
+(defparameter *ql-projects-dir*
+  (load-time-value
+   (or (maybe-refer-to :cl-user '#:*ql-projects-dir*)
+       (maybe-refer-to :lish-user '#:*ql-projects-dir*)
+       (nos:env "QL_PROJECTS_DIR")))
+  "Directory with a checked out quicklisp-projects. Defaults from
+‘*ql-projects-dir*’ in ‘cl-user’ or ‘lish-user’ so you can just set it in
+your .*rc file, or an environment variable QL_PROJECTS_DIR.")
+
+(defun ql-projects-dir ()
+  (unless (nos:directory-p (lish:expand-single-file-name *ql-projects-dir*))
+    (error "Please set *ql-projects-dir* to a quicklisp-projects directory."))
+  *ql-projects-dir*)
+
+(defun extract-host (line)
+  "Return the host from a Quicklisp source.txt line."
+  (multiple-value-bind (m mm)
+      (ppcre:scan-to-strings "http[s]*://([^/]+)/" line)
+    (declare (ignore m))
+    (ofirst mm)))
+
+;; (defun quicklisp-projects-count-tree (func)
+;;   "Return a list of (count result) for all Quicklisp projects, where ‘result’
+;; is the result of calling ‘func’ on each source.txt line."
+;;   (sort
+;;     (loop :for site :in
+;;       (group-by-alist
+;;        #'first
+;;        (loop :with site :and project
+;;              :for r :in (loop :for f :in (glob
+;;                                           (nos:path-append
+;;                                            (ql-projects-dir)
+;;                                            "projects" "*" "source.txt"))
+;; 			      :do (setf project
+;; 					(nos:basename (nos:path-parent f)))
+;;                               :collect (first (file-lines f)))
+;;              :do (setf site (funcall func r))
+;;              :when site
+;;              :collect (list site project)))
+;;        :collect (list (length (cdr site)) (first site)
+;;     #'> :key #'car))
+
+(defun quicklisp-projects-count (func)
+  "Return a list of (count result) for all Quicklisp projects, where ‘result’
+is the result of calling ‘func’ on each source.txt line."
+  (sort
+    (loop :for site :in
+      (group-by-alist
+       #'identity
+       (loop :with site
+             :for r :in (loop :for f :in (glob
+                                          (nos:path-append
+                                           (ql-projects-dir)
+                                           "projects" "*" "source.txt"))
+                              :collect (first (file-lines f)))
+             :do (setf site (funcall func r))
+             :when site
+             :collect site))
+       :collect (list (length (cdr site)) (first site)))
+    #'> :key #'car))
+
+(defun quicklisp-hosts ()
+  "Return a list of (count host) for all Quicklisp projects."
+  (quicklisp-projects-count #'extract-host))
+
+(defun extract-method (line)
+  "Return the method from a Quicklisp source.txt line."
+  (multiple-value-bind (m mm)
+      (ppcre:scan-to-strings "^([^ ]+) " line)
+    (declare (ignore m))
+    (string-downcase (ofirst mm))))
+
+(defun quicklisp-methods ()
+  "Return a list of (count host) for all Quicklisp projects."
+  (quicklisp-projects-count #'extract-method))
+
+#+(or)
+(defun quicklisp-hosts ()
+  "Return a list of (count host) for all Quicklisp projects."
+  (sort
+    (loop :for site :in
+      (group-by-alist
+       #'identity
+       (loop :with site
+             :for r :in (loop :for f :in (glob
+                                          (nos:path-append
+                                           (ql-projects-dir)
+                                           "projects" "*" "source.txt"))
+                              :collect (first (file-lines f)))
+             :do (multiple-value-bind (m mm)
+                     (ppcre:scan-to-strings "http[s]*://([^/]+)/" r)
+                   (declare (ignore m))
+                   (setf site (ofirst mm)))
+             :when site
+             :collect site))
+       :collect (list (length (cdr site)) (first site)))
+    #'> :key #'car))
+
+;; @@@ This is so stupid. We should fix "view".
+(defun open-url (url)
+  (lish:!=
+   #+(or linux bsd) "xdg-open"
+   #+darwin "open"
+   #+windows "start" ;; This will probably start edge since M$ is still fuck
+   #-(or linux darwin windows) (error "I don't know how to open a URL.")
+   url))
+
+#+quicklisp
+(lish:defcommand ql-origin
+  ((open boolean :short-arg #\o :help "Try to open it.")
+   (clone boolean :short-arg #\c :help "Try to git clone it.")
+   (popup boolean :short-arg #\p :help "Pop up stuff.")
+   (system quicklisp-system-designator
+    :help "System to show the origin of."))
+  :accepts '(arg-quicklisp-system-designator)
+  (when (not (or system lish:*input*))
+    (error "Please supply a system."))
+  (when (not system)
+    (setf system (ql-dist:system-file-name lish:*input*)))
+  (let* ((project-name (string-downcase system))
+	 (ql-system (ql-dist:find-system project-name))
+	 (project-file (glob:expand-tilde
+			(nos:path-append
+			 (ql-projects-dir)
+			 (if ql-system
+			     (ql-dist:project-name (ql-dist:release ql-system))
+			     project-name)
+			 "source.txt"))))
+  (when (not (nos:file-exists project-file))
+    (error "The system isn't in quicklisp. Maybe you should update ~
+            quicklisp-projects?"))
+  (setf lish:*output*
+	(write-string
+	 (slurp project-file)))
+  (let ((url (cadr (split-sequence #\space (trim lish:*output*)))))
+    (when open
+      (when (if popup
+		(fui:popup-y-or-n-p (s+ "Open " url "?"))
+		(y-or-n-p "Open ~s ?" url))
+	(open-url url)))
+    (when clone
+      (lish:!= "git" "clone" url)))))
 
 ;; End
