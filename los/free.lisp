@@ -240,8 +240,7 @@ Swap:    ~11d ~11d ~11d~%"
 			    (memory-lisp-space m)))))
 	     (lisp-unused-bar
 	       (when (and lisp (memory-lisp-space m))
-		 (- bar-width lisp-bar)))
-	     )
+		 (- bar-width lisp-bar))))
 	(grout-span `((:cyan "Used: ")
 		      ,(format-compact-size (- (memory-total m)
 					      (memory-free m)
