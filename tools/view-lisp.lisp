@@ -350,7 +350,7 @@
 	   ;; When we can't find a system for a dependency, it probably means
 	   ;; this system wasn't loaded, and may likely be a stupid .asd file
 	   ;; with multiple system definitions, some of which aren't loaded.
-	   nil)))))z
+	   nil)))))
 
 (defun system-contents (system)
   (list
