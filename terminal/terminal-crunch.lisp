@@ -707,8 +707,11 @@ sizes. It only copies the smaller of the two regions."
      (screen-cursor-state to-screen)     (screen-cursor-state from-screen)
      (screen-beep-count to-screen)       (screen-beep-count to-screen))
     (loop :for i :from 0 :below min-y :do
-      (map-into (aref (screen-lines to-screen) i)
-		#'copy-grid-char (aref (screen-lines from-screen) i))
+      ;; (map-into (aref (screen-lines to-screen) i)
+      ;; 		#'copy-grid-char (aref (screen-lines from-screen) i))
+      (loop :for j :from 0 :below min-x :do
+        (set-grid-char (aref (aref (screen-lines to-screen) i) j)
+		       (aref (aref (screen-lines from-screen) i) j)))
       (setf (aref (screen-index to-screen) i)
 	    (aref (screen-index from-screen) i)))
     (compute-hashes to-screen)))
@@ -2130,8 +2133,12 @@ Set the current update position UPDATE-X UPDATE-Y in the TTY."
 	  (screen-beep-count old)       0)
     (loop :for i :from 0 :below (length (screen-lines new))
        :do
-       (map-into (aref (screen-lines old) i)
-		 #'copy-grid-char (aref (screen-lines new) i))
+       ;; (map-into (aref (screen-lines old) i)
+       ;; 		 #'copy-grid-char (aref (screen-lines new) i))
+       (loop :for j :from 0 :below (length (aref (screen-lines old) i)) :do
+         (set-grid-char (aref (aref (screen-lines old) i) j)
+			(aref (aref (screen-lines new) i) j)))
+
        ;; Sync both the new and old indexes.
        (setf (aref (screen-index old) i) i
 	     (aref (screen-index new) i) i))
