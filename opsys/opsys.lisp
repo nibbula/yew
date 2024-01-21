@@ -1647,11 +1647,9 @@ a terminal.")
 (defun setup-locale-from-environment ()
   "Do appropriate setlocale calls based on the current settings of LC_*
 environment variables."
-  (loop :with e = nil
-	:for f :in libc::+lc-env-type+
-	:do
-	(when (setf e (environment-variable (cdr f)))
-	  (setlocale (car f) e))))
+  (loop
+    :for f :in libc::+lc-env-type+ :do
+       (setlocale (car f) (or (environment-variable (cdr f)) ""))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Miscellaneous
