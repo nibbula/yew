@@ -615,7 +615,7 @@ generate the list. ‘message’ will be printed when the item fails the test."
 	      (glob:glob (s+ item "*")))
 	    (lambda (item list)
 	      (declare (ignore list))
-	      (or allow-nonexistent (nos:file-exists item)))
+	      (or allow-nonexistent (nos:file-exists (glob:expand-tilde item))))
 	    :message "isn't an existing file")
 	   'accept-line
 	   (make-read-local-keymap)
