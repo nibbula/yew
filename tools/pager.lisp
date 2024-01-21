@@ -1869,9 +1869,8 @@ byte-pos."
   (:documentation "Scroll the pager forward some lines.")
   (:method ((pager text-pager))
     (with-slots (prefix-arg) pager
-      (with-slots (line) (pager-current pager)
-	(setf prefix-arg 5)
-	(next pager))))
+      (setf prefix-arg 5)
+      (next pager)))
   (:method ((pager binary-pager))
     (with-slots (prefix-arg) pager
       (setf prefix-arg 5)
@@ -2000,13 +1999,12 @@ byte-pos."
 (defmethod search-next ((pager text-pager))
   "Search for the next occurrence of the current search in the stream."
   (with-slots (search-string) pager
-    (with-slots (line) (pager-current pager)
-      (when (not (search-for pager search-string))
-	(message pager "--Not found--")))))
+    (when (not (search-for pager search-string))
+      (message pager "--Not found--"))))
 
 (defmethod search-next ((pager binary-pager))
   "Search for the next occurrence of the current search in the stream."
-  (with-slots (byte-pos search-string) pager
+  (with-slots (search-string) pager
     (when (not search-string)
       (user-error "Search string isn't set."))
     (let ((byte-str (unicode:string-to-utf8b-bytes search-string)))
@@ -2057,20 +2055,19 @@ byte-pos."
 
 (defun show-detailed-info (pager)
   "Show information about the stream."
-  (with-slots (stream page-size filter-exprs keep-expr seekable) pager
-    (with-slots (count) (pager-current pager)
-      (fui:with-typeout (str :title "Pager Buffer Information")
-	(print-properties
-	 `("Name"             ,(stream-name stream)
-	   "Current position" ,(bytes-current pager)
-	   "Total Length"     ,(total-bytes pager)
-	   "Current line"     ,(current-line pager)
-	   "Maximum line"     ,(maximum-line pager)
-	   "Percentage"       ,(percentage pager)
-	   "Filters"          ,filter-exprs
-	   "Keep"             ,keep-expr
-	   "Seekable?"        ,seekable)
-	 :stream str)))))
+  (with-slots (stream filter-exprs keep-expr seekable) pager
+    (fui:with-typeout (str :title "Pager Buffer Information")
+      (print-properties
+       `("Name"             ,(stream-name stream)
+         "Current position" ,(bytes-current pager)
+         "Total Length"     ,(total-bytes pager)
+         "Current line"     ,(current-line pager)
+         "Maximum line"     ,(maximum-line pager)
+         "Percentage"       ,(percentage pager)
+         "Filters"          ,filter-exprs
+         "Keep"             ,keep-expr
+         "Seekable?"        ,seekable)
+       :stream str))))
 
 ;; This is very bogus.
 (defun show-version (pager)
