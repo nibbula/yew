@@ -166,6 +166,10 @@
 		  level))
 
 (defun view-package (package)
+  (etypecase package
+    ((or symbol string)
+     (setf package (find-package package)))
+    (package))
   (view-tree (make-instance 'package-node
 			    :object package
 			    :func #'package-contents
@@ -246,13 +250,13 @@
 		  (loop :for e :in shadow :collect (nn e))) contents))
       (nreverse contents))))
 
-(defun package-contents-tree ()
+(defun package-contents-tree (&key packages title)
   "Return a tree viewer tree of all packages."
   (make-object-node
-   :object "All Packages"
+   :object (or title "All Packages")
    :open t
    :branches
-   (loop :for p :in (list-all-packages)
+   (loop :for p :in (or packages (list-all-packages))
       :collect
       (make-instance 'package-node
 		     :object p
@@ -262,6 +266,33 @@
 (defun view-packages ()
   "View all packages in the tree browser."
   (view-tree (package-contents-tree)))
+
+#+lish
+(lish:defcommand view-package
+  ((all boolean :short-arg #\a :help "View all packages.")
+   (package package :repeating t :help "Package to view."))
+  "View a package with the package viewer."
+  (when (not package)
+    (setf package lish:*input*))
+  (if all
+      (view-packages)
+      (typecase package
+	(cons
+	 (if (= 1 (length package))
+	     (view-package (first package))
+	     (view-tree (package-contents-tree
+			 :packages (mapcar #'find-package package)
+			 :title "Packages"))))
+	(string
+	 (view-package (find-package (string-upcase package))))
+	(symbol
+	 (view-package (find-package package)))
+	(package
+	 (view-package package))
+	(t
+	 (error "~s should be a package designator, not a ~a." package
+		(type-of package)))))
+  (setf lish:*output* package))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Generic text nodes
