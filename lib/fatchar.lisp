@@ -417,6 +417,9 @@ the environemnt has <arg> and <arg>-P for all those keywords."
    count-if (predicate (fat-string-string collection) :from-end from-end
 		       :key key)))
 
+(defmethod oreverse ((string fat-string))
+  (make-fat-string :string (reverse (fat-string-string string))))
+
 (defmethod ofind ((item character) (string fat-string)
 		  &key from-end key test test-not
 		    (start nil start-p)
@@ -586,8 +589,9 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 			&rest args
 			&key from-end test test-not start end count key)
   (declare (ignorable from-end test test-not start end count key))
-  (apply #'osubstitute
-	 new-item old-item (fat-string-string collection) args))
+  (make-fat-string
+   :string (apply #'osubstitute
+		  new-item old-item (fat-string-string collection) args)))
 
 (defmethod onsubstitute ((new-item fatchar)
 			(old-item fatchar) (collection fat-string)
