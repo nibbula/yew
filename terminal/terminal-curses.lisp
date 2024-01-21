@@ -428,16 +428,12 @@ element is the width."
 
 (defvar *default-scroll-ok* 1)
 
-(defmethod terminal-start ((tty terminal-curses))
-  "Set up the terminal for reading a character at a time without echoing."
+(defun setup (tty)
+  "Do the main work of initializing."
   (with-slots ((start-at-current-line terminal::start-at-current-line)
 	       start-line) tty
-    (when start-at-current-line
-      (filter))
-
-    (when (not (device tty))		; already done
-      (initscr)
-      (setf (screen tty) *stdscr*))
+    ;; (when start-at-current-line
+    ;;   (filter))
     (noecho)
     (nonl)
     (cbreak)
@@ -452,11 +448,19 @@ element is the width."
     (leaveok curses:*stdscr* 0)
     (scrollok curses:*stdscr* *default-scroll-ok*)
     (curs-set 1)
-    (init-colors tty)
     (terminal-get-size tty)
     (setf start-line (terminal-get-cursor-position tty))
-    (when (zerop start-line)
-      (nofilter))))
+    ;; (when (and start-at-current-line (zerop start-line))
+    ;;   (nofilter))
+    ))
+
+(defmethod terminal-start ((tty terminal-curses))
+  "Set up the terminal for reading a character at a time without echoing."
+  (when (not (device tty))		; already done
+    (initscr)
+    (setf (screen tty) *stdscr*))
+  (setup tty)
+  (init-colors tty))
 
 (defmethod terminal-end ((tty terminal-curses) &optional state)
   "Put the terminal back to the way it was before we called terminal-start."
@@ -474,6 +478,11 @@ element is the width."
       (nos:fclose out-fp)
       (nos:fclose in-fp)))
   (values))
+
+(defmethod terminal-reinitialize ((tty terminal-curses))
+  "Do any re-initialization necessary, and return the saved state."
+  (setup tty)
+  nil)
 
 (defun unfilter (tty)
   "Stop doing the filter thing."
