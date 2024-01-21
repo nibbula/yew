@@ -25,6 +25,7 @@ The shell command takes any number of file names.
   (:export
    #:*pager-prompt*
    #:*empty-indicator*
+   #:*default-mutate-function*
    #:page
    #:page-thing
    ;; Main entry points
@@ -53,6 +54,9 @@ The shell command takes any number of file names.
 
 (defparameter *default-binary-pager-prompt* "%&%f byte %b of %B%&"
   "Default prompt for text.")
+
+(defparameter *default-mutate-function* nil
+  "Default line mutator function for new pagers.")
 
 ;; Since *prompt* is taken on some implementations.
 (defvar *pager-prompt* nil
@@ -192,7 +196,8 @@ The shell command takes any number of file names.
     :documentation "Show only lines matching these regular expressions.")
    (mutate-function
     :initarg :mutate-function :accessor pager-mutate-function :initform nil
-    :documentation "Function to alter lines.")
+    :documentation "Function to alter lines. Receives the line as a fat-string,
+and should return a fat-string to display.")
    (file-list
     :initarg :file-list :accessor pager-file-list :initform nil
     :documentation "List of files or file locations to display")
@@ -267,7 +272,8 @@ from theme value (:program :empty-line-indicator :style)")
     :initform nil :type boolean
     :documentation "True for color bytes mode."))
   (:default-initargs
-   :default-keymap *normal-keymap*)
+   :default-keymap *normal-keymap*
+   :mutate-function *default-mutate-function*)
   (:documentation "An instance of a pager."))
 
 (defclass line-set ()
@@ -909,12 +915,21 @@ line : |----||-------||---------||---|
 	 (incf i 2)))))
 
 (defun show-span (s)
-  (when (not s)
-    ;; (return-from show-span 0)
-    ;; But now empty lines come over as NIL, so:
-    (tt-write-char #\newline)
-    (return-from show-span 1))
-  (with-slots (wrap-lines search-string) *pager*
+  (with-slots (wrap-lines search-string mutate-function) *pager*
+    (when (not s)
+      ;; (return-from show-span 0)
+      ;; But now empty lines come over as NIL, so:
+      (cond
+	(mutate-function
+	 (setf (fill-pointer *fat-buf*) 0)
+	 (let ((fs (funcall mutate-function
+			    (make-fat-string :string *fat-buf*)))
+	       (len (display-length *fat-buf*)))
+	   (tt-write-line fs)
+	   (return-from show-span (max 1 (ceiling len (tt-width))))))
+	(t
+	 (tt-write-char #\newline)
+	 (return-from show-span 1))))
     (if wrap-lines
 	(span-to-fatchar-string s :fatchar-string *fat-buf* :start *left*)
 	(span-to-fatchar-string s :fatchar-string *fat-buf* :start *left*
@@ -925,7 +940,10 @@ line : |----||-------||---------||---|
       ;; (if (= len (tt-width))
       ;; 	  (tt-write-string (make-fat-string :string *fat-buf*)))
       ;; 	  (tt-write-line (make-fat-string :string *fat-buf*))
-      (tt-write-string (make-fat-string :string *fat-buf*))
+      (let ((fs (make-fat-string :string *fat-buf*)))
+	(tt-write-string (if mutate-function
+			     (funcall mutate-function fs)
+			     fs)))
       ;; @@@ or something? minus the line numbers
       ;; (max 1 (ceiling (length *fat-buf*) (tt-width)))
       ;; (max 1 (ceiling (display-length *fat-buf*) (tt-width)))
