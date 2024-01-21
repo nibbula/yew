@@ -594,8 +594,8 @@ return the file portion."
 (setf (symbol-function 'basename) #'path-file-name)
 
 (defun path-append (first-path &rest paths)
-  "Append the elements PATHS to FIRST-PATH. Put a directory separator between
-them if there isn't one already."
+  "Append the elements ‘paths’ to ‘first-path’. Put a directory separator
+between them if there isn't one already."
   (when (not (or (stringp first-path) (pathnamep first-path)))
     (error "FIRST-PATH should be pathname designator."))
   (flet ((trailing-separator-p (s)
@@ -610,7 +610,7 @@ them if there isn't one already."
 	  (princ ns str))
 	(loop :for p :in paths :do
 	   (when (not (or (stringp p) (pathnamep p)))
-	     (error "Elements in PATHS should be pathname designators."))
+	     (error "Elements in ‘paths’ should be pathname designators."))
 	   (setf ns (safe-namestring p))
 	   (when (not (zerop (length ns)))
 	     (when (and any (not last-was-separator)
@@ -619,6 +619,8 @@ them if there isn't one already."
 	     (setf last-was-separator (trailing-separator-p ns))
 	     (princ ns str)
 	     (setf any t)))))))
+
+(defalias 'p+ 'path-append)
 
 (defun path-snip-ext (path)
   "Remove the extension from a file name, which for this simple function means
@@ -699,6 +701,8 @@ INCREMNT seconds.")
 (defosfun is-executable (path &key user regular)
   "Return true if the PATH is executable by the USER. USER defaults to the
 current effective user. If REGULAR is true also check if it's a regular file.")
+
+(defalias 'file-executable-p 'is-executable)
 
 (defun has-directory-p (path)
   "Return true if PATH has a directory part."

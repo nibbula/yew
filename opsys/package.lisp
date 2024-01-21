@@ -84,7 +84,7 @@
    #:path-directory-name #:dirname
    #:path-file-name #:basename
    #:path-root
-   #:path-append
+   #:path-append #:p+
    #:path-snip-ext
    #:path-extension
    #:path-parent
@@ -110,6 +110,7 @@
    #:file-info
    #:get-file-info ;; Deprecated
    #:file-accessible-p
+   #:file-executable-p
    #:stream-system-handle
    #:stream-handle-direction
    #:file-exists
