@@ -29,6 +29,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    #:fatchar=
    #:fatchar/=
    #:make-fat-string
+   #:copy-fat-string
    #:make-fatchar-string
    #:make-fatchar-string-of-length
    #:copy-fatchar-string
@@ -232,22 +233,30 @@ smallest unit of written language."
 (defmethod olength ((s fat-string))
   (length (fat-string-string s)))
 
+(defun copy-fat-string (string)
+  "Make a copy of the fat-string ‘string’."
+  (make-instance 'fat-string
+		 :string (copy-fatchar-string (fat-string-string string))))
+
 (defun make-fat-string (&key string length initial-element)
-  "Make a FAT-STRING. You can make it from a FATCHAR-STRING or a normal string,
-given in STRING, or if you give LENGTH, one will be made for you. If you supply
-LENGTH, you can also supply INITIAL-ELEMENT that will be copied to the initial
-elements of the string."
-  (check-type string (or null fatchar-string string))
+  "Make a FAT-STRING. You can supply ‘string’ to make it from a FATCHAR-STRING,
+which will be used as the contents, another FAT-STRING whose contents will be
+copied, or a normal string. If you give ‘length’, one will be made for you.
+If you supply ‘length’, you can also supply ‘initial-element’ that will
+be copied to the initial elements of the string."
+  (check-type string (or null fatchar-string string fat-string))
   (when (and string length)
     ;; @@@ I guess we could if length is >= the length of the string, and we
     ;; just use string to initialize it. But is that a good idea? or too DWIMish?
-    (error "I can't both use your STRING, and make one of LENGTH."))
+    (error "I can't both use your ‘string’, and make one of ‘length’."))
   (make-instance 'fat-string
 		 :string
 		 (cond
 		   (string
 		    (etypecase string
 		      (fatchar-string string)
+		      (fat-string
+		       (copy-fatchar-string (fat-string-string string)))
 		      (string (make-fatchar-string string))))
 		   (length
 		    (make-fatchar-string-of-length
@@ -1127,6 +1136,33 @@ no fg <┐│││││││┌──────> [reserved]
 			  (,f a (fat-string-to-string b))))))
       `(progn ,@forms))))
 (make-ostring-comparators)
+
+(defmethod ostring-upcase ((string fat-string) &key (start 0) end)
+  (let* ((result (copy-fat-string string))
+	 (s (fat-string-string string))
+	 (ss (fat-string-string result)))
+    (loop :for i :from start :below (or end (olength string))
+	  :do (setf (aref ss i) (ochar-upcase (aref s i))))
+    result))
+
+(defmethod ostring-downcase ((string fat-string) &key (start 0) end)
+  (let* ((result (copy-fat-string string))
+	 (s (fat-string-string string))
+	 (ss (fat-string-string result)))
+    (loop :for i :from start :below (or end (olength string))
+	  :do (setf (aref ss i) (ochar-downcase (aref s i))))
+    result))
+
+(defmethod ostring-capitalize ((string fat-string) &key (start 0) end)
+  (let* ((result (copy-fat-string string))
+	 (s (fat-string-string string))
+	 (ss (fat-string-string result)))
+    (loop :for i :from start :below (or end (olength string))
+	  :do
+	  (if (= i start)
+	      (setf (aref ss i) (ochar-upcase (aref s i)))
+	      (setf (aref ss i) (ochar-downcase (aref s i)))))
+    result))
 
 (defmethod ostring-left-trim (character-bag (string fat-string))
   (let ((pos (position-if #'(lambda (c)
