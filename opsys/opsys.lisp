@@ -378,6 +378,11 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
 (defosfun stream-handle-direction (handle)
   "Return a direction for an stream handle, or NIL if there isn't one.")
 
+(defosfun system-handle-close (handle)
+  "Close a system handle. Closing a handle still associated with a stream, such
+as obtained from ‘stream-system-handle’, could be trouble on some
+implementations.")
+
 (defosfun with-os-file ((var filename &key
 			     (direction :input)
 			     (if-exists :error)

@@ -113,6 +113,7 @@
    #:file-executable-p
    #:stream-system-handle
    #:stream-handle-direction
+   #:system-handle-close
    #:file-exists
    #:os-delete-file
    #:os-rename-file

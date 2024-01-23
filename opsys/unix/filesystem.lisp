@@ -1189,6 +1189,9 @@ or NULL for the beginning."
 ;; (defalias simple-delete-file os-delete-file
 ;;   "Delete a file.")
 
+(defun system-handle-close (handle)
+  (syscall (posix-close handle)))
+
 (defmacro with-posix-file ((var filename flags &optional (mode 0)) &body body)
   "Evaluate the body with the variable VAR bound to a posix file descriptor
 opened on FILENAME with FLAGS and MODE."

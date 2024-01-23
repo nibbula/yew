@@ -236,6 +236,7 @@
    #:posix-rename
    #:copy-file-range
    #:with-posix-file
+   #:system-handle-close
    #:with-os-file
    #:with-temporary-thing
    #:with-temporary-directory
