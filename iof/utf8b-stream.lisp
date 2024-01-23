@@ -89,8 +89,10 @@ are.")
 ;; common methods
 
 (defmethod-quiet close ((stream utf8b-input-stream) &key abort)
-  (declare (ignore stream abort))
+  ;; (declare (ignore stream abort))
   ;; Don't close the underlying stream.
+  ;; @@@ But why???
+  (close (utf8b-stream-stream stream) :abort abort)
   )
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
