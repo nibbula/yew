@@ -183,6 +183,9 @@ The shell command takes any number of file names.
    (seekable
     :initarg :seekable :accessor pager-seekable :initform nil :type boolean
     :documentation "True if the stream is seekable.")
+   (we-opened
+    :initarg :we-opened :accessor pager-we-opened :type boolean :initform nil
+    :documentation "True if we opened the stream and should close it.")
    (binary
     :initarg :binary :accessor pager-binary :initform nil :type boolean
     :documentation "True for binary mode.")
@@ -1520,7 +1523,7 @@ list containing strings and lists."
   ;; 		   (simple-condition-format-arguments c)))
   )
 
-(defun open-lossy (filename &key binary)
+(defun open-lossy (pager filename &key binary)
   "Open FILENAME for reading in a way which is less likely to get encoding
 errors, but may lose data. Quotes the filename against special Lisp characters.
 Returns the the open stream or NIL."
@@ -1534,8 +1537,10 @@ Returns the the open stream or NIL."
 				'(unsigned-byte 8))))
        (error "I'm sorry, but the pager needs a binary stream to run in binary ~
                mode."))
+     (setf (pager-we-opened pager) nil)
      filename)
     ((or string pathname)
+     (setf (pager-we-opened pager) t)
      (if binary
 	 (open (quote-filename filename) :direction :input
 	       :element-type '(unsigned-byte 8))
@@ -1558,11 +1563,12 @@ Returns the the open stream or NIL."
 
 (defmethod %open-file ((pager text-pager) filename &key (offset 0))
   "Open the given FILENAME."
-  (with-slots (got-eof stream page-size binary seekable) pager
+  (with-slots (got-eof stream page-size binary seekable we-opened) pager
     (with-slots (lines count line) (pager-current pager)
-      (let ((new-stream (open-lossy filename :binary binary)))
+      (let* ((prev-we-opened we-opened)
+	     (new-stream (open-lossy pager filename :binary binary)))
 	(when new-stream
-	  (when stream
+	  (when (and stream prev-we-opened)
 	    (close stream))
 	  (setf stream new-stream
 		lines '()
@@ -1576,10 +1582,11 @@ Returns the the open stream or NIL."
 (defmethod %open-file ((pager binary-pager) filename &key (offset 0))
   "Open the given FILENAME."
   (with-slots (got-eof stream page-size binary buffer buffer-start
-	       byte-count byte-pos seekable) pager
-    (let ((new-stream (open-lossy filename :binary t)))
+	       byte-count byte-pos seekable we-opened) pager
+    (let* ((prev-we-opened we-opened)
+	   (new-stream (open-lossy pager filename :binary t)))
       (when new-stream
-	(when stream
+	(when (and stream prev-we-opened)
 	  (close stream))
 	(setf stream new-stream
 	      buffer (make-empty-buffer)
@@ -2275,8 +2282,7 @@ q - Abort")
   "State of a suspended pager."
   pager
   file-list
-  stream
-  close-me)
+  stream)
 
 ;; @@@ Consider moving a generalized version of this to opsys
 (defmacro with-disabled-cchars (() &body body)
@@ -2343,7 +2349,7 @@ q - Abort")
 (defvar *sub-pager* nil
   "Indicator that we're in a pager inside a pager.")
 
-(defun %page (files &key pager close-me suspended options)
+(defun %page (files &key pager suspended options)
   "View a stream with the pager. Return whether we were suspended or not."
   (with-terminal ()
     (with-immediate ()
@@ -2364,7 +2370,7 @@ q - Abort")
 				     :options options
 				     options))))
 	  (with-slots (page-size file-list file-index suspend-flag seekable
-		       stream (quit-flag inator::quit-flag)) *pager*
+		       stream we-opened (quit-flag inator::quit-flag)) *pager*
 	    (unwind-protect
 		 (prog ((*sub-pager* t))
 		  try-again
@@ -2378,10 +2384,10 @@ q - Abort")
 				(go done))))
 			  (when (not (pager-stream *pager*))
 			    (setf (pager-stream *pager*)
-				  (open-lossy (file-location-file
+				  (open-lossy *pager*
+					      (file-location-file
 					       (elt file-list file-index))
-					      :binary binary)
-				  close-me t))
+					      :binary binary)))
 			  (when (not suspended)
 			    (freshen *pager*)
 			    (setf (pager-stream *pager*) stream))
@@ -2413,8 +2419,7 @@ q - Abort")
 				(let ((suspy (make-suspended-pager
 					      :pager *pager*
 					      :file-list file-list
-					      :stream stream
-					      :close-me close-me)))
+					      :stream stream)))
 				  (funcall (find-symbol "SUSPEND-JOB" :lish)
 					   "pager" "" (lambda ()
 							(pager:resume suspy)))
@@ -2426,8 +2431,8 @@ q - Abort")
 			(setf try-again t)
 			(go try-again)))
 		  done)
-	      (when (and close-me (not suspended) stream)
-		(close stream))
+	      (when (and we-opened (not suspended) stream)
+		(close stream :abort t))
 	      (tt-move-to (tt-height) 0)
 	      (tt-erase-to-eol)
 	      ;;(tt-write-char #\newline)
@@ -2437,14 +2442,13 @@ q - Abort")
   suspended)
 
 ;; This seems like a dumb way to toggle binary mode.
-(defun page (files &key pager close-me suspended options)
+(defun page (files &key pager suspended options)
   "View a stream with the pager. Return whether we were suspended or not."
   (let (result)
     (loop
       :do
       (setf result (catch 'do-over
 		     (%page files :pager pager
-				  :close-me close-me
 				  :suspended suspended
 				  :options options)))
       :while (and (listp result) (eq (car result) 'do-over))
@@ -2453,8 +2457,8 @@ q - Abort")
     result))
 
 (defun resume (suspended)
-  (with-slots (pager stream close-me) suspended
-    (page stream :pager pager :close-me close-me :suspended t)))
+  (with-slots (pager stream) suspended
+    (page stream :pager pager :suspended t)))
 
 (defun page-thing (thing &rest options)
   "Page the actual thing instead of trying to open it as a file."
