@@ -22,6 +22,19 @@
   (:export
    #:view-html
    #:*user-agent*
+   ;; internalish
+   #:*html-viewer*
+   #:html-viewer
+   #:html-viewer-view
+   #:html-viewer-views
+   #:default-view-type
+   #:html-viewer-document
+   #:html-viewer-visited
+   #:html-viewer-history
+   #:html-viewer-location-tree
+   #:html-viewer-location
+   #:html-viewer-cookies
+   #:load-document
    ))
 (in-package :view-html)
 
