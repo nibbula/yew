@@ -12,7 +12,7 @@
    (all boolean :short-arg #\a :help "Show all values.")
    (list boolean :short-arg #\l :help "List value names.")
    (verbose boolean :short-arg #\v :help "List descriptions too.")
-   (collect boolean :short-arg #\c :help "Collect results."))
+   (collect boolean :short-arg #\c :default t :help "Collect results."))
   "Print system configuration."
   (cond
     (all
