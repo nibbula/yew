@@ -21,7 +21,7 @@ The shell command takes any number of file names.
 	:keymap :char-util :fatchar #+use-regex :regex #-use-regex :ppcre
 	:terminal :fatchar-io :pick-list :table-print :fui :inator :file-inator
 	:terminal-inator :collections :ochar :theme :terminal-table :completion
-	:result)
+	:result :view-generic)
   (:export
    #:*pager-prompt*
    #:*empty-indicator*
@@ -117,6 +117,7 @@ The shell command takes any number of file names.
     (,(meta-char #\l)	. show-file-list)
     (#\i		. show-detailed-info)
     (#\V                . show-version)
+    (#\v		. view-file)
     (#\-		. set-option)
     (#\R		. reread)
     (,(meta-char #\u)	. clear-search)
@@ -1602,6 +1603,11 @@ Returns the the open stream or NIL."
 	(when (not (%open-file pager filename))
 	  (message pager "Can't open file \"~s\"."))
 	(message pager "No file was given."))))
+
+(defun view-file (pager)
+  "View the current file with an appropriate viewer."
+  (with-slots (stream) pager
+    (view (or (and (stream-file-p stream) (stream-name stream)) stream))))
 
 (defmethod save-file ((pager text-pager))
   "Save the stream to a file."
