@@ -633,7 +633,6 @@
 
    ;; Additional functions
    #:sane
-   ;;#:terminal-query
    #:call-with-raw
    ;;#:describe-tty
    ;;#:set-tty
@@ -682,8 +681,10 @@
    #:set-window-size-struct
    #:slurp-terminal
    #:reset-terminal-modes
+   #:drain-terminal
+   #:flush-terminal
    #:terminal-time
-   #:terminal-query
+   #:query-terminal
    #:with-terminal-signals
    #:control-char
    #:set-control-char

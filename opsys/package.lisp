@@ -200,8 +200,10 @@
    #:get-terminal-mode
    #:get-window-size
    #:reset-terminal-modes
+   #:drain-terminal
+   #:flush-terminal
    #:terminal-time
-   #:terminal-query
+   #:terminal-query #:query-terminal
    #:with-terminal-mode
    #:with-terminal-signals
    #:*default-console-device-name*

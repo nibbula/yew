@@ -1621,7 +1621,7 @@ on ‘octets-p’."
 	 (when ,reset-it
 	   (syscall (fcntl ,fd +F_SETFL+ :int ,flags)))))))
 
-(defun terminal-query (fd query end-tag &key buffer-size (timeout 2.5))
+(defun query-terminal (fd query end-tag &key buffer-size (timeout 2.5))
   (let ((query-length (length query)))
     (cffi:with-foreign-string (buf query)
       (syscall (tcflush fd +TCIFLUSH+))
@@ -1632,6 +1632,21 @@ on ‘octets-p’."
 	;; Do the complicated read.
 	(read-until fd end-tag :buffer-size buffer-size
 		    :timeout (or timeout 2.5))))))
+
+(defun drain-terminal (fd)
+  "Wait for output written to ‘fd’ to be transmitted."
+  (syscall (tcdrain fd)))
+
+(defun flush-terminal (fd which)
+  "Discard data on ‘fd’. ‘which’ can be one of:
+ :input     Discard data read but not written.
+ :output    Discard data written but not transmitted.
+ :both      Discard both of the above."
+  (check-type which (member :input :output :both))
+  (let ((w (cdr (assoc which`((:input  . ,+TCIFLUSH+)
+			      (:output . ,+TCOFLUSH+)
+			      (:both   . ,+TCIOFLUSH+))))))
+    (syscall (tcflush fd w))))
 
 (defun terminal-time (fd)
   "Return the modifcation time for the terminal file descriptor."
