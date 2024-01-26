@@ -106,6 +106,7 @@
    #:circular-equalp
    #:with-collecting
    #:with-collecting-into
+   #:with-collecting-into*
    #:collect
    #:range-list
    #:range-array
@@ -152,7 +153,9 @@
    #:argument-list
    #:lambda-list-vars
    #-lispworks #:with-unique-names
+   #-lispworks #:with-unique-names*
    #:with-names
+   #:with-names*
    #:with-package
    #:ensure-exported
    #:without-package-variance
@@ -266,11 +269,28 @@ later versions.")
   (setf (symbol-function 'remove-feature) #'d-remove-feature)
 
   (defmacro with-unique-names ((&rest names) &body body)
-    "Bind each symbol in NAMES to a unique symbol and evaluate the BODY.
+    "Bind each symbol in ‘names’ to a unique symbol and evaluate the ‘body’.
 Useful for making your macro 'hygenic'."
     `(let ,(loop :for n :in names
 	      :collect `(,n (gensym (symbol-name ',n))))
        ,@body))
+
+  (defmacro with-unique-names* (names (&key ) &body body)
+    "Bind each symbol in the list ‘names’ to a unique symbol and evaluate the
+‘body’. Useful for making your overblown macro 'hygenic'."
+    `(let ,(loop :for n :in names
+	      :collect `(,n (gensym (symbol-name ',n))))
+       ,@body))
+
+;; Because we don't have alias up here yet.
+(setf (macro-function 'with-names)
+      (macro-function 'with-unique-names)
+      (documentation 'with-names 'function)
+      (documentation 'with-unique-names 'function)
+      (macro-function 'with-names*)
+      (macro-function 'with-unique-names*)
+      (documentation 'with-names* 'function)
+      (documentation 'with-unique-names* 'function))
 
   (defun same-with-warning (name new test)
     "If ‘name’ is bound, return it's value, but but warn if ‘new’ is different
@@ -288,12 +308,6 @@ is equal according to ‘test’, which defaults to ‘equal’, then don't even
 complain. Otherwise just warn, and don't redefine it."
     `(cl:defconstant ,name (same-with-warning ',name ,value ,test)
        ,@(when doc (list doc)))))
-
-;; Because we don't have alias up here yet.
-(setf (macro-function 'with-names)
-      (macro-function 'with-unique-names)
-      (documentation 'with-names 'function)
-      (documentation 'with-unique-names 'function))
 
 (define-condition missing-implementation-error (warning)
   ((symbol
@@ -1303,6 +1317,33 @@ to the list. Return the list."
                 thing))
          ,@body
          ,var))))
+
+(defmacro with-collecting-into* ((&rest vars) &body body)
+  "Define a function for each ‘var’ named ‘collect-<var>’, which when called
+with a value in the ‘body’, adds it to the end of a list and sets ‘var’
+to the list. Return the lists as multiple values."
+  (let (head-names tail-names var-defs collectors)
+    (labels ((new-name (tag v) (symbolify (s+ tag "-" v "-" (gensym))))
+	     (new-head-name (v) (new-name "head" v))
+	     (new-tail-name (v) (new-name "tail" v))
+             (head-name (v) (cdr (assoc v head-names)))
+	     (tail-name (v) (cdr (assoc v tail-names))))
+    (setf head-names (loop :for v :in vars :collect `(,v . ,(new-head-name v)))
+	  tail-names (loop :for v :in vars :collect `(,v . ,(new-tail-name v)))
+	  var-defs   (loop :for v :in vars
+		       :collect `(,(head-name v) (list nil))
+		       :collect `(,(tail-name v) ,(head-name v)))
+	  collectors (loop :for v :in vars
+		       :collect
+		       `(,(symbolify (s+ "collect-" v)) (thing)
+			  (rplacd ,(tail-name v)
+				  (setf ,(tail-name v) (list thing)))
+			  (setf ,v (cdr ,(head-name v)))
+			  thing)))
+      `(let* (,@var-defs)
+	 (flet (,@collectors)
+           ,@body
+           (values ,@vars))))))
 
 ;; See also: (alexandria:iota n &key (start 0) (step 1))
 
