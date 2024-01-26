@@ -712,9 +712,6 @@ versions of the keywords used in Lisp open.
  (file-information       LPVOID)
  (buffer-size            DWORD))
 
-;; @@@ Consider adding a set-file-time method for handles, like the one
-;; on unix for fds.
-
 (defmethod set-file-time ((path string) &key access-time modification-time)
   "Set the given times on PATH. The times are OS-TIME structures. Either
 time can be :NOW to use the current time."
@@ -750,6 +747,33 @@ time can be :NOW to use the current time."
 		      file-info
 		      (foreign-type-size '(:struct FILE_BASIC_INFO))))))))))
 
+(defmethod set-file-time ((handle integer) &key access-time modification-time)
+  "Set the given times on ‘file’. The times are ‘os-time’ structures. Either
+time can be :NOW to use the current time."
+  #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
+  (let ((now-ish (get-current-filetime-as-integer)))
+    (flet ((flank (time)
+	     (if time
+		 (if (eq time :now)
+		     now-ish
+		     (os-time-to-filetime-integer time))
+		 0)))
+      (with-foreign-objects ((file-info '(:struct FILE_BASIC_INFO)))
+	(with-foreign-slots ((creation-time last-access-time last-write-time
+			      change-time file-attributes) file-info
+			     (:struct FILE_BASIC_INFO))
+	  ;; Apparently, even though it doesn't seem to mention it in the
+	  ;; Microsoft documentation, you can set a time to zero to leave
+	  ;; it unchanged.
+	  (setf creation-time 0
+		last-access-time (flank access-time)
+		change-time 0
+		last-write-time (flank modification-time)
+		file-attributes 0)
+	  (syscall (%set-file-information-by-handle
+		    handle +file-basic-info+
+		    file-info
+		    (foreign-type-size '(:struct FILE_BASIC_INFO)))))))))
 
 (defconstant +SYMBOLIC-LINK-FLAG-FILE+      #x0 "Link target is a file.")
 (defconstant +SYMBOLIC-LINK-FLAG-DIRECTORY+ #x1 "Link target is a directory.")
