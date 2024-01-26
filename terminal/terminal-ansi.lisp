@@ -1886,6 +1886,7 @@ and add the characters the typeahead."
 	     "[?1002l" ;; Turn off mouse button events
 	     "[?1003l" ;; Turn off mouse motion events
 	     "[?1004l" ;; Turn off focus events
+	     "[r"      ;; Reset scrolling region
 	     ))
     (terminal-finish-output tty)))
 
