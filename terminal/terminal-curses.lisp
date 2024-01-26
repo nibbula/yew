@@ -1032,6 +1032,12 @@ i.e. the terminal is 'line buffered'."
      (cbreak))
     (t (error "Unknown terminal input mode ~s" mode))))
 
+(defmethod terminal-flush ((tty terminal-curses) which)
+  (flushinp))
+
+(defmethod terminal-drain ((tty terminal-curses))
+  )
+
 (defmethod terminal-reset ((tty terminal-curses))
   "Try to reset the terminal to a sane state, without being too disruptive."
   (reset-shell-mode)) ; or something..

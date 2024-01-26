@@ -1857,6 +1857,12 @@ and add the characters the typeahead."
      (set-terminal-mode (terminal-file-descriptor tty) :line nil :echo nil))
     (t (error "Unknown terminal input mode ~s" mode))))
 
+(defmethod terminal-flush ((tty terminal-ansi) which)
+  (nos:flush-terminal (terminal-file-descriptor tty) which))
+
+(defmethod terminal-drain ((tty terminal-ansi))
+  (nos:drain-terminal (terminal-file-descriptor tty)))
+
 (defmethod terminal-reset ((tty terminal-ansi-stream))
   "Try to reset the terminal to a sane state, without being too disruptive."
   (flet ((out (s) (terminal-write-string tty (format nil "~c~a" #\escape s))))
