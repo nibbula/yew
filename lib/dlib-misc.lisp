@@ -267,13 +267,13 @@ an updated count. If ‘func’ is NIL it defaults to 1+."
 ;; @@@ We could make a generic one that returns a sequence of the same type,
 ;; but it's probably not as quick and do we need it?
 (defun partition (by sequence)
-  "Return two lists, the first containing items of SEQUENCE for which the
-function BY returns true, the second for which it returns false. The order of
-elements of the result sequence is unspecified, but probably backwards. Of
-course, you can reverse them yourself if you want."
+  "Return two lists, the first containing items of ‘sequence’ for which the
+function ‘by’ returns true, the second for which it returns false. The order of
+elements in the result sequence is unspecified, but this currently non-parallel
+version probably retains the order."
   (let (a b)
-    (omapn (_ (if (funcall by _) (push _ a) (push _ b))) sequence)
-    (values a b)))
+    (with-collecting-into* (a b)
+      (omapn (_ (if (funcall by _) (collect-a _) (collect-b _))) sequence))))
 
 (defvar *default-ellipsis*
   (string (code-char #x2026)) ; #\HORIZONTAL_ELLIPSIS
