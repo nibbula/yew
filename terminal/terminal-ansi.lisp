@@ -1886,7 +1886,9 @@ and add the characters the typeahead."
 	     "[?1002l" ;; Turn off mouse button events
 	     "[?1003l" ;; Turn off mouse motion events
 	     "[?1004l" ;; Turn off focus events
-	     "[r"      ;; Reset scrolling region
+	     ;; @@@ I want to put this in, but it clears the screen.
+	     ;; Do we need a more disruptive "full" reset??
+	     ;; "[r"      ;; Reset scrolling region
 	     ))
     (terminal-finish-output tty)))
 
