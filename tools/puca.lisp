@@ -740,40 +740,45 @@ if an item was added."
   )
 
 ;; @@@ I guess this should come from the theme.
-(defun item-color (status-char)
+(defun item-style (status-char)
   "Set the color based on the status character."
   (case status-char
-    (#\M :red)	    ; modified
-    (#\? :white)    ; unknown
-    (#\C :magenta)  ; conflicts
-    (t   :green)))  ; updated or other
+    (#\M (or (theme:value ; modified
+	      '(:program :version-control :modified :style)) '(:red)))
+    (#\? (or (theme:value
+	      '(:program :version-control :unknown  :style)) '(:white)))
+    (#\C (or (theme:value
+	      '(:program :version-control :conflict :style)) '(:magenta)))
+    (t   (or (theme:value ; updated
+	      '(:program :version-control :other    :style)) '(:green)))))
 
-(defun search-a-matize (string default-color)
+(defun search-a-matize (string style)
   "Return a fat-string version of ‘string’ with the search-string indicated."
   (with-slots (search-string) *puca*
     (let ((pos (and search-string
 		    (osearch search-string string :test #'ochar-equal))))
       (if pos
 	  (span-to-fat-string
-	   `(,default-color ,(subseq string 0 pos)
-	     ,(themed-string '(:program :search-match :style)
-			     (subseq string pos (+ pos (length search-string))))
-	     ,(subseq string (+ pos (length search-string)))))
-	  string))))
+	   (styled-span style
+	     `(,(subseq string 0 pos)
+	       ,(themed-string '(:program :search-match :style)
+			       (subseq string pos
+				       (+ pos (length search-string))))
+	       ,(subseq string (+ pos (length search-string))))))
+	  (styled-string style string)))))
 
 (defmethod draw-item ((puca puca) i)
   "Draw the item, with the appropriate color."
   (with-slots (items top first-line) *puca*
     (let ((g (svref items i)))
-      (let* ((color (item-color (aref (item-modified g) 0))))
+      (let* ((style (item-style (aref (item-modified g) 0))))
 	(tt-move-to (+ (- i top) first-line) 4)
 	;; (clrtoeol)
-	(tt-color color :default)
-	(tt-format "~a ~a "
-		   (if (item-selected g) "x" " ")
-		   (item-modified g))
-	(tt-write-string (search-a-matize (item-filename g) color))
-	(tt-color :default :default)
+	;; (tt-color color :default)
+	(tt-write-string (fs+ (if (item-selected g) "x" " ") " "
+			      (styled-string style (item-modified g)) " "))
+	(tt-write-string (search-a-matize (item-filename g) style))
+	;; (tt-color :default :default)
 	(when (item-extra-lines g)
 ;; Ugly inline error display:
 ;;      (if (= i cur)
