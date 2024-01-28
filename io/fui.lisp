@@ -15,11 +15,24 @@
    #:fui-window-x #:fui-window-y #:fui-window-y #:fui-window-width
    #:fui-window-height #:fui-window-border
    #:fui-window-text-x #:fui-window-text-y
+   #:fui-window-terminal
+   #:fui-window-draw-content-function
    #:draw-window
    #:erase-window
    #:make-window
    #:delete-window
+
+   #:*box-chars-unicode*
+   #:*box-chars-ascii*
+   #:*box-chars-heavy-unicode*
+   #:*box-chars-double-unicode*
+   #:*box-chars-round-unicode*
+   #:*box-chars*
+   #:*box-char-names*
+   #:+upper-left+ #:+upper-right+ #:+lower-left+ #:+lower-right+
+   #:+vertical+ #:+horizontal+
    #:draw-box
+
    #:window-move-to
    #:window-text
    #:window-centered-text
@@ -62,31 +75,99 @@
 
 ;;(defparameter *plain-acs-table* nil)
 
-(defun draw-box (x y width height &key string #| alt-chars plain |#)
-  "Draw a box at X Y of WIDTH and HEIGHT. STRING a string of WIDTH to use for
-drawing, which will get overwritten."
-  (let* (str-len str)
-    (when string
-      (setf str-len (- width 2)
-	    str (fill string (code-char #x2500) :end str-len))) ; ─
+(defun offscreen-p (x y width height)
+  "Return true if the box is totally off screen."
+  (or (< (+ x width) 0)  (> x (1- (tt-width)))
+      (< (+ y height) 0) (> y (1- (tt-height)))))
 
-    (tt-move-to y x)
-    (tt-write-char (code-char #x250c))	; ┌
-    (if string
-	(tt-write-string str :end str-len)
-	(loop :repeat (- width 2) :do (tt-write-char (code-char #x2500)))) ; ─
-    (tt-write-char (code-char #x2510))	; ┐
-    (loop :for iy :from (1+ y) :below (+ y (1- height)) :do
-       (tt-move-to iy x)
-       (tt-write-char (code-char #x2502)) ; │
-       (tt-move-to iy (+ x (1- width)))
-       (tt-write-char (code-char #x2502))) ; │
-    (tt-move-to (+ y (1- height)) x)
-    (tt-write-char (code-char #x2514))	; └
-    (if string
-	(tt-write-string str :end str-len)
-	(loop :repeat (- width 2) :do (tt-write-char (code-char #x2500)))) ; ─
-    (tt-write-char (code-char #x2518)))) ; ┘
+(defun clip-box (x y width height &key (to-x 0) (to-y 0)
+				    (to-width (tt-width))
+				    (to-height (tt-height)))
+  "Clip a rectangle to another rectangle. The region to clip to defaults to the
+terminal. Returns four values of the clipped (x y width height). Parameters are:
+ ‘x’‘y’ ‘width’ ‘height’    Dimensions of the source rectangle.
+ ‘to-x’ ‘to-y’        Top left. Default to 0.
+ ‘to-width’           Horizontal dimension of clip. Defaults to (tt-width).
+ ‘to-height’          Vertical dimension of clip. Defaults to (tt-height)."
+  ;; Offscreen check should be done before calling this.
+  ;; (when (offscreen-p x y width height)
+  ;;   (values nil nil nil nil))
+  (let* ((nx      (clamp x to-x (+ to-x to-width)))
+	 (ny      (clamp y to-y (+ to-y to-height)))
+	 (right   (clamp (+ x width)  to-x (+ to-x to-width)))
+	 (bottom  (clamp (+ y height) to-y (+ to-y to-height)))
+	 (nwidth  (- right nx))
+	 (nheight (- bottom ny)))
+    (values nx ny nwidth nheight)))
+
+;; @@@ consider factoring this with the stuff in table-print.lisp
+
+(defparameter *box-chars-unicode* "┌┐└┘│─"
+  "Light box drawing characters in Unicode.")
+
+(defparameter *box-chars-ascii* ".,`'|-"
+  "Box drawing characters in ASCII.")
+
+(defparameter *box-chars-heavy-unicode* "┏┓┗┛┃━"
+  "Heavy box drawing characters in Unicode.")
+
+(defparameter *box-chars-double-unicode* "╔╗╚╝║═"
+  "Double box drawing characters in Unicode.")
+
+(defparameter *box-chars-round-unicode* "╭╮╰╯│─"
+  "Rounded 'arc' box drawing characters in Unicode.")
+
+(defparameter *box-chars* *box-chars-unicode*
+  "A string or vector of characters for drawing a box. The order is:
+upper left, upper right, lower left, lower right, vertical, horizontal.")
+
+(defparameter *box-char-names* nil
+  "Names of box drawing character indexs into a *box-chars* array.")
+
+(nos:define-enum-list *box-char-names*
+  #(#(+upper-left+ 
+      "Upper left corner, unicode: BOX_DRAWINGS_*_DOWN_AND_RIGHT.")
+    #(+upper-right+
+      "Upper right corner, unicode BOX_DRAWINGS_*_DOWN_AND_LEFT.")
+    #(+lower-left+
+      "Lower left corner, unicode BOX_DRAWINGS_*_UP_AND_RIGHT.")
+    #(+lower-right+
+      "Lower right corner, unicode BOX_DRAWINGS_*_UP_AND_LEFT.")
+    #(+vertical+
+      "Vertical line, unicode BOX_DRAWINGS_*_VERTICAL.")
+    #(+horizontal+
+      "Horizontal line, unicode BOX_DRAWINGS_*_HORIZONTAL")))
+
+(defun draw-box (x y width height &key string (chars *box-chars*))
+  "Draw a box at ‘x’ ‘y’ of ‘width’ and ‘height’. ‘string’ a string of ‘width’
+to use for drawing, which will get overwritten. ‘chars’ is an array of box
+drawing characters to use, which defaults to *box-chars*."
+  (declare (ignore string))
+  (let* (#| str-len str |# xx yy ww hh
+	 (right  (1- (+ x width)))
+	 (bottom (1- (+ y height))))
+    (unless (offscreen-p x y width height)
+      (multiple-value-setq (xx yy ww hh) (clip-box x y width height))
+
+      ;; (when string
+      ;; 	(setf str-len (- ww 2)
+      ;; 	      str (fill string (code-char #x2500) :end str-len))) ; ─
+
+      (loop :for i :from yy :below (+ yy hh) :do
+        (loop :for j :from xx :below (+ xx ww) :do
+          (cond
+	    ((and (= i y) (= j x))
+	     (tt-write-char-at i j (aref chars +upper-left+)))       ; ┌
+	    ((and (= i y) (= j right))
+	     (tt-write-char-at i j  (aref chars +upper-right+)))     ; ┐
+	    ((and (= i bottom) (= j x))
+	     (tt-write-char-at i j (aref chars +lower-left+)))       ; └
+	    ((and (= i bottom) (= j right))
+	     (tt-write-char-at i j (aref chars +lower-right+)))      ; ┘
+	    ((or (= j x) (= j right))
+	     (tt-write-char-at i j (aref chars +vertical+)))         ; │
+	    ((or (= i y) (= i bottom))
+	     (tt-write-char-at i j (aref chars +horizontal+))))))))) ; ─
 
 ;; @@@ maybe windows should be implemented as a sub-terminal?
 
@@ -104,7 +185,7 @@ drawing, which will get overwritten."
     :initarg :height :accessor fui-window-height :initform 10 :type fixnum
     :documentation "Height in character cells.")
    (border
-    :initarg :border :accessor fui-window-border :initform nil :type boolean
+    :initarg :border :accessor fui-window-border :initform t :type boolean
     :documentation "True to draw a border around the window.")
    (background-color
     :initarg :background-color
@@ -118,63 +199,97 @@ drawing, which will get overwritten."
     :documentation "Row to write text at.")
    (terminal
     :initarg :terminal :accessor fui-window-terminal :initform nil
-    :documentation "The terminal the window is on."))
+    :documentation "The terminal the window is on.")
+   (draw-content-function
+    :initarg :draw-content-function :accessor fui-window-draw-content-function
+    :initform nil
+    :documentation "Function to draw the window's content."))
   (:documentation "A stupid text window."))
 
-(defun erase-area (window x y width height &key string)
-  (with-slots (background-color terminal) window
-    (let* ((*terminal* terminal)
-	   (str (if string
-		    (fill string #\space :end width)
-		    (make-string width :initial-element #\space))))
-      (loop :for iy :from y :below (+ y height) :do
-	 (tt-move-to iy x)
-	 (when background-color
-	   (tt-color :default background-color))
-	 (tt-write-string str)))))
+(defgeneric erase-area (window x y width height &key string)
+  (:method ((window fui-window) x y width height &key string)
+    (declare (ignore string))
+    (with-slots (background-color terminal) window
+      (let* ((*terminal* terminal))
+	;; 	   (str (if string
+	;; 		    (fill string #\space :end width)
+	;; 		    (make-string width :initial-element #\space))))
+	;; (loop :for iy :from y :below (+ y height) :do
+	;; 	 (tt-move-to iy x)
+	;; 	 (when background-color
+	;; 	   (tt-color :default background-color))
+	;; 	 (tt-write-string str)))))
+	(unless (offscreen-p x y width height)
+	  (clip-box x y width height)
+	  (tt-color :default background-color)
+	  (multiple-value-bind (xx yy ww hh) (clip-box x y width height)
+	    (loop :for i :from yy :below (+ yy hh) :do
+	      (loop :for j :from xx :below (+ xx ww) :do
+	        (tt-write-char-at i j #\space)))))))))
 
-(defun erase-window (window)
-  (with-slots (x y width height border background-color) window
-    (if border
-	(erase-area window (1- x) (1- y) (+ width 2) (+ height 2))
-	(erase-area window x y width height))))
+(defgeneric erase-window (window)
+  (:method ((window fui-window))
+    (with-slots (x y width height border background-color) window
+      (if border
+	  (erase-area window (1- x) (1- y) (+ width 2) (+ height 2))
+	  (erase-area window x y width height)))))
 
-(defun draw-window (window)
-  (with-slots (width height x y border terminal) window
-    (let ((*terminal* terminal))
-      (erase-window window)
-      (let ((str (make-string width :initial-element #\space)))
+(defgeneric draw-window (window)
+  (:method ((window fui-window))
+    (with-slots (width height x y border terminal draw-content-function) window
+      (let ((*terminal* terminal))
+	(erase-window window)
+	;;(let ((str (make-string width :initial-element #\space)))
 	;; The border is outside the window.
 	(when border
-	  (draw-box (1- x) (1- y) (+ width 2) (+ height 2) :string str))))))
+	  (draw-box (1- x) (1- y) (+ width 2) (+ height 2)
+		    #| :string str |#))
+	(when draw-content-function
+	  (funcall draw-content-function window))))))
+
+(defmethod initialize-instance
+    :after ((o fui-window) &rest initargs &key &allow-other-keys)
+  "Initialize a fui-window."
+  (declare (ignore initargs))
+  (when (or (not (slot-boundp o 'terminal))
+	    (not (slot-value o 'terminal)))
+    (setf (slot-value o 'terminal) *terminal*))
+  (with-slots (x y width height) o
+    ;; (erase-area o x y width height #| :string str |#)
+    (draw-window o)))
 
 (defun make-window (#| &rest keys |#
 		    &key (width 40) (height 10) (x 1) (y 1) (border t)
-		      background-color (terminal *terminal*))
+		      background-color (terminal *terminal*)
+		      draw-content-function)
   (declare (ignorable border background-color terminal))
   (let ((window (make-instance 'fui-window
 			       :width width :height height
 			       :x x :y y :border border
 			       :background-color background-color
-			       :terminal terminal))
-	(str (make-string width :initial-element #\space)))
-    ;;(dbugf :fui "make-window ~s x ~s @ [~s ~s]~%" width height x y)
+			       :terminal terminal
+			       :draw-content-function draw-content-function))
+	;; (str (make-string width :initial-element #\space))
+	)
     ;; erase the window
-    (erase-area window x y width height :string str)
-    (draw-window window)
+    ;; (erase-area window x y width height :string str)
+    ;; (draw-window window)
     window))
 
-(defun delete-window (window)
-  (erase-window window))
+(defgeneric delete-window (window)
+  (:method ((window fui-window))
+    (erase-window window)))
 
-(defun window-move-to (window row column)
-  (with-slots (x y width height text-x text-y terminal) window
-    (let ((*terminal* terminal)
-	  (start-x (if (< column 0) x (min (+ x column) (+ x (1- width)))))
-	  (start-y (if (< row 0)    y (min (+ y row)    (+ y (1- height))))))
-      (setf text-x column
-	    text-y row)
-      (tt-move-to start-y start-x))))
+(defgeneric window-move-to (window row column)
+  (:documentation "Move the cursor to ‘row’ and ‘column’ in ‘window’.")
+  (:method ((window fui-window) row column)
+    (with-slots (x y width height text-x text-y terminal) window
+      (let ((*terminal* terminal)
+	    (start-x (if (< column 0) x (min (+ x column) (+ x (1- width)))))
+	    (start-y (if (< row 0)    y (min (+ y row)    (+ y (1- height))))))
+	(setf text-x column
+	      text-y row)
+	(tt-move-to start-y start-x)))))
 
 (defun re-fangle (string)
   "Turn FATCHAR-STRINGS back to FAT-STRINGS, but leave other things."
@@ -182,67 +297,96 @@ drawing, which will get overwritten."
     (fatchar-string (make-fat-string :string string))
     (t string)))
 
-(defun window-text (window text &key row column)
-  (with-slots (x y width height text-x text-y terminal) window
-    (when (not row)
-      (setf row text-y))
-    (when (not column)
-      (setf column text-x))
-    ;;(dbugf :fui "text-x=~s text-y=~s~%" text-x text-y)
-    (let* ((*terminal* terminal)
-	   ;; (len (display-length l))
-	   ;; (start-x (if (< column 0) x (min (+ x column) (+ x (1- width)))))
-	   ;; (start-y (if (< row 0)    y (min (+ y row)    (+ y (1- height)))))
-	   (output-y 0)
-	   ;; (start-pos (if (< column 0) (min len (- column)) 0))
-	   ;; (end-pos   (min len (max 0 (- width column))))
-	   (lines
-	    (mapcar #'re-fangle
+(defgeneric window-text (window text &key row column)
+  (:documentation
+  "Draw ‘text’ in ‘window’. Draw it at ‘row’ and ‘column’ if provided, otherwise
+draw it a the current window text position.")
+  (:method ((window fui-window) text &key row column)
+    (with-slots (x y width height text-x text-y terminal) window
+      (when (not row)
+	(setf row text-y))
+      (when (not column)
+	(setf column text-x))
+
+      (let* ((*terminal* terminal)
+	     (lines
+	       (map 'vector #'re-fangle
 		    (split-sequence #\newline
 				    (string-vector text)
-				    :key #'simplify-char))))
-      ;; (dbugf :fui "start-x ~d start-y ~d~%start-pos ~d end-pos ~d~%"
-      ;; 	      start-x start-y start-pos end-pos)
-      (dbugf :fui "lines = ~s~%" lines)
-      ;;(tt-move-to start-y start-x)
-      (loop :with len :and start-pos :and end-pos :and str-len
-	 :for l :in lines
-	 :do
-	 (setf len (display-length l)
-	       str-len (olength l)
-	       start-pos (if (< column 0) (min len (- column)) 0)
-	       end-pos   (min len (max 0 (- width column))))
-	 (when (and (>= row 0) (< row height)
-		    (< column width) (< start-pos len))
-	   (window-move-to window (+ row output-y) column)
-	   (tt-write-string l
-			    :start (min (max 0 start-pos) len)
-			    ;; @@@ This is wrong. The problem is no knowing what
-			    ;; character length corresponds to what display
-			    ;; length.
-			    ;; @@@ make char-util:display-to-char-index work!
-			    :end   (min (max start-pos end-pos) str-len))
-	   (incf output-y)))
-      (window-move-to window (+ row output-y 1) column)
-      ;; (tt-write-string text
-      ;; 		 :start (min (max 0 start-pos) len)
-      ;; 		 :end   (min (max start-pos end-pos) len))
-      ;; @@@ This will work horribly for terminal-ansi. But what's our choice?
-      (multiple-value-bind (new-y new-x)
-	  (terminal-get-cursor-position *terminal*)
-	;;(dbugf :fui "new-x=~s new-y=~s~%" new-x new-y)
-	;; @@@ This wrong since it doesn't even clip.
-	(setf text-x (- new-x x)
-	      text-y (- new-y y))))))
+				    :key #'simplify-char)))
+	     (xx 0) (yy 0) (ww 0) (hh 0)
+	     (tx 0) (ty 0) (tw 0) (th 0)
+	     (start-line 0) (end-line 0)
+	     (start-col 0))
+	(dbugf :fui "lines = ~s~%" lines)
 
-;; Hello this is some long text
+	;; The dimensions of the raw text.
+	(setf tx (+ x column)
+	      ty (+ y row)
+	      tw (loop :for l :across lines :maximize (display-length l))
+	      th (olength lines))
 
-(defun window-centered-text (window row text)
-  "Put a centered STRING in WINDOW at ROW."
-  (with-slots (width) window
-    (window-text window text
-		 :row row
-		 :column (round (- (/ width 2) (/ (display-length text) 2))))))
+	;; Clip the text to the window.
+	(multiple-value-setq (xx yy ww hh)
+	  (clip-box tx ty tw th
+		    :to-x x :to-y y :to-width width :to-height height))
+
+	;; Clip to the screen.
+	(multiple-value-setq (xx yy ww hh)
+	  (clip-box xx yy ww hh))
+
+	(setf start-line (if (< ty 0)
+			     (- ty)
+			     (max 0 (min (- ty y) (1- (length lines)))))
+	      end-line   (min (+ start-line hh) (length lines))
+	      start-col  (- xx (+ x column)))
+
+	#+(or)
+	(dbugf :fui "row ~s column ~s~%~
+                     x ~s y ~s width ~s height ~s~%~
+                     tx ~s ty ~s tw ~s th ~s~%~
+                     xx ~s yy ~s ww ~s hh ~s~%~
+                     start-line ~s end-line ~s~%~
+                     start-col ~s~%"
+	       row column
+	       x y width height
+	       tx ty tw th
+               xx yy ww hh
+	       start-line end-line
+	       start-col)
+
+	(unless (or (zerop hh) (zerop ww))
+	  (loop
+	    :for line :from start-line :below end-line
+            :for i :from yy :below (+ yy hh)
+	    :do
+	       (tt-move-to i xx)
+	       (dbugf :fui "line ~s i = ~s~%" line i)
+               (loop
+		 :with len = (olength (oelt lines line))
+		 :with end-col = (min (+ start-col ww) len)
+		 :for c :from start-col :below end-col
+		 :for j :from xx :below (+ xx ww)
+		 :do
+		    (when (< c len)
+		      (tt-write-char (oelt (elt lines line) c))))))
+
+	;; @@@ This will work horribly for terminal-ansi.
+	;; We should be able to get rid of this.
+	(multiple-value-bind (new-y new-x)
+	    (terminal-get-cursor-position *terminal*)
+	  ;;(dbugf :fui "new-x=~s new-y=~s~%" new-x new-y)
+	  (setf text-x (- new-x xx)
+		text-y (- new-y yy)))))))
+
+(defgeneric window-centered-text (window row text)
+  (:documentation "Put a centered ‘string’ in ‘window’ at ‘row’.")
+  (:method ((window fui-window) row text)
+    (with-slots (width) window
+      (window-text window text
+		   :row row
+		   :column (round (- (/ width 2)
+				     (/ (display-length text) 2)))))))
 
 ;; This interface is somewhat deprecated. I recommend using show-text.
 (defun display-text (title text-lines &key input-func (justify t)
@@ -483,43 +627,43 @@ keymap bindings."
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 #|
-(defstruct progress-bar
-  win
-  width
-  height)
+(defclass progress-bar
+  win)
 
 (defun progress-bar (title &key message)
   "Display a progress bar in a pop up window."
-  (with-curses
-    (let* ((mid (truncate (/ *cols* 2)))
-	   (width (min (- *cols* 6)
-		       (+ 4 (max 50 (length message)))))
-	   (height (min (+ 4 (+ 5))
-			(- *lines* 4)))
-	   (xpos   (truncate (- mid (/ width 2))))
-	   (win    (newwin height width 3 xpos))
-	   (bar    (make-progress-bar :win win :width width :height height)))
-      (box win 0 0)
-      (wcentered win width 0 title)
-      (mvwaddstr win 1 2 message)
-      (mvwaddstr win 2 2 (format nil ""))
-      (refresh)
-      (wrefresh w)
-      result)))
+  (let* ((mid (truncate (/ (tt-width) 2)))
+	 (width (min (- (tt-width) 6)
+		     (+ 4 (max 50 (display-length message)))))
+	 (height (min (+ 4 (+ 5))
+		      (- (tt-height) 4)))
+	 (xpos   (truncate (- mid (/ width 2))))
+	 (win    (make-window :height height :width width :y 3 :x pos))
+	 (bar    (make-progress-bar :win win)))
+    (wcentered win width 0 title)
+    (window-text win message :row 1 :column 2)
+    ;; (window-text win (format nil "") :row 2 :column 2)
+    bar))
 
 (defun progress-bar-update (bar percent &optional status)
   (with-slots (win) bar
-    (mvwaddstr win 1 2 message)
-    (mvwaddstr win 2 2 (format nil ""))
-    (refresh)
-    (wrefresh win)))
+    (window-text win message :row 1 :column 2)
+    ;; (window-text win (format nil "") :row 2 :column 2)
+    (tt-finish-output)))
 
 (defun progress-bar-done (bar)
   (with-slots (win) bar
-    (delwin w)
-  (delwin w)
-  (clear)
-  (refresh))
+    (delete-window win)))
+
+(defmacro with-progress-bar ((title &key message) &body body)
+  (with-names (bar)
+    `(with-terminal ()
+       (let (,bar)
+	 (unwind-protect
+	      (progn
+		(setf ,bar (progress-bar ,title :message ,message))
+		,@body)
+	   (progress-bar-done ,bar))))))
 |#
 
-;; EOF
+;; End
