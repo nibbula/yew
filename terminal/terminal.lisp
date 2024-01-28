@@ -97,6 +97,8 @@
    #:tt-get-key			  #:terminal-get-key
    #:tt-listen-for		  #:terminal-listen-for
    #:tt-input-mode                #:terminal-input-mode
+   #:tt-flush                     #:terminal-flush
+   #:tt-drain                     #:terminal-drain
    #:tt-reset			  #:terminal-reset
    #:tt-save-cursor		  #:terminal-save-cursor
    #:tt-restore-cursor		  #:terminal-restore-cursor
@@ -820,6 +822,15 @@ or :CHAR for character at time with no echo.")
   (:documentation
    "Set the input mode to MODE. Modes are :LINE for line at time with echo
 or :CHAR for character at time with no echo."))
+
+(deftt flush (which)
+  "Discard data in terminal buffers. ‘which’ can be one of:
+ :input     Discard data recieved but not read.
+ :output    Discard data written but not transmitted.
+ :both      Discard both of the above.")
+
+(deftt drain ()
+  "Wait for output written to terminal to be transmitted.")
 
 (deftt reset ()
   "Try to reset the terminal to a sane state, without being too disruptive.")
