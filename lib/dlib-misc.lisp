@@ -270,7 +270,7 @@ an updated count. If ‘func’ is NIL it defaults to 1+."
   "Return two lists, the first containing items of ‘sequence’ for which the
 function ‘by’ returns true, the second for which it returns false. The order of
 elements in the result sequence is unspecified, but this currently non-parallel
-version probably retains the order."
+version probably retains the order. See also: ‘group-by’."
   (let (a b)
     (with-collecting-into* (a b)
       (omapn (_ (if (funcall by _) (collect-a _) (collect-b _))) sequence))))
