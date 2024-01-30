@@ -695,6 +695,11 @@
    #:test-echo
    #:test-input
 
+   ;; admin
+   #:system-power-off
+   #:system-restart
+   #:system-suspend
+
    ;; Communication
    #:gethostname
    #:sethostname

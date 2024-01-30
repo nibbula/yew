@@ -1259,4 +1259,12 @@ wait. Returns NILs if nothing changed."
 
 ) ; #+linux progn
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; thread-like
+
+;; @@@ Just use bordeaux-threads!
+;; locks (mutexes)
+;; create thread
+;; join thread
+
 ;; End

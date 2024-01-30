@@ -180,6 +180,11 @@
    #:map-events
    #:events-pending-p
 
+   ;; administration
+   #:system-power-off
+   #:system-restart
+   #:system-suspend
+
    ;; filesystems
    #:mounted-filesystems
    #:get-filesystem-info

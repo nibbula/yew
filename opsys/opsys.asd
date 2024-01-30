@@ -50,6 +50,7 @@
 		   (:file "terminals")
 		   (:file "communication")
 		   (:file "i18n")
+		   (:file "admin")
 		   (:file "unix")
 		   (:file "inspection")
 		   (:file "unix-stream")))

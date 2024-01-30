@@ -1475,17 +1475,27 @@ events considered to those in EVENT-TYPES, if it's not T.")
 ;; System administration???
 ;; is this even a good idea
 
-;; reboot
+;; WARNING!: These are low level and should only be the last step in user level
+;; shutdown commands. They don't do the complicated system specfic things to
+;; shut down. Don't blame me if you get data loss from using these!
+
+(defosfun system-power-off ()
+  "Stop the system and remove power.")
+
+(defosfun system-restart ()
+  "Reboot the system.")
+
+(defosfun system-suspend ()
+  "Suspend or hibernate the system, if possible.")
+
 ;; swapon
 ;; mincore
 ;; acct
-;; settimeofday
 ;; adjtime
 
 ;; Filesystems:
 ;; mount/unmount
 ;; quotactl
-;; fsstat?
 
 ;; System independant interface?
 

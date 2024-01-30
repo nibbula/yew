@@ -507,4 +507,19 @@ is the empty string, implementations may return the empty string ("").")
   "Return the string for ITEM from the language catalog for the current locale."
   (item nl-item))
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Character coding
+
+(defcfun wcwidth :int (wc wchar-t))
+
+#+clisp (shadowing-import 'ext:char-width)
+#+clisp (export 'char-width)
+#-clisp
+(defun char-width (char)
+  "Return the column width of CHAR. If it's not working as expected, you ~
+   probably have to call setlocale first."
+  (if (graphic-char-p char)		; assume this is equivalent to iswprint
+      (wcwidth (char-code char))
+      (error "Can't determine the width of a non-graphic character: ~s" char)))
+
 ;; End
