@@ -467,8 +467,8 @@ Keyword arguments are:
 		  :min-width min-width :min-height min-height)))
 
 (defun popup-y-or-n-p (question &rest args
-		       &key title x y width height min-width min-height default
-			 justify)
+		       &key (title nil title-supplied-p)
+			 x y width height min-width min-height default justify)
   "A popup window version of Y-OR-N-P. Display the ‘question’.
 Keyword arguments are:
  ‘default’                 If given, allow other characters to act as if the
@@ -496,9 +496,11 @@ Keyword arguments are:
     (when (and default (not (valid-answer default)))
       (error "The default must be #\\Y or #\\N."))
     (remf args :default)
+    (when title-supplied-p
+      (remf args :title))
     (with-immediate ()
       (char= #\Y (apply 'display-text
-			nil
+			title
 			(list "" question "" "Y or N ?")
 			:input-func #'yornp
 			:justify justify
