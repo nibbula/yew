@@ -552,7 +552,9 @@ MAKE-INSTANCE, and with ‘var’ bound to the new instance."
   (event-loop inator))
 
 (defgeneric invoke (type &rest keys &key &allow-other-keys)
-  (:documentation "Create and run an inator of ‘type’."))
+  (:documentation
+   "Create and run an inator of ‘type’. The instance will be dynamically bound
+to ‘*inator*’."))
 
 (defmethod invoke (type &rest keys &key &allow-other-keys)
   (let ((*inator* (apply 'make-instance type keys)))
