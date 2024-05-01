@@ -3,7 +3,8 @@
 ;;;
 
 ;; This is basically part of FUI, but it got too big. These are still just a
-;; temporary step until we have a more comprehensive UI.
+;; temporary step until we have a more comprehensive UI. Also it should probably
+;; be called ‘view-list’.
 
 (defpackage :pick-list
   (:documentation "Choose things from a list.
@@ -1011,4 +1012,4 @@ The function receives a 'pick' as an argument."))
     (t
      (error "MENU must be a symbol or a list."))))
 
-;; EOF
+;; End
