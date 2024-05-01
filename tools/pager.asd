@@ -16,7 +16,7 @@
 		 :terminal :fatchar-io
 		 :rl :pick-list :unicode :utf8b-stream :fui :inator :file-inator
 		 :terminal-inator :terminal-table :completion :tiny-repl
-		 :result)
+		 :result :view)
     :entry-point "pager:standalone"
     :build-operation 'program-op
     :components

@@ -21,7 +21,7 @@ The shell command takes any number of file names.
 	:keymap :char-util :fatchar #+use-regex :regex #-use-regex :ppcre
 	:terminal :fatchar-io :pick-list :table-print :fui :inator :file-inator
 	:terminal-inator :collections :ochar :theme :terminal-table :completion
-	:result :view-generic)
+	:result :view-generic :view)
   (:export
    #:*pager-prompt*
    #:*empty-indicator*
@@ -415,7 +415,8 @@ but perhaps reuse some resources."))
 	    (let ((,stream-var *terminal*))
 	      (declare (ignorable ,stream-var))
 	      ,@body)))
-       (pager ,input))))
+       (let ((view:*view-things* nil))
+	 (pager ,input)))))
 
 #|
 (defun nop-process-line (line)
@@ -2359,14 +2360,23 @@ q - Abort")
 	       (pager     (or pager (getf options :pager)))
 	       (binary    (getf options :binary))
 	       (try-again nil)
+	       (t-file-list (cond
+			      (view:*view-things* view:*view-things*)
+			      ((listp files) files)
+			      (t (list files))))
 	       (*pager*   (or pager
 			      (apply #'make-instance
 				     (if binary 'binary-pager 'text-pager)
 				     :stream stream
 				     :page-size (1- (tt-height))
-				     :file-list (if (listp files)
-						    files
-						    (list files))
+				     :file-list t-file-list
+				     :file-index
+				     (cond
+				       (view:*view-things*
+					(position (oelt files 0)
+						  view:*view-things*
+						  :test #'equal))
+				       (t 0))
 				     :options options
 				     options))))
 	  (with-slots (page-size file-list file-index suspend-flag seekable
@@ -2553,6 +2563,7 @@ compatible with 'less', 'vi' and 'emacs'.
   R				Re-read the stream.
   M-n				View the next file.
   M-p				View the previous file.
+  M-l                           Show the file list.
 
 [1mMore information[0m
   ^H :BACKSPACE			Extended help.
@@ -2657,7 +2668,7 @@ a view method."
    (files pathname :repeating t :help "Files to view."))
   :accepts (:grotty-stream :file-list :file-locaations)
   "Look through text, one screen-full at a time."
-  (let ((thing (or files
+  (let ((thing (or (or files view:*view-things*)
 		   (and (acceptable-object lish:*input*) lish:*input*)
 		   (and (not (likely-a-terminal-p *standard-input*))
 			*standard-input*))))
