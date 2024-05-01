@@ -8,6 +8,7 @@
   (:export
    #:*viewer-alist*
    #:*file-name-types*
+   #:*view-things*
    #:viewer-for
    #:set-viewers
    #:view-things
@@ -223,10 +224,20 @@ or a system command, designated by either a string, or a list of
     (when entry
       (invoke-viewer (make-viewer-from (cdr entry)) thing))))
 
-(defun view-things (things)
-  (loop :for thing :in things :do
-     (with-simple-restart (continue "View the next thing.")
-       (view thing))))
+(defun print-viewer (thing)
+  (let ((entry (assoc (type-of thing) *lisp-viewer-alist*)))
+    (format t "~s~%"
+	    (if entry (make-viewer-from (cdr entry))
+		"No viewer found."))))
+
+(defvar *view-things* nil
+  "List of things we're currently viewing. Dynamically bound in ‘view-things’.")
+
+(defun view-things (things &key (method 'view))
+  (let ((*view-things* things))
+    (loop :for thing :in things :do
+      (with-simple-restart (continue "View the next thing.")
+	(apply method (list thing))))))
 
 (defmethod view-raw ((thing string))
   (view-raw-file thing))
@@ -249,18 +260,32 @@ or a system command, designated by either a string, or a list of
 #+lish
 (lish:defcommand view
   ((raw boolean :short-arg #\r :help "View the raw data.")
+   (name boolean :short-arg #\n
+    :help "Print the name of the viewers, but don't view.")
    ;; (things pathname :repeating t :optional t :help "The things to view.")
-   (things object :repeating t :optional t :help "The things to view.")
-   )
+   (things case-preserving-object :repeating t :optional t
+    :help "The things to view."))
   "Look at something."
-  (when (not things)
-    (setf things (or (and lish:*input*
-			  (if (listp lish:*input*)
-			      lish:*input*
-			      (list lish:*input*)))
-		     (list (pick-file)))))
-  (if raw
-      (view-raw-things things)
-      (view-things things)))
+  ;; (when (not things)
+  ;;   (setf things (or (and lish:*input*
+  ;; 			  (if (listp lish:*input*)
+  ;; 			      lish:*input*
+  ;; 			      (list lish:*input*)))
+  ;; 		     (list (pick-file)))))
+  ;; (if raw
+  ;;     (view-raw-things things)
+  ;;     (view-things things)))
+  (lish:with-files-or-input (things)
+    ;; Because this is shell command, assume that a symbol whose string is
+    ;; a file name, is a file name and convert it to a string.
+    (view-things (mapcar (_ (if (and (symbolp _)
+				     (nos:file-exists (string _)))
+				(string _)
+				_))
+			 things)
+		 :method (cond
+			   (name 'print-viewer)
+			   (raw 'view-raw)
+			   (t 'view)))))
 
 ;; End
