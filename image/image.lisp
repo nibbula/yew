@@ -436,7 +436,7 @@ format. It signals unknown-image-type or non-image-file, if it can't figure it
 out."
   (let* (array
 	 (thing (typecase file-or-stream
-		  (string (pathname file-or-stream))
+		  (string (pathname (nos:quote-filename file-or-stream)))
 		  (pathname file-or-stream)
 		  (stream
 		   (coerce-to-stream-or-filename
