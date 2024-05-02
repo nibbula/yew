@@ -24,6 +24,7 @@
    #:mem-table
    #:db-table #:table-name #:table-indexes
    ;; table funcs
+   #:default-column-name
    #:table-add-column
    #:table-update-column-width
    #:table-set-column-type
@@ -42,6 +43,7 @@
    #:row-to-table
    #:pick-columns
    #:insert-column
+   #:normalize-table
    #:make-table-from
    ;; #:join
    ))
@@ -133,6 +135,12 @@ attributes."))
 	    :documentation "List of column names that are indexed."))
   (:documentation "A table that is stored in a database."))
 
+(defgeneric default-column-name (table i)
+  (:documentation "Return a default column name for column ‘i’ in ‘table’.")
+  (:method (table i)
+    (declare (ignore table))
+    (format nil "Column~d" i)))
+
 (defun table-add-column (table name &key type width format align)
   "Shorthand for adding a column to a table. Name can be just the name or a
 column structure. Note that this just adds to the metadata in table-columns.
@@ -203,15 +211,15 @@ found."
   (:documentation
    "Make a table from another object type.
 
- OBJECT        An alist or a list of mappable things, or a hash-table, or a
-               uniform vector of other mappable types, or a 2d array.
- TYPE          The class of the instance to create, which should be a
-               sub-class of MEM-TABLE.
- COLUMN-NAMES  A list of column names, which should match the number of
-               columns in OBJECT.
- COLUMNS       A list of plists for initializing table-columns, which should
-               match the number of columns in OBJECT. E.g.:
-               '((:name \"foo\" :type 'number :format \"[~d]\"))"))
+ ‘object’        An alist or a list of mappable things, or a hash-table, or a
+                 uniform vector of other mappable types, or a 2d array.
+ ‘type’          The class of the instance to create, which should be a
+                 sub-class of MEM-TABLE.
+ ‘column-names’  A list of column names, which should match the number of
+                 columns in OBJECT.
+ ‘columns'       A list of plists for initializing table-columns, which should
+                 match the number of columns in OBJECT. E.g.:
+                 '((:name \"foo\" :type 'number :format \"[~d]\"))"))
 
 (defmethod make-table-from ((object table) &key column-names columns type)
   "Make a table from a table, which just returns the table."
@@ -409,7 +417,8 @@ be a name or a column structure. Not all tables support inserting columns."))
   (omap-into
     (container-data table)
     (lambda (row)
-      ;; This is stupid. We should have a specialized inserts.
+      ;; This is stupid in many ways. We should probably have a specialized
+      ;; inserts, and of course this limit the row types.
       (let ((glom-type (etypecase row
 			 (list 'list)
 			 (string 'string)
@@ -429,6 +438,68 @@ be a name or a column structure. Not all tables support inserting columns."))
 	   (osubseq row at)))))
     (container-data table))
   table)
+
+;; @@@ LATER
+;; If ‘initial-element-function’ is supplied, the result of calling it with
+;; the row and column number will be used as the value for undefined cells.
+
+(defgeneric normalize-table (table &key row-type initial-element
+				     #| initial-element-function |#)
+  (:documentation
+   "Make all the rows be the same type and dimension. If ‘row-type’ is given, it
+is used as the ‘type’ argument to ‘make-collection’. The default ‘row-type’ is
+whatever ‘make-array’ returns, which is likely a simple-vector. If ‘row-type’
+isn't given and the row is an array, then an array with the same element-type.
+If ‘initial-element’ is supplied, it will be used as the value for undefined
+cells. Columns names are added as required. This can be an expensive operation.")
+  (:method ((table mem-table) &key row-type initial-element
+				#| initial-element-function |#)
+    (let ((max-len 0))
+      ;; Figure the maximum length
+      (omap (_ (setf max-len (max max-len (olength _))))
+	    (container-data table))
+      ;; Adjust the rows
+      (loop :with i = (oiterator (container-data table))
+	    :and row-num = 0
+	    :while (not (oend-p i))
+	    :do
+	    (when (< (olength (oiter-ref i)) max-len)
+	      (let ((a (cond
+			 (row-type
+			  (if initial-element
+			      (make-collection row-type :size max-len
+					       :initial-element initial-element))
+			      (make-collection row-type :size max-len))
+			 (t
+			  (typecase (oiter-ref i)
+			    (array
+			     (if initial-element
+				 (make-array max-len
+					     :element-type (array-element-type
+							    (oiter-ref i))
+					     :initial-element initial-element)
+				 (make-array max-len
+					     :element-type (array-element-type
+							    (oiter-ref i)))))
+			    (t
+			     (if initial-element
+				 (make-array max-len
+					     :initial-element initial-element)
+				 (make-array max-len))))))))
+		;; @@@ This should use oreplace, but it's not implemented,
+		;; and I don't have the energy to write it now.
+		;; (oreplace a (oiter-ref i))
+		(let ((ii 0))
+		  (omap (_ (setf (aref a ii) _) (incf ii)) (oiter-ref i)))
+		(setf (oiter-ref i) a)))
+	    (oincr i)
+	    (incf row-num))
+      ;; Add columns
+      (when (< (olength (table-columns table)) max-len)
+	(loop :for i :from (olength (table-columns table))
+	      :below max-len
+	      :do (table-add-column table (default-column-name table i))))
+      table)))
 
 (defun copy-columns (table)
   "Return a copy of TABLE's columns."
@@ -632,7 +703,7 @@ of one element lists, so we can make a 1 column table."
 	 (if (sequence-of-classes-p object)
 	     (set-columns-names-from-class tt first-obj)
 	     (loop :for i :from 0 :below (olength first-obj)
-		   :do (table-add-column tt (format nil "Column~d" i)
+		   :do (table-add-column tt (default-column-name tt i)
 					 :type t))))))
     tt))
 
@@ -665,7 +736,7 @@ of one element lists, so we can make a 1 column table."
 	       (table-add-column tt c)))
 	 (t
 	  (loop :for i :from 0 :to (array-dimension object 0)
-	     :do (table-add-column tt (format nil "Column~d" i))))))
+	     :do (table-add-column tt (default-column-name tt i))))))
       (1
        (cond
 	 (columns (setf (table-columns tt) (make-columns columns)))
@@ -682,7 +753,7 @@ of one element lists, so we can make a 1 column table."
 		    (set-columns-names-from-class tt first-obj)
 		    (loop :for i :from 0 :below (olength first-obj)
 		       :do (table-add-column
-			    tt (format nil "Column~d" i)))))))))))
+			    tt (default-column-name tt i)))))))))))
     tt))
 
 (defmethod make-table-from ((object structure-object)
