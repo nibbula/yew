@@ -134,7 +134,8 @@ Also we really need the MOP for stuff.")
       opush
       opushnew
       opop
-      make-collection-template))
+      make-collection-template
+      make-collection))
 
   (export *methods*)
   (export *other-exports*))
