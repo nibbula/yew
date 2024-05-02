@@ -11,7 +11,7 @@
    (style choice :short-arg #\s :default *default-style*
     :choices '("generic" "unix" "ms")
     :help "Operating system specific output style.")
-   (collect boolean :short-arg #\c :help "True to collect results.")
+   (collect boolean :short-arg #\c :default t :help "True to collect results.")
    (files pathname :repeating t
     :help "The path names to give information about."))
   :accepts (string pathname sequence)
