@@ -23,7 +23,10 @@
 		   :collect `(,v ,(ignore-errors
 				    (get-system-info (symbol-value v)))
 				 ,(system-info-description v)))
-		:column-names '("Name" "Value" "Description"))
+		:columns
+		'((:name "Name")
+		  (:name "Value")
+		  (:name "Description" :align :wrap)))
 	       (table:make-table-from
 		(loop :for v :across (system-info-names)
 		   :collect `(,v ,(ignore-errors
