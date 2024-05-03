@@ -1616,12 +1616,17 @@ point in time (a.k.a. revision hash).")
   (span-to-fat-string
    `(:white ,(date-string :format :relative :time cell))))
 
+(defun long-date-cell-formatter (cell)
+  (span-to-fat-string
+   `(:white ,(date-string :time cell))))
+
 (defun raw-date-cell-formatter (cell width)
   (flet ((raw ()
 	   (cond
 	     ((numberp cell)
-	      (span-to-fat-string
-	       `(:white ,(date-string :format :relative :time cell))))
+	      (if (puca-history-long *puca*)
+		  (long-date-cell-formatter cell)
+		  (date-cell-formatter cell)))
 	     ((ostring:ostringp cell)
 	      cell)
 	     (t ""))))
