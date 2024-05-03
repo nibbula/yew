@@ -360,6 +360,7 @@ is the result of calling ‘func’ on each source.txt line."
 	 (project-file (glob:expand-tilde
 			(nos:path-append
 			 (ql-projects-dir)
+			 "projects"
 			 (if ql-system
 			     (ql-dist:project-name (ql-dist:release ql-system))
 			     project-name)
