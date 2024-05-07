@@ -72,23 +72,28 @@ expand all macros recursively."
 ;; Perhaps it would be more efficient if we could use the implementation's own
 ;; list, instead of having to go thru non-existent code points here, but it's
 ;; not like the speed is a big problem now, and this seems portable.
-(defun char-apropos (name &key (regexp-p t))
-  "List characters with names matching NAME."
-  (let ((match-name
-	 (if (symbolp name)
-	     (symbol-name name)
-	     name))
-	(scanner (when regexp-p
-		   (ppcre:create-scanner name :case-insensitive-mode t))))
-    (loop :for c :from 0 :below char-code-limit
-       :do (let* ((code  (code-char c))
-		  (name  (when code (char-name code)))
-		  (match (when name
-			   (if regexp-p
-			       (ppcre:scan scanner name)
-			       (search match-name name :test #'equalp)))))
-	     (when match
-	       (format t "#x~8,'0x ~c ~a~%" c code name))))))
+(defun char-apropos (name &key (regexp-p t) collect)
+  "List characters with names matching ‘name’."
+  (let* ((match-name
+	   (if (symbolp name)
+	       (symbol-name name)
+	       name))
+	 (scanner
+	   (when regexp-p
+	     (ppcre:create-scanner match-name :case-insensitive-mode t))))
+    (loop
+      :with code :and name :and match
+      :for c :from 0 :below char-code-limit
+      :do (setf code  (code-char c)
+		name  (when code (char-name code))
+		match (when name
+			(if regexp-p
+			    (ppcre:scan scanner name)
+			    (search match-name name :test #'equalp))))
+      :when match
+        :do (format t "#x~8,'0x ~c ~a~%" c code name)
+      :when (and match collect)
+        :collect (list c code name))))
 
 ;; alias for
 (setf (symbol-function 'character-apropos) #'char-apropos)
