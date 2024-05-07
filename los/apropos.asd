@@ -11,7 +11,7 @@
   :source-control     :git
   :long-description   "Knowing what you want can be half the problem."
   :depends-on (:cl-ppcre :dlib :collections :char-util :table :grout :syntax
-		 :syntax-lisp :man :los-config :lish)
+	       :syntax-lisp :man :los-config :lish :dlib-interactive)
   :components
   ((:file "apropos")
    (:module "cmds"

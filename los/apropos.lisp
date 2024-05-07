@@ -4,7 +4,8 @@
 
 (defpackage :apropos
   (:documentation "Dans lequel nous échouons preuve d'à propos.")
-  (:use :cl :dlib :collections :char-util :table :grout :syntax :syntax-lisp)
+  (:use :cl :dlib :collections :char-util :table :grout :syntax :syntax-lisp
+	:dlib-interactive)
   (:export
    #:mondo-apropos #:!apropos
    ))
@@ -148,7 +149,8 @@
 	 (make-table-from table :column-names '("Command" "Description")))
 	(or (and collect table) t)))))
 
-(defparameter *types* '(:lisp :lish :quicklisp :os))
+;; Note that this doesn't include :character.
+(defparameter *default-types* '(:lisp :lish :quicklisp :os))
 
 ;; Maybe it would be cool to have a tree browser output version?
 
@@ -172,6 +174,12 @@
 	  (grout-princ #\newline))
 	(when (and (setf result (system-apropos thing collect)) collect)
 	  (push `(:quicklisp . ,result) results)))
+
+      (when (find :character types)
+	(when result
+	  (grout-princ #\newline))
+	(when (and (setf result (character-apropos thing)) collect)
+	  (push `(:character . ,result) results)))
 
       (when (find :lish types)
 	(when result
