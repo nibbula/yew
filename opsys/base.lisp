@@ -292,8 +292,8 @@ efficiency.")
 #+(and 32-bit-target 64-bit-target) (error "Can't be both 32 & 64 bits!")
 
 (defparameter *need-quoting*
-  #-windows "[*?;:"
-  #+windows "[*?;"
+  #-windows "[*?;\\:"
+  #+windows "[*?;\\"
   "Characters that may need escaping in a pathname.")
 
 ;; I am probably unable to express how unfortunate this is.
