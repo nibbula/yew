@@ -110,6 +110,33 @@ matches SYMBOL."
 
 #+sbcl (declaim (sb-ext:unmuffle-conditions style-warning))
 
+(defun document-accessors (classes)
+  "If reader functions with the same name as the slots in ‘classes’ don't have
+documentation, set thier documentation from the slot documentation, but only
+if the slot name is in the same package as the class name. ‘classes’ should be
+a list of class name symbols. It may not be exactly correct, but this at least
+shows something helpful in the REPL."
+  (loop :with class-package :and count = 0
+    :for c :in (etypecase classes
+		 (symbol (list classes))
+		 (list classes))
+    :do
+    (setf class-package (symbol-package c))
+    (loop :with slot-package
+      :for s :in (mop:class-direct-slots (find-class c)) :do
+      ;; We don't bother with the writer since it's usually a setf form,
+      ;; which don't really have a good way of showing from the REPL yet.
+      (setf slot-package (symbol-package (mop:slot-definition-name s)))
+      (when (and (find (mop:slot-definition-name s)
+                       (mop:slot-definition-readers s))
+		 (eq class-package slot-package)
+                 (documentation s t)
+                 (not (documentation (mop:slot-definition-name s) 'function)))
+        (setf (documentation (mop:slot-definition-name s) 'function)
+              (documentation s t))
+	(incf count)))
+     :finally (return count)))
+
 #+has-package-locks
 (eval-when (:load-toplevel :execute)
   (d-lock-package :dlib))

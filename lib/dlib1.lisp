@@ -177,6 +177,7 @@
    #:function-designator
    #:+simple-condition-format-control-slot+
    #:+simple-condition-format-arguments-slot+
+   #:document-accessors
 
    ;; Debugging
    #:*dbug* #:*dbug-output* #:*dbug-package* #:*dbug-facility*
