@@ -6,13 +6,17 @@
 
 (lish:defcommand df
   ((include-dummies boolean :short-arg #\a
-    :help "True to include dummy file systems.")
+    :help "Include dummy file systems.")
    (show-type boolean :short-arg #\t
-    :help "True to show filesystem types.")
+    :help "Show filesystem types.")
    (omit-header boolean :short-arg #\h
-    :help "True to omit the header.")
+    :help "Omit the header.")
    (visual boolean :short-arg #\v :default t
-    :help "True to show free space visually.")
+    :help "Show free space visually.")
+   (sizes-as-bytes boolean :short-arg #\b
+    :help "Show sizes as bytes.")
+   (sizes-as-blocks boolean :short-arg #\k
+    :help "Show sizes as 1024 byte blocks.")
    (files pathname :repeating t
     :help "File systems to report on."))
   "Show how much disk is free. Lists mounted filesystems and shows usage
@@ -22,6 +26,8 @@ statisics for each one."
 	(lish:with-files-or-input (files)
 	  (df :files files
 	      :include-dummies include-dummies :show-type show-type
-	      :omit-header omit-header :visual visual))))
+	      :omit-header omit-header :visual visual
+	      :sizes-as-bytes sizes-as-bytes
+	      :sizes-as-blocks sizes-as-blocks))))
 
 ;; End

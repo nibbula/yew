@@ -19,80 +19,45 @@
 (defparameter *size-abbrevs*
   #(nil "K" "M" "G" "T" "P" "E" "Z" "Y" "*"))
 
+(defparameter *block-size* 1024)
+
 (defun size-out (n)
   (remove #\space
 	  (print-size n :abbrevs *size-abbrevs* :stream nil :unit "")))
+(defun bytes-out (n) (princ-to-string n))
+(defun blocks-out (n) (princ-to-string (ceiling n *block-size*)))
 
-(defun size-out-with-width (n width)
-  "Print the size in our prefered style."
-  (if (numberp n)
-      (if width
-	  (format nil "~v@a" width (size-out n))
-	  (size-out n))
-      (if width
-	  (format nil "~v@a" width n)
-	  (format nil "~@a" n))))
+(defun size-out-func (func)
+  "Return a format function to print the size ‘n’ in field of ‘width’, in our
+ prefered number formatting style, defined by ‘func’."
+  (lambda (n width)
+    (if (numberp n)
+	(if width
+	    (format nil "~v@a" width (funcall func n))
+	    (funcall func n))
+	(if width
+	    (format nil "~v@a" width n)
+	    (format nil "~@a" n)))))
 
-#|
-(defparameter *default-cols*
-  `((:name "Filesystem")
-    (:name "Size"  :align :right :type number :format ,#'size-out-with-width)
-    (:name "Used"  :align :right :type number :format ,#'size-out-with-width)
-    (:name "Avail" :align :right :type number :format ,#'size-out-with-width)
-    (:name "Use%"  :align :right :type number :width 4 :format "~*~3d%")
-    (:name "Mounted on")))
-
-(defparameter *type-cols*
-  `((:name "Filesystem")
-    (:name "Type")
-    (:name "Size"  :align :right :type number :format ,#'size-out-with-width)
-    (:name "Used"  :align :right :type number :format ,#'size-out-with-width)
-    (:name "Avail" :align :right :type number :format ,#'size-out-with-width)
-    (:name "Use%"  :align :right :type number :width 4 :format "~*~3d%")
-    (:name "Mounted on")))
-|#
-
-(defun column-data (show-type visual)
-  `((:name "Filesystem")
-    ,@(if show-type '((:name "Type")) nil)
-    (:name "Size"  :align :right :type number :format ,#'size-out-with-width)
-    (:name "Used"  :align :right :type number :format ,#'size-out-with-width)
-    (:name "Avail" :align :right :type number :format ,#'size-out-with-width)
-    (:name "Use%"  :align :right :type number :width 4 :format "~*~3d%")
-    ,@(if visual '((:name "Free Space")) nil)
-    (:name "Mounted on")))
+(defun column-data (show-type visual sizes-as-bytes sizes-as-blocks)
+  (let ((func
+	  (cond
+	    (sizes-as-bytes #'bytes-out)
+	    (sizes-as-blocks #'blocks-out)
+	    (t #'size-out))))
+    `((:name "Filesystem")
+      ,@(if show-type '((:name "Type")) nil)
+      (:name "Size"  :align :right :type number :format ,(size-out-func func))
+      (:name "Used"  :align :right :type number :format ,(size-out-func func))
+      (:name "Avail" :align :right :type number :format ,(size-out-func func))
+      (:name "Use%"  :align :right :type number :width 4 :format "~*~3d%")
+      ,@(if visual '((:name "Free Space")) nil)
+      (:name "Mounted on"))))
 
 (defvar *cols* nil "Current column data.")
 
-#|
-
-(defun print-blocks-as-size (blocks f)
-  (print-size (* blocks (statfs-bsize f))
-	      :abbrevs *size-abbrevs* :stream nil :unit ""))
-
-(defun bsd-unix-info ()
-  (loop :for f :in (getmntinfo)
-     :collect
-     (let* ((size      (statfs-blocks f))
-	    (free      (statfs-bfree f))
-	    (avail     (statfs-bavail f))
-	    (used      (- size free))
-	    (pct       (if (zerop size)
-			   0
-			   (ceiling (* (/ used size) 100))))
-	    (from-name (statfs-mntfromname f))
-	    (to-name   (statfs-mntonname f))
-	    (dev	   (elt (statfs-fsid f) 0)))
-       (vector from-name
-	       (print-blocks-as-size size f)
-	       (print-blocks-as-size used f)
-	       (print-blocks-as-size avail f)
-	       (format nil "~d%" pct)
-	       to-name
-	       dev))))
-|#
-
 (defun bogus-filesystem-p (f)
+  "Return true if ‘f’ is a bogus file system that we don't usually care to see."
   (or (zerop (filesystem-info-total-bytes f))
       #+(or linux netbsd)
       (not (or (begins-with "/" (filesystem-info-device-name f))
@@ -100,6 +65,8 @@
       #+windows (not (filesystem-info-mount-point f))))
 
 (defun visual-percent (pct &key (width 10))
+  "Return a fat-string representing ‘pct’ percent in a field of ‘width’. Uses
+the (:program :meter :character) from the theme."
   (with-output-to-fat-string (str)
     (loop :for i :from 1 :to (/ (* width pct) 100)
        :do
@@ -110,6 +77,7 @@
 	      :stream str :escape nil :readably nil))))
 
 (defun generic-info (&key file-systems include-dummies show-type visual)
+  "Return a collection of file system info."
   (loop
      :with size :and free :and avail :and used :and pct :and type
      :for f :in (or file-systems (mounted-filesystems))
@@ -136,10 +104,11 @@
 	       ))))
 
 ;; Absence of evidence is not evidence of absence.
-(defun df (&key files include-dummies show-type omit-header (print t) visual)
+(defun df (&key files include-dummies show-type omit-header (print t) visual
+	     sizes-as-bytes sizes-as-blocks)
   "Show how much disk is free."
-  (let ((*cols* (copy-tree (column-data show-type visual)))
-		 ;;(if show-type *type-cols* *default-cols*)))
+  (let ((*cols* (copy-tree (column-data show-type visual sizes-as-bytes
+					sizes-as-blocks)))
 	file-systems data table)
     (with-grout ()
       (setf file-systems (and files
@@ -158,4 +127,4 @@
 			   :long-titles t)))
     table))
 
-;; EOF
+;; End
