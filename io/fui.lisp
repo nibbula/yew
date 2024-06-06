@@ -391,7 +391,7 @@ draw it a the current window text position.")
 ;; This interface is somewhat deprecated. I recommend using show-text.
 (defun display-text (title text-lines &key input-func (justify t)
 					x y width height
-					min-width min-height)
+					min-width min-height centered)
   "Display text in a pop up window. Optionally calls INPUT-FUNC with the
 window as an argument to get input. If no INPUT-FUNC is provided it just
 waits for a key press and then returns."
@@ -428,7 +428,9 @@ waits for a key press and then returns."
     (loop :with i = (if title 2 0)
        :for l :in justified-lines
        :do
-       (window-text w (re-fangle l) :row i :column 2)
+       (if centered
+	   (window-centered-text w i (re-fangle l))
+	   (window-text w (re-fangle l) :row i :column 2))
        (incf i))
     (tt-finish-output)
     (setf result (if input-func
@@ -447,7 +449,7 @@ waits for a key press and then returns."
 ;;   - don't require lines to be pre-split
 ;;   - In general, just take a string and display it as-is.
 (defun show-text (text &key input-func title justify
-			 x y width height min-width min-height)
+			 x y width height min-width min-height centered)
   "Display ‘text’ in a pop up window. Optionally calls ‘input-func’ with the
 window as an argument to get input. If no ‘input-func’ is provided it just
 waits for a key press and then returns.
@@ -464,7 +466,8 @@ Keyword arguments are:
 		  :input-func input-func
 		  :justify justify
 		  :x x :y y :width width :height height
-		  :min-width min-width :min-height min-height)))
+		  :min-width min-width :min-height min-height
+		  :centered centered)))
 
 (defun popup-y-or-n-p (question &rest args
 		       &key (title nil title-supplied-p)
