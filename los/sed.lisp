@@ -643,8 +643,8 @@ delete the backup file at the end."
       (when (and output close-output)
 	(close-output in-place backup-pattern delete-backup))
       (when (state-files *state*)
-	(omapk (_ (when (open-stream-p (oelt _ 1))
-		    (close (oelt _ 1))))
+	(omapk (_ (when (open-stream-p (ovalue _))
+		    (close (ovalue _))))
 	       (state-files *state*))))
     (when collect
       (nreverse (state-output *state*)))))

@@ -1389,7 +1389,7 @@ current line."
     (let ((len 0))
       (values
        (with-collecting ()
-	 (omapk (_ (collect (aref _ 0)) (incf len)) table))
+	 (omapk (_ (collect (okey _)) (incf len)) table))
        len))))
 
 (defun history-prefix-match-ending (e &key line)

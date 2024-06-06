@@ -47,8 +47,8 @@
 			 (omapk (_ (push
 				    (list
 				     (name-to-title
-				      (princ-to-string (oelt _ 0)))
-				     (princ-to-string (oelt _ 1))) l))
+				      (princ-to-string (okey _)))
+				     (princ-to-string (ovalue _))) l))
 				(nos:get-user-info :id id))
 			 (setf l (nreverse l))
 			 #+unix

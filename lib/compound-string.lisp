@@ -70,8 +70,9 @@ offset of the start of the piece."
 		 :pieces (loop :for p :in (compound-string-pieces cs)
 			       :collect (omap function p))))
 
-(defmethod omapk (function (cs compound-string))
-  (omap function cs))
+;; This isn't right, and probably unnecessary.
+;; (defmethod omapk (function (cs compound-string))
+;;   (omap function cs))
 
 (defmethod omapn (function (cs compound-string))
   (prog1 nil

@@ -39,6 +39,8 @@ Also we really need the MOP for stuff.")
       omap
       omap-as
       omapk
+      okey
+      ovalue
       omapn
       omapcan
       omapcan-as
@@ -772,12 +774,29 @@ values into a ‘type’ and return it.")
 (defmethod omap-as (type function (collection container))
   (omap-as type function (container-data collection)))
 
+;; @@@ garbage because I can't decide how to pass a key value pair.
+(defmacro okey (o)
+  "The key part of the object passed to keyed-collection mapping functions,
+e.g. ‘omapk’."
+  `(car ,o))
+
+(defmacro ovalue (o)
+  "The value part of the object passed to keyed-collection mapping functions,
+e.g. ‘omapk’."
+  `(cdr ,o))
+
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro make-kv (k v)
+    "Make a key-value object."
+    `(cons ,k ,v)))
+
 (defgeneric omapk (function keyed-collection) ;; should be &rest collections
   (:documentation
-   "Return a sequence of the results of applying FUNCTION to successive elements
-of COLLECTION. If the collection is a keyed-collection, function will be passed
-a pair consisiting of (key . value). The sequence returned is usually a list
-unless COLLECTION is a sequence.")
+   "Return a sequence of the results of applying ‘function’ to successive
+elements of ‘collection’. If the collection is a keyed-collection, function will
+be passed an object with which the key be accessed by ‘okey’ and the value with
+‘ovalue’. The sequence returned is usually a list unless ‘collection’ is a
+sequence.")
   (:method (function (collection list))
     (mapcar function collection))
 ;; (:method (function (collection vector))
@@ -787,14 +806,14 @@ unless COLLECTION is a sequence.")
     (map (type-of collection) function collection))
   (:method (function (collection hash-table))
     (progn (maphash #'(lambda (k v)
-			(funcall function (vector k v))) collection)))
+			(funcall function (make-kv k v))) collection)))
   (:method (function (collection structure-object))
     (loop :for slot :in (mop:class-slots (class-of collection))
        :collect
        (funcall function
 		(and
 		 (slot-boundp collection (mop:slot-definition-name slot))
-		 (vector
+		 (make-kv
 		  (mop:slot-definition-name slot)
 		  (slot-value collection (mop:slot-definition-name slot)))))))
   (:method (function (collection standard-object))
@@ -803,7 +822,7 @@ unless COLLECTION is a sequence.")
        (funcall function
 		(and
 		 (slot-boundp collection (mop:slot-definition-name slot))
-		 (vector
+		 (make-kv
 		  (mop:slot-definition-name slot)
 		  (slot-value collection (mop:slot-definition-name slot))))))))
 
@@ -824,7 +843,7 @@ values.")
     (map nil function collection))
   (:method (function (collection hash-table))
     (progn
-      (maphash #'(lambda (k v) (funcall function (vector k v))) collection)))
+      (maphash #'(lambda (k v) (funcall function (make-kv  k v))) collection)))
   (:method (function (collection structure-object))
     (loop :for slot :in (mop:class-slots (class-of collection))
        :do
@@ -846,48 +865,49 @@ values.")
 ;; @@@ Maybe we should make an omapkn too?
 
 ;; @@@ Note: mapcan-<x>like are not hygenic, so just for use here.
-(defmacro mapcan-listlike (() &body body)
-  `(let (end result item new)
-      ;; Like mapcan, but doesn't require function to return a list.
-      (omapn (lambda (_)
-	       (when (setf item (funcall function _))
-                 (setf new (if (listp item) item (list item)))
-                 (when end
-                   (rplacd end new))
-                 (setf end (last new))
-                 (when (null result)
-                   (setf result new))))
-             collection)
-     ,@body))
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defmacro mapcan-listlike (() &body body)
+    `(let (end result item new)
+       ;; Like mapcan, but doesn't require function to return a list.
+       (omapn (lambda (_)
+		(when (setf item (funcall function _))
+                  (setf new (if (listp item) item (list item)))
+                  (when end
+                    (rplacd end new))
+                  (setf end (last new))
+                  (when (null result)
+                    (setf result new))))
+              collection)
+       ,@body))
 
-(defmacro mapcan-vectorlike (() &body body)
-  `(let (end result item new (len 0))
-     (declare (type fixnum len))
-     ;; Like the list method, but keeps track of the length, so we can make
-     ;; the result array quicker.
-     (omapn (lambda (_)
-	      (when (setf item (funcall function _))
-                (setf new (if (listp item)
-			      (prog1 item
-				(incf len (length item)))
-			      (prog1 (list item)
-				(incf len))))
-                (when end
-                  (rplacd end new))
-                (setf end (last new))
-                (when (null result)
-                  (setf result new))))
-            collection)
-     ,@body))
+  (defmacro mapcan-vectorlike (() &body body)
+    `(let (end result item new (len 0))
+       (declare (type fixnum len))
+       ;; Like the list method, but keeps track of the length, so we can make
+       ;; the result array quicker.
+       (omapn (lambda (_)
+		(when (setf item (funcall function _))
+                  (setf new (if (listp item)
+				(prog1 item
+				  (incf len (length item)))
+				(prog1 (list item)
+				  (incf len))))
+                  (when end
+                    (rplacd end new))
+                  (setf end (last new))
+                  (when (null result)
+                    (setf result new))))
+              collection)
+       ,@body))
 
-(defmacro mapcan-hashlike (hash-table)
-  `(let ((result ,hash-table)
-	 item)
-     (omapk (lambda (_)
-	      (when (setf item (funcall function _))
-		(setf (gethash (oelt item 0) result) (oelt item 1))))
-            collection)
-     result))
+  (defmacro mapcan-hashlike (hash-table)
+    `(let ((result ,hash-table)
+	   item)
+       (omapk (lambda (_)
+		(when (setf item (funcall function _))
+		  (setf (gethash (okey item) result) (ovalue item))))
+              collection)
+       result)))
 
 (defgeneric omapcan-as (type function collection)
   (:documentation
@@ -972,23 +992,33 @@ collection of RESULT-TYPE."
 ;; This is actually not as useful, since we can't specialize on ‘collections’.
 (defgeneric omap-into (mutable-collection function &rest collections)
   (:documentation
-"Apply FUNCTION to each object in the COLLECTIONs and store the results in
-MUTABLE-COLLECTION. FUNCTION is a function of one argument that returns an
-object appropriate to be element of a collection of MUTABLE-COLLECTION.
-Returns MUTABLE-COLLECTION.
+"Apply ‘function’ to each object in the ‘collections’ and store the results in
+‘mutable-collection’. ‘function’ should be a function of one argument that
+returns object appropriate to be element of ‘mutable-collection’.
+Returns ‘mutable-collection’.
 
-If COLLECTIONS are SEQUENCEs, the elements are applied in the sequence order.")
+If ‘collections’ are sequences, the elements are applied in the sequence order.")
   (:method ((mutable-collection list) function &rest collections)
     (apply #'map-into mutable-collection function collections))
   (:method ((mutable-collection vector) function &rest collections)
     (apply #'map-into mutable-collection function collections))
   (:method ((mutable-collection sequence) function &rest collections)
-    (apply #'map-into mutable-collection function collections))
-  (:method ((mutable-collection hash-table) function &rest collections)
     (apply #'map-into mutable-collection function collections)))
 
 (defmethod omap-into ((mutable-collection container) function &rest collections)
   (apply #'omap-into (container-data mutable-collection) function collections))
+
+;; @@@ This isn't really finished yet, for various reasons.
+(defgeneric omapk-into (mutable-collection function &rest collections)
+  (:documentation "Like ‘omap-into’ but for keyed-collections. ‘function’
+receives the same key value pair that ‘omapk’ does and should return a second
+value of the key, and collections can be a keyed-collection.")
+  (:method ((mutable-collection hash-table) function &rest collections)
+    (omapk (lambda (_)
+	    (multiple-value-bind (value key) (funcall function _)
+	       (setf (gethash key mutable-collection) value)))
+	  collections)
+    mutable-collection))
 
 ;; I think there's not really any reason why oevery, etc. have to be generic.
 ;; @@@ Yes, I know these don't do the multi-dimensional iteration thing yet.

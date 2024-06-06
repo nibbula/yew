@@ -484,7 +484,7 @@ This can be quicker for large tables.")
 ;; @@@ maybe we could just use table:sub-table, but it doesn't handle
 ;; hash/struct?
 (defun table-subseq (table start &optional end)
-  "Return an object made from TABLE that we can do SUBSEQ on."
+  "Return an object made from ‘table’ that we can do ‘subseq’ on."
   (typecase (container-data table)
     ((or list array)
      (if end
@@ -499,7 +499,8 @@ This can be quicker for large tables.")
 	 ;; these keyed things? This is sub-good.
 	 (omapk (_ (cond
 		     ((and end (= i end)) (return nil))
-		     ((>= i start) (push _ result))))
+		     ((>= i start)
+		      (push (vector (okey _) (ovalue _)) result))))
 		(container-data table)))
        result))))
 

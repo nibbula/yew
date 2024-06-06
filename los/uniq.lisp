@@ -86,10 +86,10 @@
 	       (incf (gethash line table 0)))
 	     (get-line-with-skip (rec)
 	       "Return the line and count from a snipped line table mapping."
-	       (values (cdr (svref rec 1)) (car (svref rec 1))))
+	       (values (cdr (ovalue rec)) (car (ovalue rec))))
 	     (get-line (rec)
 	       "Return the line and count."
-	       (values (svref rec 0) (svref rec 1)))
+	       (values (okey rec) (ovalue rec)))
 	     (take-action-p (count)
 	       (or (not (or only-unique only-repeated))
 		   (and only-unique (= count 1) (not only-repeated))

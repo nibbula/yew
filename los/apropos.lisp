@@ -65,10 +65,10 @@
 	(do-all-symbols (symbol)
 	  (when (not (gethash symbol table))
 	    (setf (gethash symbol table) t))))
-    (omapk (_ (let ((str (string (aref _ 0))))
+    (omapk (_ (let ((str (string (okey _))))
 		;;(when (funcall scanner str 0 (length str))
 		(when (ppcre:scan scanner str)
-		  (push (aref _ 0) matches))))
+		  (push (okey _) matches))))
 	   table)
     (loop :for match :in matches :do
        ;;(loop :for pkg :in (list-all-packages) :do
