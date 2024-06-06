@@ -83,11 +83,18 @@
 	  (terminal-write-char stream #\newline))))))
 
 (defmethod text-table-cell-lines (table (renderer terminal-table-renderer)
-				  cell width)
+				  cell width column-number)
   "Return the lines of CELL fitting in WIDTH."
-  (declare (ignore table renderer))
+  ;; (declare (ignore table renderer))
   (osplit #\newline (with-output-to-fat-string (str)
-		      (justify-text cell :cols width :stream str))))
+		      (justify-text
+		       ;; @@@ we should figure out how to avoid formatting the
+		       ;; cell ;; multiple times
+		       (table-format-cell renderer table
+					  cell
+					  nil column-number
+					  :use-given-format t)
+		       :cols width :stream str))))
 
 ;; @@@ to implement x
 ;; (defmethod table-output-header ((renderer terminal-table-renderer) table
@@ -177,10 +184,11 @@
     (call-next-method)))
 
 (defmethod table-output-column-title ((renderer terminal-box-table-renderer)
-				      table title width justification column)
+				      table title width justification
+				      column-number)
   (with-slots (title-color) renderer
     (let* ((*trailing-spaces* t)
-	   (field (table-format-cell renderer table title nil column
+	   (field (table-format-cell renderer table title nil column-number
 				     :width width
 				     :justification justification)))
       (terminal-color *destination* title-color nil)

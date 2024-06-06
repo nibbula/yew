@@ -77,7 +77,7 @@ make the table in the first place. For that you want the TABLE package.")
 (defgeneric table-output-column-type-justification (renderer table type)
   (:documentation "Return the justification for TYPE."))
 
-(defgeneric table-format-cell (renderer table cell row column
+(defgeneric table-format-cell (renderer table cell row-number column-number
 			       &key width justification use-given-format)
   (:documentation
    "Return ‘cell’ with any formatting applied. If ‘use-given-format’ is NIL,
@@ -95,7 +95,7 @@ These are given in the ‘format’ slot of a ‘table:column’."))
   (:documentation "Output all the column titles."))
 
 (defgeneric table-output-column-title (renderer table title width justification
-				       column)
+				       column-number)
   (:documentation "Output a column title."))
 
 (defgeneric table-output-start-row (renderer table)
@@ -105,10 +105,10 @@ These are given in the ‘format’ slot of a ‘table:column’."))
   (:documentation "Output a whole table row."))
 
 (defgeneric table-output-cell (renderer table cell width justification
-			       row column)
+			       row-number column-number)
   (:documentation "Output a table cell."))
 
-(defgeneric table-output-cell-display-width (renderer table cell column
+(defgeneric table-output-cell-display-width (renderer table cell column-number
 					     &key use-given-format)
   (:documentation "Return the display width for a table cell."))
 
@@ -171,11 +171,12 @@ function."
 	    (format nil "~v@a" width cell)
 	    (format nil "~@a" cell)))))
 
-(defmethod table-format-cell (renderer table cell row column
+(defmethod table-format-cell (renderer table cell row-number column-number
 			      &key width justification (use-given-format t))
-  (declare (ignore renderer row))
-  (let ((given-format (when (< column (length (table-columns table)))
-			(column-format (oelt (table-columns table) column))))
+  (declare (ignore renderer row-number))
+  (let ((given-format (when (< column-number (length (table-columns table)))
+			(column-format (oelt (table-columns table)
+					     column-number))))
 	op fmt field)
     (flet ((format-it (fmt)
 	     (let ((*print-pretty* nil))
@@ -192,7 +193,7 @@ function."
 		    ((or string ostring) "/fatchar-io:print-string/")
 		    (t "a"))
 	       fmt (cond
-		     ((and (= column (1- (olength (table-columns table))))
+		     ((and (= column-number (1- (olength (table-columns table))))
 			   (not *trailing-spaces*))
 		      (setf width nil)
 		      (s+ "~v" op))
@@ -231,16 +232,32 @@ function."
 				   (table-output-column-type-justification
 				    renderer table (column-type col)) i))))
 
-(defmethod table-output-cell-display-width (renderer table cell column
+(defun multi-line-display-length (string)
+  "Return the width in character cells of a possibly multi-line ‘string’,
+assuming wrapping at ‘*max-width*’."
+  (let ((endings (dlib-misc:calculate-line-endings string
+						   0 *max-width* nil nil nil)))
+    (if endings
+	(1+ (loop :for (p . e) :in endings
+		  :maximize e))
+	(display-length string))))
+
+(defmethod table-output-cell-display-width (renderer table cell column-number
 					    &key (use-given-format t))
   "Return the display width for a table cell."
   ;; @@@ The list check was for when we would have the align in the name, but
   ;; probably shouldn't be used anymore, and can be removed eventually.
   ;; (assert (not (consp cell)) () "Cell shouldn't be a list anymore.")
-  (display-length (table-format-cell renderer table
-				     cell
-				     nil column
-				     :use-given-format use-given-format)))
+  ;; (display-length (table-format-cell renderer table
+  ;; 				     cell
+  ;; 				     nil column-number
+  ;; 				     :use-given-format use-given-format))
+  ;; This is pretty fugly.
+  (multi-line-display-length
+   (table-format-cell renderer table
+		      cell
+		      nil column-number
+		      :use-given-format use-given-format)))
 
 ;; This is separate from the table-output-sizes default method, so we can easily
 ;; call it separately without having to find-method or whatever.
@@ -384,9 +401,10 @@ sizes."
   (princ "| "))
 
 (defmethod table-output-cell ((renderer derp-table-renderer)
-			      table cell width justification row column)
+			      table cell width justification
+			      row-number column-number)
   "Output a table cell."
-  (declare (ignore renderer table row column))
+  (declare (ignore renderer table row-number column-number))
   (let ((*print-pretty* nil))
     (format t (if (eq justification :right) "~v@a" "~va") width cell)))
 
@@ -531,15 +549,22 @@ TABLE, limited to MAX-WIDTH."))
 (defmethod text-table-adjust-sizes (table
 				    (renderer text-table-renderer)
 				    sizes max-width)
-  "Adjust the sizes in the vector SIZES, by the data in TABLE, limited
-to MAX-WIDTH."
-  (let ((sep-len (length (text-table-renderer-separator renderer))))
+  "Adjust the sizes in the vector ‘sizes’, by the data in ‘table’, limited
+to ‘max-width’. Return the adjusted ‘sizes’ vector, which may be different than
+the given one, if the sizes vector is too small."
+  (let ((sep-len (length (text-table-renderer-separator renderer)))
+	(result sizes))
     (omap
      #'(lambda (row)
 	 (let ((len (olength row)) (i 0) (new-size nil) (col 0) size)
 	   (omap
 	    #'(lambda (field)
-		(setf size (aref sizes i)
+		(setf size (progn
+			     (when (>= i (length result))
+			       (setf result (let ((a (make-array (1+ i))))
+					      (replace a result)
+					      a)))
+			     (aref result i))
 		      new-size
 		      (if (and size (minusp size))
 			  size		; Don't mess with preset size
@@ -556,19 +581,27 @@ to MAX-WIDTH."
 		(incf col (abs new-size))
 		(when (< i (1- len))
 		  (incf col sep-len))
-		(setf (aref sizes i) new-size)
+		(setf (aref result i) new-size)
 		(incf i))
 	    row)))
-     table)))
+     table)
+    result))
 
 ;; This is just for text-table-renderer based things.
-(defgeneric text-table-cell-lines (table renderer cell width)
+(defgeneric text-table-cell-lines (table renderer cell width column-number)
   (:documentation "Return the lines of CELL fitting in WIDTH.")
-  (:method (table (renderer text-table-renderer) cell width)
-    (declare (ignore table renderer))
+  (:method (table (renderer text-table-renderer) cell width column-number)
+    ;; (declare (ignore table renderer))
     (osplit #\newline
 	    (with-output-to-string (str)
-	      (justify-text cell :cols width :stream str)))))
+	      (justify-text
+	       ;; @@@ we should figure out how to avoid formatting the cell
+	       ;; multiple times
+	       (table-format-cell renderer table
+				  cell
+				  nil column-number
+				  :use-given-format t)
+	       :cols width :stream str)))))
 
 (defmethod table-output-start-row ((renderer text-table-renderer) table)
   "Start a row of table output."
@@ -594,7 +627,8 @@ to MAX-WIDTH."
 
 #|
 (defmethod table-output-cell ((renderer text-table-renderer)
-			      table cell width justification row column)
+			      table cell width justification
+                              row-number column-number)
   "Output a table cell."
   (declare (ignore row))
   (with-slots (cursor) renderer
@@ -617,10 +651,11 @@ to MAX-WIDTH."
 |#
 
 (defmethod table-output-cell ((renderer text-table-renderer)
-			      table cell width justification row column)
+			      table cell width justification
+			      row-number column-number)
   "Output a table cell."
   (with-slots (cursor) renderer
-    (let* ((field (table-format-cell renderer table cell row column
+    (let* ((field (table-format-cell renderer table cell row-number column-number
 				     :width width
 				     :justification justification))
 	   (len (display-length field))
@@ -669,7 +704,7 @@ resized to fit in this, and the whole row is trimmed to this."
 	 (*trailing-spaces* trailing-spaces))
 
     ;; Adjust column sizes by field data
-    (text-table-adjust-sizes table renderer sizes max-width)
+    (setf sizes (text-table-adjust-sizes table renderer sizes max-width))
 
     ;; Flip pre-set sizes, and force unset sizes to zero.
     ;; (format t "sizes = ~s~%" sizes) (finish-output)
@@ -705,19 +740,18 @@ resized to fit in this, and the whole row is trimmed to this."
 	 #'(lambda (row)
 	     (let ((row-len (olength row))
 		   (column-num 0)
-		   size just)
+		   size just column)
 	       (setf cursor 0)
 	       (table-output-start-row renderer table)
 	       (omap
 		#'(lambda (field)
 		    (setf size (aref sizes column-num)
-			  just (or (column-align
-				    (oelt (table-columns table) column-num))
-				   :left))
+			  column (oelt (table-columns table) column-num)
+			  just (or (and column (column-align column)) :left))
 		    (when (eq just :wrap)
 		      (setf cell-lines
 			    (text-table-cell-lines table renderer field
-						   (1+ size))
+						   (1+ size) column-num)
 			    cell-col cursor
 			    cell-width size
 			    field (car cell-lines)))
@@ -853,16 +887,18 @@ resized to fit in this, and the whole row is trimmed to this."
    (box-style-under-titles (text-box-table-renderer-box-style renderer)) sizes))
 
 (defmethod table-output-column-title ((renderer text-box-table-renderer)
-				      table title width justification column)
+				      table title width justification
+				      column-number)
   (table-output-cell renderer table title
-		     width justification nil column))
+		     width justification nil column-number))
 
 ;; @@@ resolve overlap between this and the text-table-renderer version
 (defmethod table-output-cell ((renderer text-box-table-renderer)
-			      table cell width justification row column)
+			      table cell width justification
+			      row-number column-number)
   "Output a table cell."
   (let* ((*trailing-spaces* t)
-	 (field (table-format-cell renderer table cell row column
+	 (field (table-format-cell renderer table cell row-number column-number
 				   :width width
 				   :justification justification))
 	 (len (display-length field))
@@ -881,11 +917,12 @@ resized to fit in this, and the whole row is trimmed to this."
 		  :stream stream :escape nil :readably nil :pretty nil))))))
 
 ;; (defmethod table-output-cell ((renderer text-box-table-renderer)
-;; 			      table cell width justification row column)
+;; 			      table cell width justification
+;;                            row-number column-number)
 ;;   "Output a table cell."
-;;   (declare (ignore renderer table row column))
+;;   (declare (ignore renderer table row-number column-number))
 ;;   (let ((*print-pretty* nil)
-;; 	(field (table-format-cell renderer table cell row column
+;; 	(field (table-format-cell renderer table cell row-number column-number
 ;; 				  :width width :justification justification)))
 ;;     (write-string field *destination*
 ;; 	    (if (eq justification :right) "~v@a" "~va") width cell)
@@ -1021,7 +1058,8 @@ this row."
 		:long-titles long-titles
 		:print-titles print-titles
 		:max-width max-width)
-  (fresh-line stream)) ;; @@@ Is this right?
+  (fresh-line stream) ;; @@@ Is this right?
+  table)
 
 (defun print-as-table (thing &key column-names table-type
 			       (stream *standard-output*)
@@ -1034,7 +1072,8 @@ this row."
 		renderer stream
 		:long-titles long-titles
 		:print-titles print-titles
-		:max-width max-width))
+		:max-width max-width)
+  thing)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
