@@ -682,7 +682,7 @@ Some useful functions or macros are:
 (defun open-file (o)
   "Open a file."
   (with-slots (image file-name file-format) o
-    (tt-move-to 0 0)
+    (tt-move-to 0 (1- (tt-height)))
     (tt-erase-to-eol)
     (tt-cursor-on)
     (tt-finish-output)
