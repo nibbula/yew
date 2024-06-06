@@ -19,6 +19,7 @@ Define a TEXT-SPAN as a list representation of a FAT-STRING.
    #:fatchar-c #:fatchar-fg #:fatchar-bg #:fatchar-line #:fatchar-attrs
    #:fatchar-string
    #:fat-string #:fat-string-string
+   #:fat-string-p
    #:fatchar-init
    #:copy-fatchar
    #:copy-fatchar-effects
@@ -223,6 +224,10 @@ smallest unit of written language."
     :documentation "A lot of crust around a string."))
   (:documentation "A vector of FATCHAR."))
 ;;(string (vector) :type fatchar-string)) ; Is this better or worse?
+
+(defun fat-string-p (object)
+  "Return true if ‘object’ is a fat-string."
+  (typep object 'fat-string))
 
 (defparameter *known-attrs*
   `(:normal :standout :underline :bold :inverse)
