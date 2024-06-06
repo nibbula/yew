@@ -104,6 +104,7 @@
    #:flatten
    #:circular-equal
    #:circular-equalp
+   #:ensure-list
    #:with-collecting
    #:with-collecting-into
    #:with-collecting-into*
@@ -1286,6 +1287,11 @@ of LIST is an atom, assume it's a plist, otherwise it's an alist."
 (defun circular-equalp (a b)
   "Like ‘equalp’, but handle circularity in lists."
   (equalp (all-objects-in-thing a) (all-objects-in-thing b)))
+
+(defun ensure-list (x)
+  "If ‘x’ is a list, return it. If ‘x’ isn't a list, return a list with ‘x’ as
+it's only element."
+  (if (listp x) x (list x)))
 
 ;; These are really just because using collect inside loop has problems and
 ;; I'm afraid to start using iterate even though it fixes this.
