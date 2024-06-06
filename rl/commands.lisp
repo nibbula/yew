@@ -1409,7 +1409,9 @@ the current line, or NIL if there is none."
 	       (osubseq (history-entry-line entry) (olength line)))))))))
 
 (defun complete-history (context pos all)
-  (complete-list context pos all (history-prefix-matches *line-editor*)))
+  (complete-list context pos all
+		 (history-prefix-matches *line-editor*
+					 :line (osubseq context 0 pos))))
 
 (defsingle complete-history-command (e)
   "History completion."
