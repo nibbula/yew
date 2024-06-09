@@ -108,7 +108,7 @@
     (,(meta-char #\=)		. describe-key-briefly)
     ;; (,(meta-char #\escape) 	. eval-expression)
     (,(ctrl #\t)		. toggle-debug)
-    (,(ctrl #\u)		. universal-argument)
+    ;; (,(ctrl #\u)		. universal-argument)
     (#\escape			. *puca-escape-keymap*)))
 
 (defparameter *puca-escape-keymap* (build-escape-map *puca-keymap*))
@@ -150,10 +150,10 @@
    (debug
     :initarg :debug :accessor puca-debug :initform nil :type boolean
     :documentation "True to turn on debugging.")
-   (universal-argument
-    :initarg :universal-argument :accessor puca-universal-argument
-    :initform  nil
-    :documentation "A universal argument for commands.")
+   ;; (universal-argument
+   ;;  :initarg :universal-argument :accessor puca-universal-argument
+   ;;  :initform  nil
+   ;;  :documentation "A universal argument for commands.")
    (search-string
     :initarg :search-string :accessor puca-search-string :initform nil
     :documentation "Last search string or NIL."))
@@ -983,7 +983,7 @@ If the ‘universal-argument’ is set, just return the current line.
 If ‘relative-p’ is true, return file names relative to the git directory,
 instead of the default of absolute paths."
   (with-slots (item-count items (point inator::point) backend
-	       universal-argument) *puca*
+	       #| universal-argument |#) *puca*
     (flet ((item-name (item)
 	     (if relative-p
 		 (item-filename item)
@@ -992,7 +992,7 @@ instead of the default of absolute paths."
 	       (loop :for i :from 0 :below item-count
 		     :when (item-selected (svref items i))
 		     :collect (item-name (svref items i)))))
-	(or (and (not universal-argument) files)
+	(or (and #| (not universal-argument) |# files)
 	    (and items (list (item-name (svref items point)))))))))
 
 (defun select-all ()
@@ -1154,8 +1154,18 @@ for the command-function).")
 (defun diff-command (p)
   "Diff"
   (check-items p)
-  (do-command #'backend-diff (list (selected-files))
-    :relist nil :do-pause nil))
+  ;; (tt-color :white nil)
+  (let (saved-fg)
+    (unwind-protect
+	 (progn
+	   (when (theme:value '(:program :version-control :diff :window-fg))
+	     (setf saved-fg (tt-window-foreground)
+		   (tt-window-foreground)
+		   (theme:value '(:program :version-control :diff :window-fg))))
+	   (do-command #'backend-diff (list (selected-files))
+	     :relist nil :do-pause nil))
+      (when saved-fg
+	(setf (tt-window-foreground) saved-fg)))))
 
 (defun diff-repo-command (p)
   "Diff against commited (-r HEAD)"
@@ -1874,29 +1884,29 @@ point in time (a.k.a. revision hash).")
                         backend command." (nice-char key) action))
 	(message p "~a is not defined" (nice-char key)))))
 
-(defun universal-argument (p)
-  "Set the universal argument."
-  (with-slots (universal-argument) p
-    (setf universal-argument
-	  (if universal-argument
-	      (* 4 universal-argument)
-	      4))
-    (message p "C-u ~a" universal-argument)))
+;; (defun universal-argument (p)
+;;   "Set the universal argument."
+;;   (with-slots (universal-argument) p
+;;     (setf universal-argument
+;; 	  (if universal-argument
+;; 	      (* 4 universal-argument)
+;; 	      4))
+;;     (message p "C-u ~a" universal-argument)))
 
 ;; (defmethod default-action ((p puca) &optional event)
 ;;   (message p "Event not bound ~s" event))
 
 (defmethod update-display ((p puca-app))
   (with-slots ((point inator::point) top first-line bottom debug
-	       universal-argument) p
+	       #| universal-argument |#) p
     (draw-screen p)
     (when debug
       (message p "point = ~s top = ~s first-line ~s bottom = ~s arg ~s ~
                   last-cmd ~s"
-	       point top first-line bottom universal-argument
+	       point top first-line bottom #| universal-argument |#
 	       (inator-command p)))
-    (when (not (eq (inator-command p) 'universal-argument))
-      (setf universal-argument nil))
+    ;; (when (not (eq (inator-command p) 'universal-argument))
+    ;;   (setf universal-argument nil))
     (tt-move-to (+ (- point top) first-line) 2)))
 
 (defmethod start-inator ((p puca-app))
