@@ -30,6 +30,7 @@ You can probably get by with just providing methods for ‘update-display’ and
    #:inator-clipboard
    #:inator-contexts
    #:inator-quit-flag
+   #:inator-universal-argument
    #:inator-command
    #:inator-last-command
    #:inator-event-sequence
@@ -63,9 +64,11 @@ You can probably get by with just providing methods for ‘update-display’ and
    #:default-action
    #:describe-key-briefly
    #:show-menu
+   #:universal-argument
 
    ;; Output
    #:message
+   #:notify
    #:prompt
    #:help
 
@@ -169,6 +172,7 @@ You can probably get by with just providing methods for ‘update-display’ and
     (,(ctrl #\b)	. backward-unit)
     (,(meta-char #\f)	. forward-multiple)
     (,(meta-char #\b)	. backward-multiple)
+    (,(ctrl #\u)	. universal-argument)
     (,(ctrl #\v)	. next-page)
     (:page-down		. next-page)
     (,(meta-char #\v)	. previous-page)
@@ -212,6 +216,15 @@ You can probably get by with just providing methods for ‘update-display’ and
    (quit-flag
     :initarg :quit-flag :accessor inator-quit-flag :initform nil :type boolean
     :documentation "True to quit the inator.")
+   (universal-argument
+    :initarg :universal-argument :accessor inator-universal-argument
+    :initform nil
+    :documentation "A generic modifier for commands.")
+   (universal-argument-digits-p
+    :initarg :universal-argument-digits-p
+    :accessor inator-universal-argument-digits-p
+    :initform nil
+    :documentation "True if digits were entered for the universal argument.")
    (command
     :initarg :command :accessor inator-command :initform nil
     :documentation "The current command.")
@@ -286,6 +299,10 @@ You can probably get by with just providing methods for ‘update-display’ and
 (defgeneric message (inator format-string &rest args)
   (:documentation "Display a short message. Usually one line."))
 
+(defgeneric notify (inator format-string &rest args)
+  (:documentation
+   "Notify the user of something. Perhaps fugaciously, and reviewably."))
+
 (defgeneric prompt (inator format-string &rest args)
   (:documentation "Display a short message, asking the user for input."))
 
@@ -297,6 +314,60 @@ You can probably get by with just providing methods for ‘update-display’ and
 
 (defgeneric show-menu (inator)
   (:documentation "Show a menu of commands."))
+
+(defgeneric universal-argument (inator)
+  (:documentation "")
+  (:method (inator)
+    (with-slots (universal-argument universal-argument-digits-p event-sequence)
+	inator
+      (cond
+	(universal-argument
+	 (cond
+	   ;; If digits were entered another C-u stops digit entering mode
+	   (universal-argument-digits-p
+	    (setf universal-argument-digits-p nil))
+	   ;; If no digits were entered, and we're already a number, multiply
+	   ;; it by four.
+	   ((and (numberp universal-argument)
+		 (zerop (mod universal-argument 4))) ;; superfluous?
+	    (setf universal-argument (* 4 universal-argument)))))
+	(t
+	 ;; If this is the first C-u, just set it to four.
+	 (setf universal-argument 4)))
+      (notify inator "~a ~a"
+	      (char-util:nice-char (car (last event-sequence)))
+	      universal-argument))))
+
+(defgeneric handle-digit (inator)
+  (:documentation "Handle digits for universal-argument processing.")
+  (:method (inator)
+    (with-slots (universal-argument universal-argument-digits-p event-sequence)
+	inator
+      (let ((c (last event-sequence)) (do-msg t))
+	(cond
+	  (universal-argument-digits-p
+	   (cond
+	     ((and (numberp universal-argument)
+		   (characterp c) (digit-char-p c))
+	      ;; Add the digit
+	      (setf universal-argument (+ (* universal-argument 10)
+					  (digit-char-p c))))
+	     ;; minus negates the argument
+	     ((and (eql c #\-) (numberp universal-argument))
+	      (setf universal-argument (- universal-argument)))
+	     ;; plus makes it positive
+	     ((and (eql c #\+) (numberp universal-argument))
+	      (setf universal-argument (abs universal-argument)))))
+	  ((and universal-argument (characterp c) (digit-char-p c))
+	   ;; Set first digit entered and indicate we entered digits.
+	   (setf universal-argument (digit-char-p c)
+		 universal-argument-digits-p t))
+	  (t ;; Only show the message if we did anything.
+	   (setf do-msg nil)))
+	(when do-msg
+	  (notify inator "Arg: ~a"
+		  ;; (char-util:nice-char (car (last event-sequence)))
+		  universal-argument))))))
 
 ;; Whole Inator functions
 (defgeneric event-loop (inator)
@@ -338,10 +409,10 @@ with ‘start-inator’."))
 
 (defmethod default-action ((inator inator) &optional event)
   "Default method which does nothing."
-  (message inator "Event ~{~a ~}is not bound."
-	   (if (consp event)
-	       (mapcar #'nicer-event event)
-	       (list (nicer-event event)))))
+  (notify inator "Event ~{~a ~}is not bound."
+	  (if (consp event)
+	      (mapcar #'nicer-event event)
+	      (list (nicer-event event)))))
 
 (defmethod initialize-instance
     :after ((o inator) &rest initargs &key &allow-other-keys)
@@ -384,7 +455,10 @@ with ‘start-inator’."))
 command invocation, or have something done on every command. The default
 is just to call ‘function’ with the ‘inator’ as the first argument and the
 list ‘args’ as the subsequent arguments."
-  (apply function inator args))
+  (prog1 (apply function inator args)
+    (unless (or (eq function 'universal-argument)
+		(eq function #'universal-argument))
+      (setf (inator-universal-argument inator) nil))))
 
 (defgeneric nicer-event (event)
   (:documentation
@@ -409,7 +483,7 @@ of the inator's keymap."
 		 (if (compute-applicable-methods (symbol-function s)
 						 (cons inator args))
 		     (call-command inator s args)
-		     (message inator "(~S) has no applicable methods." s))
+		     (notify inator "(~S) has no applicable methods." s))
 		 (call-command inator s args)))
 	   (get-event ()
 	     "Get a event from L, or if not L then push on event-list."
@@ -437,7 +511,7 @@ of the inator's keymap."
 		      (apply-symbol (car command) (cdr command))
 		      t)
 		    (progn
-		      (message inator "(~S) is not defined." (car command))
+		      (notify inator "(~S) is not defined." (car command))
 		      (return-from process-event))))
 	       ;; something represted by a symbol
 	       ((symbolp command)
@@ -457,8 +531,8 @@ of the inator's keymap."
 		(call-command inator command nil)
 		t)
 	       (t ; anything else
-		(message inator "Key binding ~S is not a function or a keymap."
-			 command)
+		(notify inator "Key binding ~S is not a function or a keymap."
+			command)
 		(return-from process-event nil))
 	       ;; ((not command)
 	       ;; 	nil)
