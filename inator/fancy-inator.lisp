@@ -21,7 +21,8 @@
 ;; :terminal-inator :fui :tiny-repl
 
 (defkeymap *default-fancy-inator-escape-keymap* ()
-  `((#\escape . eval-expression-command)))
+  `((#\escape . eval-expression-command)
+    (#\+      . set-key-command)))
 
 (defkeymap *default-fancy-inator-keymap* ()
   `((#\escape . *default-fancy-inator-escape-keymap*)))
@@ -60,5 +61,23 @@
 	      (invoke-debugger c)
 	      (invoke-restart (find-restart 'abort))))))
     (redraw o)))
+
+(defgeneric set-key-command (inator)
+  (:documentation "Bind a key interactively.")
+  (:method ((o fancy-inator))
+    (prompt o "Set key: ")
+    (let* ((key-seq (read-key-sequence o))
+	   (cmd (rl::ask-function-name (format nil "Set key ~a to command: "
+					       (key-sequence-string key-seq)))))
+      (if cmd
+	  (progn
+	    ;; @@@ maybe inators should have an ensure-local-keymap method
+	    (unless (inator-local-keymap o)
+	      (pushnew
+	       (setf (inator-local-keymap o)
+		     (make-instance 'keymap :name "Fancy Inator Local Keymap"))
+	       (inator-keymap o)))
+	    (set-key key-seq cmd (inator-local-keymap o)))
+	  (message o "Not a function.")))))
 
 ;; End
