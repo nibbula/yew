@@ -1319,8 +1319,13 @@ Some useful functions or macros are:
 	   x y zoom image subimage (width inator) (height inator)
 	   #'term-mover #'set-pixel-bg buffer bg-color)))
     (tt-move-to (1- (height inator)) 0)
-    (when show-mode-line
-      (show-status inator))))
+    (cond
+      (show-mode-line
+       (show-status inator))
+      (message
+       ;; Show messages even when the mode line is off.
+       (show-message inator message)
+       (setf message nil)))))
 
 (defmethod update-display ((o image-inator))
   "Update the image viewer display."
