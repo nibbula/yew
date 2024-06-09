@@ -190,15 +190,19 @@
       ;;   (setf x (1- (image-width image))))
       )))
 
-(defmethod forward-unit	 ((o image-inator)) (right o))
-(defmethod backward-unit ((o image-inator)) (left o))
-(defmethod next		 ((o image-inator)) (down o))
-(defmethod previous	 ((o image-inator)) (up o))
+;; Abbreviations
+(defun arg-or (o x) (or (inator-universal-argument o) x))
+(defun arg-or-inc (o) (arg-or o (image-inator-increment o)))
 
-(defun left-by-increment  (o) (left  o (image-inator-increment o)))
-(defun down-by-increment  (o) (down  o (image-inator-increment o)))
-(defun up-by-increment    (o) (up    o (image-inator-increment o)))
-(defun right-by-increment (o) (right o (image-inator-increment o)))
+(defmethod forward-unit	 ((o image-inator)) (right o (arg-or o 1)))
+(defmethod backward-unit ((o image-inator)) (left o (arg-or o 1)))
+(defmethod next		 ((o image-inator)) (down o (arg-or o 1)))
+(defmethod previous	 ((o image-inator)) (up o (arg-or o 1)))
+
+(defun left-by-increment  (o) (left  o (arg-or-inc o)))
+(defun down-by-increment  (o) (down  o (arg-or-inc o)))
+(defun up-by-increment    (o) (up    o (arg-or-inc o)))
+(defun right-by-increment (o) (right o (arg-or-inc o)))
 
 (defmethod move-to-top ((o image-inator))
   "Move to the top left of the image."
@@ -505,7 +509,12 @@ the first time it fails to identify the image."
 (defmethod redraw ((o image-inator))
   (tt-clear))
 
-(defmethod message ((o image-inator) format-string &rest args)
+;; (defmethod message ((o image-inator) format-string &rest args)
+;;   ;; We just save message for later.
+;;   (setf (image-inator-message o)
+;; 	(apply #'format nil format-string args)))
+
+(defmethod notify ((o image-inator) format-string &rest args)
   ;; We just save message for later.
   (setf (image-inator-message o) 
 	(apply #'format nil format-string args)))
@@ -530,7 +539,7 @@ the first time it fails to identify the image."
        (fatchar:span-to-fat-string
 	`((:red "Error: ") ,(apply #'format nil format-string args)
 	  #\newline #\newline "Enter the debugger?"))
-       :default #\N :justify t)
+       :default #\N :justify t :title "Image Viewer Error")
       (invoke-debugger condition)
       (continue condition)))
 
@@ -539,8 +548,8 @@ the first time it fails to identify the image."
   (let* ((key-seq (read-key-sequence o)) ;;(tt-get-key))
 	 (action (key-sequence-binding key-seq (inator-keymap o))))
     (if action
-	(message o "~a is bound to ~a" (key-sequence-string key-seq) action)
-	(message o "~a is not defined" (key-sequence-string key-seq)))))
+	(notify o "~a is bound to ~a" (key-sequence-string key-seq) action)
+	(notify o "~a is not defined" (key-sequence-string key-seq)))))
 
 (defun eval-expression (o)
   (tt-move-to (1- (tt-height)) 0)
@@ -553,7 +562,7 @@ the first time it fails to identify the image."
       (condition (c)
 	(say "~w" c)
 	(continue)))
-    (message o "~s" result))
+    (notify o "~s" result))
   (tt-cursor-off))
 
 (defparameter *popi-help*
@@ -706,7 +715,7 @@ Some useful functions or macros are:
     (cond
       (file-name
        (write-image image file-name file-format)
-       (message o "~a saved." file-name))
+       (notify o "~a saved." file-name))
       (t
        (save-file-as o)))))
 
@@ -720,13 +729,13 @@ Some useful functions or macros are:
        ;; @@@ We should check that the file extension matches the file-format and
        ;; confirm if it doesn't.
        (write-image image file-name file-format)
-       (message o "~a saved."))))
+       (notify o "~a saved."))))
 
 (defun toggle-use-serial-map (o)
   "Toggle the value of use-serial-map."
   (with-slots (use-serial-map) o
     (setf use-serial-map (not use-serial-map))
-    (message "Serial mapping is ~:[OFF~;ON~]" use-serial-map)))
+    (notify "Serial mapping is ~:[OFF~;ON~]" use-serial-map)))
 
 (defun image-info-table (o)
   "Return a table with information about the current image."
