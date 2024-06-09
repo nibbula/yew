@@ -9,6 +9,7 @@
 	:terminal-table :ostring :view-generic)
   (:export
    #:viewer-table-renderer
+   #:table-viewer-base
    #:table-viewer
    #:table-viewer-table
    #:table-viewer-renderer
@@ -75,7 +76,7 @@ for a range of rows, or a table-point for a specific item,"
 (defvar *table-viewer* nil
   "The current table viewer.")
 
-(defclass table-viewer (terminal-inator)
+(defclass table-viewer-base ()
   ((table
     :initarg :table :accessor table-viewer-table
     :documentation "The table to view.")
@@ -105,14 +106,17 @@ for a range of rows, or a table-point for a specific item,"
   (:default-initargs
    :point (make-table-point :row 0)
    :default-keymap *table-viewer-keymap*)
+  (:documentation "Base class for table viewers."))
+
+(defclass table-viewer (terminal-inator table-viewer-base)
+  ()
   (:documentation "View a table."))
 
 (defgeneric table-length (table-viewer)
   (:documentation "Return the number of rows of the table data.")
-  (:method ((o table-viewer))
+  (:method ((o table-viewer-base))
     (or (and (plusp (cached-table-length o)) (cached-table-length o))
 	(olength (container-data (table-viewer-table o))))))
-
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; View columns
@@ -199,7 +203,7 @@ This can be quicker for large tables.")
     "Offset from ‘y’ of the first row of data. This helps calculate coodinates
      of data cells, ignoring things like the height of the titles.")
    (rows
-    :initarg :rows :accessor rows :type integer
+    :initarg :rows :accessor rows :type integer :initform -1
     :documentation "Number of rows in the view.")
    (current-position
     :initarg :current-position :accessor current-position :initform nil
@@ -578,7 +582,7 @@ This can be quicker for large tables.")
    "Return the coordinates and size of the cell at ‘row’ and ‘col’ in
 ‘table-viewer’, as the values ‘x’ ‘y’ ‘width’ ‘height’."))
 
-(defmethod cell-box ((o table-viewer) row col)
+(defmethod cell-box ((o table-viewer-base) row col)
   (with-slots (table renderer long-titles) o
     (let ((*cell-box-recording* `(((,row . ,col) ()))))
       (with-terminal-output-to-string (:null)
@@ -611,13 +615,15 @@ This can be quicker for large tables.")
 	   (decf (table-point-row point) n)
 	   (setf (table-point-row point) 0))))))
 
-(defmethod next ((o table-viewer))
-  "Move to the next line."
-  (forward-row o))
+(defun arg-or (o x) (or (inator-universal-argument o) x))
 
-(defmethod previous ((o table-viewer))
+(defmethod next ((o table-viewer-base))
+  "Move to the next line."
+  (forward-row o (arg-or o 1)))
+
+(defmethod previous ((o table-viewer-base))
   "Move to the previous line."
-  (backward-row o))
+  (backward-row o (arg-or o 1)))
 
 ;; @@@ But something else doesn't get the value right.
 ;; But at least it doesn't crash.
@@ -662,29 +668,29 @@ This can be quicker for large tables.")
 	       (when (not (column-hidden (oelt columns (table-point-col point))))
 		 (incf i))))))))
 
-(defmethod forward-unit ((o table-viewer))
+(defmethod forward-unit ((o table-viewer-base))
   "Move forward a column."
-  (forward-col o))
+  (forward-col o (arg-or o 1)))
 
-(defmethod backward-unit ((o table-viewer))
+(defmethod backward-unit ((o table-viewer-base))
   "Move backward a column."
-  (backward-col o))
+  (backward-col o (arg-or o 1)))
 
-(defmethod forward-multiple ((o table-viewer))
+(defmethod forward-multiple ((o table-viewer-base))
   (forward-row o (round (rows (table-viewer-renderer o)) 2)))
 
-(defmethod backward-multiple ((o table-viewer))
+(defmethod backward-multiple ((o table-viewer-base))
   (backward-row o (round (rows (table-viewer-renderer o)) 2)))
 
-(defmethod next-page ((o table-viewer))
+(defmethod next-page ((o table-viewer-base))
   "Move to the next page."
   (forward-row o (rows (table-viewer-renderer o))))
 
-(defmethod previous-page ((o table-viewer))
+(defmethod previous-page ((o table-viewer-base))
   "Move to the previous page."
   (backward-row o (rows (table-viewer-renderer o))))
 
-(defmethod move-to-beginning ((o table-viewer))
+(defmethod move-to-beginning ((o table-viewer-base))
   "Move to the first column."
   (with-slots ((point inator::point) renderer) o
     (with-slots (start columns) renderer
@@ -696,7 +702,7 @@ This can be quicker for large tables.")
 	    (when (< (table-point-col point) (table-point-col start))
 	      (setf (table-point-col start) (table-point-col point))))))))
 
-(defmethod move-to-end ((o table-viewer))
+(defmethod move-to-end ((o table-viewer-base))
   "Move to the last column."
   (with-slots ((point inator::point) table renderer) o
     (with-slots (start last-displayed-col) renderer
@@ -708,17 +714,17 @@ This can be quicker for large tables.")
       (when (> (table-point-col point) last-displayed-col)
 	(setf (table-point-col start) (table-point-col point))))))
 
-(defmethod move-to-top ((o table-viewer))
+(defmethod move-to-top ((o table-viewer-base))
   "Move to the first row."
   (with-slots ((point inator::point)) o
     (setf (table-point-row point) 0)))
 
-(defmethod move-to-bottom ((o table-viewer))
+(defmethod move-to-bottom ((o table-viewer-base))
   "Move to the last row."
   (with-slots ((point inator::point) table) o
     (setf (table-point-row point) (1- (table-length o)))))
 
-(defun scroll-left (o &optional (n 1))
+(defun scroll-left (o &optional (n (arg-or o 1)))
   "Move the view left."
   (with-slots (renderer table) o
     (with-slots (start columns) renderer
@@ -731,7 +737,7 @@ This can be quicker for large tables.")
 	      (incf i))
 	    (incf (table-point-col start))))))
 
-(defun scroll-right (o &optional (n 1))
+(defun scroll-right (o &optional (n (arg-or o 1)))
   "Move the view right."
   (with-slots (table renderer) o
     (with-slots (start columns) renderer
@@ -861,7 +867,7 @@ at which it's found or NIL if it's not found."
 	    (message o "~s not found" search))
 	result))))
 
-(defmethod search-command ((o table-viewer))
+(defmethod search-command ((o table-viewer-base))
   "Search forward for a string."
   (search-table-command o :forward))
 
@@ -890,7 +896,7 @@ at which it's found or NIL if it's not found."
 			    :key (_ (princ-to-string (oelt _ col)))))))
 		last-sort-direction direction))))))
 
-(defmethod sort-command ((o table-viewer))
+(defmethod sort-command ((o table-viewer-base))
   "Sort the rows."
   (with-slots (last-sort-direction) o
     (case last-sort-direction
@@ -899,24 +905,24 @@ at which it's found or NIL if it's not found."
       (otherwise
        (sort-table-in-direction o :ascending)))))
 
-(defmethod sort-descending-command ((o table-viewer))
+(defmethod sort-descending-command ((o table-viewer-base))
   "Sort the rows in descending order."
   (sort-table-in-direction o :descending))
 
-(defmethod sort-multiple-command ((o table-viewer))
+(defmethod sort-multiple-command ((o table-viewer-base))
   "Sort by multiple columns."
   (declare (ignore o))
   ;; @@@
   )
 
 ;; This would need rl, or a prefix-argument,
-;; (defmethod jump-command ((o table-viewer))
+;; (defmethod jump-command ((o table-viewer-base))
 ;;   )
 
 (defgeneric table-viewer-recalculate-sizes (viewer)
   (:documentation "Recalculate the column sizes for the table."))
 
-(defmethod table-viewer-recalculate-sizes ((o table-viewer))
+(defmethod table-viewer-recalculate-sizes ((o table-viewer-base))
   "Recalculate the column sizes for the table."
   (with-slots (table renderer) o
     (unless (incremental-sizes-p renderer)
@@ -929,8 +935,11 @@ at which it's found or NIL if it's not found."
       (table-viewer-renderer viewer)
     (setf width (tt-width)
 	  height (tt-height)
-	  ;; rows (min (olength (container-data (table-viewer-table viewer)))
+	  ;; @@@ This isn't right. It's really not the number of rows, but the
+	  ;; displayed height of the rows. So we would probably have to do a
+	  ;; full virtual or real redraw.
 	  rows (min (table-length viewer) (- (tt-height) 2)))
+    (dbugf :dired "resize bonk ~s~%" rows)
     (when start
       (clampf (table-point-row start) 0 (1- rows)))
     (when current-position
@@ -941,9 +950,12 @@ at which it's found or NIL if it's not found."
       (when (table-point-col cursor)
 	(clampf (table-point-col cursor) 0 (1- (olength sizes)))))))
 
-(defmethod resize ((o table-viewer))
+(defmethod resize ((o table-viewer-base))
+  (dbugf :dired "before resize-viewer~%")
   (resize-viewer o)
-  (call-next-method))
+  (dbugf :dired "after resize-viewer~%")
+  (prog1 (call-next-method)
+    (dbugf :dired "after call-next-method~%")))
 
 (defun table-info-table (table)
   (make-table-from
@@ -1084,14 +1096,14 @@ at which it's found or NIL if it's not found."
 (defgeneric current-cell (viewer)
   (:documentation "Return the value in the current cell of VIEWER."))
 
-(defmethod current-cell ((viewer table-viewer))
+(defmethod current-cell ((viewer table-viewer-base))
   (with-slots (table renderer) viewer
     (with-slots (current-position) renderer
       (oaref table
 	     (table-point-row current-position)
 	     (table-point-col current-position)))))
 
-(defmethod (setf current-cell) (value (viewer table-viewer))
+(defmethod (setf current-cell) (value (viewer table-viewer-base))
   (with-slots (table renderer) viewer
     (with-slots (current-position) renderer
       (setf (oaref table
@@ -1102,7 +1114,7 @@ at which it's found or NIL if it's not found."
 (defgeneric view-cell (inator)
   (:documentation "View the current cell."))
 
-(defmethod view-cell ((o table-viewer))
+(defmethod view-cell ((o table-viewer-base))
   (with-simple-restart (flarb "Back to the table view.")
     (handler-case
 	(view (current-cell o))
@@ -1121,13 +1133,15 @@ at which it's found or NIL if it's not found."
   (declare (ignore o))
   )
 
-(defmethod message ((o table-viewer) format-string &rest args)
+(defmethod notify ((o table-viewer) format-string &rest args)
   (with-slots (message) o
-    (setf message (apply #'format nil format-string args))
-    (when (next-method-p)
-      (call-next-method))))
+    (setf message (apply #'format nil format-string args))))
 
-(defmethod update-display ((o table-viewer))
+;; (defmethod message ((o table-viewer) format-string &rest args)
+;;   (declare (ignorable args))
+;;   (call-next-method))
+
+(defmethod update-display ((o table-viewer-base))
   (with-slots (table renderer (point inator::point) message long-titles) o
     (with-slots (x y start rows cursor selection last-displayed-col) renderer
       (tt-home)
@@ -1160,7 +1174,7 @@ at which it's found or NIL if it's not found."
 	;;(tt-move-to (table-point-row cursor) 0)
 	(tt-move-to (+ y (table-point-row cursor)) x)))))
 
-(defmethod finish-inator ((o table-viewer))
+(defmethod finish-inator ((o table-viewer-base))
   ;; Redraw without the current row highlighted.
   (let ((saved-point (inator-point o)))
     (unwind-protect
@@ -1183,8 +1197,9 @@ at which it's found or NIL if it's not found."
 	(setf (incremental-sizes-p renderer) t))
       ;; Calculate the sizes of the table for side effect.
       (table-output-sizes renderer table)
-      (event-loop *table-viewer*)
+      (let ((*inator* *table-viewer*))
+	(run *table-viewer*))
       (tt-move-to (1- (tt-height)) 0)
       (table-viewer-selection renderer))))
 
-;; EOF
+;; End
