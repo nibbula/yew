@@ -2207,15 +2207,14 @@ or :both. WHICH defaults to :window."
 or :both. WHICH defaults to :window."
   (set-utf8-title-mode tty t)
   (let ((param (case which
-		 (:icon "20")
-		 (:window "21")
-		 (otherwise "21"))))
+                 (:icon "20")
+                 (otherwise "21")))) ;; :window or anything else
     (query-string (s+ param "t") :tty tty
-		  ;; :end-tag #\\
-		  :end-tag #'typical-report-ending
-		  :ending 0
-		  :timeout *report-timeout*
-		  :errorp nil)))
+                  ;; :end-tag #\\
+                  :end-tag #'typical-report-ending
+                  :ending 0
+                  :timeout *report-timeout*
+                  :errorp nil)))
 
 ;; If this is mysteriously not working, you might have to make sure to enable
 ;; it in your emulator. Like in xterm: "Allow Window Ops".
