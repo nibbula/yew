@@ -939,7 +939,6 @@ at which it's found or NIL if it's not found."
 	  ;; displayed height of the rows. So we would probably have to do a
 	  ;; full virtual or real redraw.
 	  rows (min (table-length viewer) (- (tt-height) 2)))
-    (dbugf :dired "resize bonk ~s~%" rows)
     (when start
       (clampf (table-point-row start) 0 (1- rows)))
     (when current-position
@@ -951,11 +950,8 @@ at which it's found or NIL if it's not found."
 	(clampf (table-point-col cursor) 0 (1- (olength sizes)))))))
 
 (defmethod resize ((o table-viewer-base))
-  (dbugf :dired "before resize-viewer~%")
   (resize-viewer o)
-  (dbugf :dired "after resize-viewer~%")
-  (prog1 (call-next-method)
-    (dbugf :dired "after call-next-method~%")))
+  (call-next-method))
 
 (defun table-info-table (table)
   (make-table-from
@@ -1134,6 +1130,10 @@ at which it's found or NIL if it's not found."
   )
 
 (defmethod notify ((o table-viewer) format-string &rest args)
+  (with-slots (message) o
+    (setf message (apply #'format nil format-string args))))
+
+(defmethod notify ((o table-viewer-base) format-string &rest args)
   (with-slots (message) o
     (setf message (apply #'format nil format-string args))))
 

@@ -386,7 +386,7 @@ the terminal is reset when comming back."
 	 (let ((up (path-append directory "..")))
 	   (if (file-exists up)
 	       (setf directory (namestring (truename up)))
-	       (message o "I don't know how to go up from ~s." directory))))))
+	       (notify o "I don't know how to go up from ~s." directory))))))
     (refresh o)))
 
 (defun dired-cd (o)
@@ -395,7 +395,7 @@ the terminal is reset when comming back."
     (let ((new-dir (input-window nil '("Go to directory:" ""))))
       (cond
 	((not (file-exists new-dir))
-	 (message o "The directory ~s doesn't exist." new-dir))
+	 (notify o "The directory ~s doesn't exist." new-dir))
 	((not (equal new-dir directory))
 	 (setf directory new-dir))))
     (refresh o)))
@@ -498,7 +498,7 @@ the terminal is reset when comming back."
       (mark
        (setf (clipboard-items *clip*) (region-files o)
 	     (clipboard-operation *clip*) :cut))
-      (t (message o "The mark is not set.")))))
+      (t (notify o "The mark is not set.")))))
 
 (defmethod copy ((o directory-editor))
   "Delete the files in the region."
@@ -507,7 +507,7 @@ the terminal is reset when comming back."
       (mark
        (setf (clipboard-items *clip*) (region-files o)
 	     (clipboard-operation *clip*) :copy))
-      (t (message o "The mark is not set.")))))
+      (t (notify o "The mark is not set.")))))
 
 (defun toggle-region (o)
   (rotatef (inator-point o) (inator-mark o)))
@@ -585,7 +585,7 @@ or ‘to’ exists."
 	       (:move (dired-rename-file f to))
 	       (:copy (dired-copy-file f to))
 	       (otherwise
-		(message o "Unknown clipboard operation ~s" operation)))))))
+		(notify o "Unknown clipboard operation ~s" operation)))))))
   t)
 
 (defmethod paste ((o directory-editor))
@@ -593,7 +593,7 @@ or ‘to’ exists."
   (with-slots (items operation) *clip*
     (cond
       ((not items)
-       (message o "There is nothing to paste on the clipboard."))
+       (notify o "There is nothing to paste on the clipboard."))
       (t
        (apply-file-op o items operation)))))
 
@@ -734,7 +734,8 @@ or ‘to’ exists."
 	       (point inator::point)
 	       (table table-viewer::table)
 	       (long-titles table-viewer::long-titles)
-	       message directory) o
+	       (message inator::message)
+	       directory) o
     (with-slots ((x table-viewer::x)
 		 (y table-viewer::y)
 		 (start table-viewer::start)
@@ -745,9 +746,9 @@ or ‘to’ exists."
       (tt-write-span `(:white ,directory ,nos:*directory-separator* #\newline))
       (setf y 1)
 
-      ;; @@@ Stupid hack to make it work. Size should really set based on content
-      (when (minusp rows)
-	(setf rows (min (table-viewer::table-length o) (- (tt-height) 2))))
+      ;; @@@ Stupid hack to make it work. The rows should really set based on
+      ;; display size of the content.
+      (setf rows (min (table-viewer::table-length o) (- (tt-height) 3)))
 
       ;; Adjust the view to the point
       (when point
