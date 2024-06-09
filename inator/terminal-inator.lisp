@@ -79,8 +79,13 @@
 		 1)
 	      0)
   (tt-erase-to-eol)
+  ;;; (tt-erase-below)
   ;; We use terminal-format here because tt-format is a macro.
   (apply #'terminal-format *terminal* format-string args))
+
+(defmethod notify ((i terminal-inator) format-string &rest args)
+  "Display a short message."
+  (apply #'message i format-string args))
 
 (defmethod prompt ((i terminal-inator) format-string &rest args)
   "Display a short message, asking the user for input."
@@ -136,8 +141,8 @@
   (let* ((key-seq (read-key-sequence i))
 	 (action (key-sequence-binding key-seq (inator-keymap i))))
     (if action
-	(message i "~a is bound to ~a" (key-sequence-string key-seq) action)
-	(message i "~a is not defined" (key-sequence-string key-seq)))))
+	(notify i "~a is bound to ~a" (key-sequence-string key-seq) action)
+	(notify i "~a is not defined" (key-sequence-string key-seq)))))
 
 (defmacro with-terminal-inator ((var type &rest args) &body body)
   "Evaluate BODY with a new terminal-inator of type TYPE, made with ARGS passed
