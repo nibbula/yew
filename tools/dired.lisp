@@ -6,7 +6,7 @@
   (:documentation "Directory editor.")
   (:use :cl :dlib :opsys :collections :keymap :char-util :fatchar :terminal
 	:inator :terminal-inator :terminal-table :table-viewer :lish
-	:view-generic :ochar :ostring)
+	:view-generic :ochar :ostring :fancy-inator)
   (:export
    #:dired
    #:!dired
@@ -124,7 +124,11 @@
 (defvar *dired* nil
   "The current directory editor.")
 
-(defclass directory-editor (table-viewer)
+(defclass fancy-table-viewer (table-viewer-base fancy-inator)
+  ()
+  (:documentation "A fancy table viewer."))
+
+(defclass directory-editor (fancy-table-viewer)
   ((directory
     :initarg :directory :accessor dired-directory
     :initform (nos:current-directory)
@@ -741,6 +745,10 @@ or ‘to’ exists."
       (tt-write-span `(:white ,directory ,nos:*directory-separator* #\newline))
       (setf y 1)
 
+      ;; @@@ Stupid hack to make it work. Size should really set based on content
+      (when (minusp rows)
+	(setf rows (min (table-viewer::table-length o) (- (tt-height) 2))))
+
       ;; Adjust the view to the point
       (when point
 	(when (>= (table-point-row point) (+ (table-point-row start) rows))
@@ -755,7 +763,6 @@ or ‘to’ exists."
       (setf (table-viewer::current-position renderer) point)
 
       ;; Output the table rows
-      ;; (dbugf :tv "Before output table ~s~%" long-titles)
       (table-print:output-table table renderer *terminal*
 				:long-titles long-titles)
 
