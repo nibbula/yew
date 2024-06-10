@@ -62,22 +62,54 @@
 	      (invoke-restart (find-restart 'abort))))))
     (redraw o)))
 
+(defun ask-bindable (&optional (prompt "Expression: "))
+  "Prompt for an expression suitable for binding to a key and return it."
+  (let ((expr (rl::ask-expr prompt)))
+    (or (and (symbolp expr) (fboundp expr) expr)
+	(and (consp expr) (member (car expr) '(function lambda))
+	     (eval expr)))))
+
+(defgeneric ensure-local-keymap (o)
+  (:documentation "Make a local keymap for inator ‘o’ if it doesn't have one.")
+  (:method ((o inator))
+    (unless (inator-local-keymap o)
+      (pushnew
+       (setf (inator-local-keymap o)
+	     (make-instance 'keymap :name "Fancy Inator Local Keymap"))
+       (inator-keymap o)))))
+
 (defgeneric set-key-command (inator)
-  (:documentation "Bind a key interactively.")
+  (:documentation "Bind a key interactively. Prompts for a key press and binding,
+which can be a function or a lambda expression. The ‘universal-arguemnt’ can
+change which keymap it's bound in:
+  - Without universal-argument set, bind it in the local keymap of this instance.
+  - With universal-argument set to 4 (one C-u), bind it in the default keymap
+    for this class of inator.
+  - With universal-argument 16 (two C-u), set it in the keymap for all
+    fancy-inators.
+  - With universal-argument 65 (three C-u), set it in the global keymap for all
+    inators.
+")
   (:method ((o fancy-inator))
-    (prompt o "Set key: ")
-    (let* ((key-seq (read-key-sequence o))
-	   (cmd (rl::ask-function-name (format nil "Set key ~a to command: "
-					       (key-sequence-string key-seq)))))
-      (if cmd
-	  (progn
-	    ;; @@@ maybe inators should have an ensure-local-keymap method
-	    (unless (inator-local-keymap o)
-	      (pushnew
-	       (setf (inator-local-keymap o)
-		     (make-instance 'keymap :name "Fancy Inator Local Keymap"))
-	       (inator-keymap o)))
-	    (set-key key-seq cmd (inator-local-keymap o)))
-	  (message o "Not a function.")))))
+    (multiple-value-bind (keymap description)
+	(case (inator-universal-argument o)
+	  ((nil) (values (ensure-local-keymap o)        "local"))
+	  (4     (values (inator-default-keymap o)      "class"))
+	  (16    (values *default-fancy-inator-keymap*  "fancy"))
+	  (64    (values *default-inator-keymap*        "global"))
+	  (t     (values (inator-default-keymap o)      "local")))
+      (prompt o (format nil "~:(~a~) ~s set key: " description
+			(inator-universal-argument o)))
+      (let* ((key-seq (read-key-sequence o))
+	     (command (ask-bindable
+		       (format nil "~:(~a~) set key ~a to command: "
+			       description
+			       (key-sequence-string key-seq)))))
+	(if command
+	    (progn
+	      (set-key key-seq command keymap)
+	      (notify o "~:(~a~) bound ~a to ~a." description
+		       (key-sequence-string key-seq) command))
+	    (notify o "Not a function."))))))
 
 ;; End
