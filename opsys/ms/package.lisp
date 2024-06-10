@@ -150,7 +150,7 @@
    #:reset-terminal-modes
    #:with-nonblocking-io
    #:terminal-time
-   #:terminal-query
+   #:query-terminal
    #:terminal-read-timeout
    #:with-terminal-signals
    ;; Extra Windows specific stuff:

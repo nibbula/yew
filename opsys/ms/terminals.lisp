@@ -1620,7 +1620,7 @@ get it."
 ;;   (declare (ignore query max tty))
 ;;   ;; @@@ XXX
 ;;   "")
-(defun terminal-query (fd query end-tag &key buffer-size (timeout 2.5))
+(defun query-terminal (fd query end-tag &key buffer-size (timeout 2.5))
   ;; (declare (ignore buffer-size))	; @@@
   ;; (write-terminal-string fd query)
   ;; (if (listen-for-terminal timeout fd)
