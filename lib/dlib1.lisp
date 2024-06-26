@@ -31,6 +31,7 @@
   (:export
    ;; bootstrapping System-ish
    #:d-getenv
+   #:feature-expression
    #:shell-line
    #:shell-lines
    #:run-system-command
@@ -391,6 +392,13 @@ complain. Otherwise just warn, and don't redefine it."
   `(with-muffled-notes
      (stable-sort ,@(cdr whole))))
 
+;; (defun optimization-qualities ()
+;;   "Return a list of optimization qualities currently in effect."
+;;   #+sbcl ,sb-c::*policy*
+;;   #+ecl (list c::*debug* c::*speed* c::*safety* c::*space*)
+;;   #+clisp (loop :for q :in '(speed space safety debug compilation-speed)
+;; 		   (gethash x system::*optimize* 1)))
+
 ;; Make sure we have getenv
 (defun d-getenv (s)
   #+clisp (ext:getenv s)
@@ -432,6 +440,41 @@ complain. Otherwise just warn, and don't redefine it."
   #-(or clisp sbcl openmcl cmu ecl excl lispworks gcl abcl clasp cormanlisp
 	mezzano npt)
   (missing-implementation 'd-getenv))
+
+(defun feature-expression (exp)
+  "Return a boolean value as the arguemnt to the #+ #- reader macros would.
+Specifically:
+  symbol                 True if the symbol name is in features.
+  (not feature-exp)      True if the the feature-exp is false.
+  (and <feature-exp>*)   True if all the feature-exps are true.
+  (or <feature-exp>*)    True if one of the feature-exps is true."
+  (labels ((eval-exp (x)
+	     (cond
+	       ((atom x)
+		(if (symbolp x)
+		    (and (find (symbol-name x) *features* :key #'symbol-name
+							  :test #'equal) t)
+		    (error "Feature expression ~s should be a symbol, ~
+			    not a ~a." x (type-of x))))
+	       (t
+		(case (car x)
+		  (not
+		   (cond
+		     ((cddr x)
+		      (error "Only one expression allowed after NOT in ~
+                              feature expression, but got ~a." (cdr x)))
+		     ((not (cadr x))
+		      (error "Missing expression after NOT in a feature ~
+                              expression."))
+		     (t
+		      (not (eval-exp (cadr x))))))
+		  (and (every #'eval-exp (cdr x)))
+		  (or (some #'eval-exp (cdr x)))
+		  (t
+		   (error "Feature expression operator ~a is not recognized."
+			  (car x))))))))
+    (let ((*package* (find-package :keyword)))
+      (eval-exp exp))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defun initial-span (sequence not-in)
@@ -2645,7 +2688,7 @@ a stream, it must have an element-type of (unsigned-byte 8)."
 
 ;;; @@@ Test? or eliminate!
 (defun copy-package (package)
-  "Return a copy of PACKAGE. The new package has all the symbols imported,
+  "Return a copy of ‘package’. The new package has all the symbols imported,
 shadowed symbols shadowed, and used packages used, from the old package, and
 is named \"COPY-OF-<Package><n>\"."
   (assert package)

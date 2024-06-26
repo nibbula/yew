@@ -90,6 +90,7 @@ tweak about the build process.
    #:cv-boolean-feature
    ;; utility things
    #:library-loadable-p
+   #:feature-expression
    ;; normal stuff
    #:defconfig
    #:defconfiguration
@@ -99,7 +100,7 @@ tweak about the build process.
 (in-package :config)
 
 ;; (declaim (optimize (debug 2)))
-(declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
+;; (declaim (optimize (speed 0) (safety 3) (debug 3) (space 0) (compilation-speed 0)))
 
 ;; @@@ I'm really not sure if this entire thing makes sense. Is it just adding
 ;; needless complexity?
@@ -183,6 +184,43 @@ means 'C' language interface, dynamic library."
   #+mezzano (declare (ignore library-spec))
   #+mezzano nil
   )
+
+;; @@@ duplicated in dlib
+(defun feature-expression (exp)
+  "Return a boolean value as the arguemnt to the #+ #- reader macros would.
+Specifically:
+  symbol                 True if the symbol name is in features.
+  (not feature-exp)      True if the the feature-exp is false.
+  (and <feature-exp>*)   True if all the feature-exps are true.
+  (or <feature-exp>*)    True if one of the feature-exps is true.
+"
+  (labels ((eval-exp (x)
+	     (cond
+	       ((atom x)
+		(if (symbolp x)
+		    (and (find (symbol-name x) *features* :key #'symbol-name
+							  :test #'equal) t)
+		    (error "Feature expression ~s should be a symbol, ~
+			    not a ~a." x (type-of x))))
+	       (t
+		(case (car x)
+		  (not
+		   (cond
+		     ((cddr x)
+		      (error "Only one expression allowed after NOT in ~
+                              feature expression, but got ~a." (cdr x)))
+		     ((not (cadr x))
+		      (error "Missing expression after NOT in a feature ~
+                              expression."))
+		     (t
+		      (not (eval-exp (cadr x))))))
+		  (and (every #'eval-exp (cdr x)))
+		  (or (some #'eval-exp (cdr x)))
+		  (t
+		   (error "Feature expression operator ~a is not recognized."
+			  (car x))))))))
+    (let ((*package* (find-package :keyword)))
+      (eval-exp exp))))
 
 (defun temporary-feature-name (var)
   "Return the name we should use for a temporary configuration feature."
