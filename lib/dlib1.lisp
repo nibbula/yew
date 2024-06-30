@@ -59,6 +59,7 @@
    ;; #:package-robust-read-from-string
    ;; #:package-robust-read
    ;; #:*buffer-size*
+   #:read-file-form
    #:copy-stream
    #:stream-string
    #:quote-format
@@ -138,6 +139,8 @@
    #:with-muffled-notes
    #:sort-muffled
    #:stable-sort-muffled
+   #:optimization-qualities
+   #:with-optimization
 
    ;; Language-ish
    #:define-constant
@@ -392,12 +395,27 @@ complain. Otherwise just warn, and don't redefine it."
   `(with-muffled-notes
      (stable-sort ,@(cdr whole))))
 
-;; (defun optimization-qualities ()
-;;   "Return a list of optimization qualities currently in effect."
-;;   #+sbcl ,sb-c::*policy*
-;;   #+ecl (list c::*debug* c::*speed* c::*safety* c::*space*)
-;;   #+clisp (loop :for q :in '(speed space safety debug compilation-speed)
-;; 		   (gethash x system::*optimize* 1)))
+(defun optimization-qualities ()
+  "Return a list of optimization qualities currently in effect."
+  #+sbcl (map 'list (lambda (_)
+		      (list _ (sb-c::policy-quality sb-c::*policy* _)))
+	      '(compilation-speed debug safety space speed))
+  ;; @@@ at some point *policy* was changed from a list to struct with numbers
+  #+(and sbcl some-old-version) sb-c::*policy*
+  #+ccl (ccl:declaration-information 'optimize nil)
+  #+ecl (list c::*debug* c::*speed* c::*safety* c::*space*)
+  #+clisp (loop :for q :in '(speed space safety debug compilation-speed)
+		:collect (list q (gethash x system::*optimize* 1))))
+
+(defmacro with-optimization ((qualities-list) &body body)
+  "Evaluate the ‘body’ with ‘qualities-list’ optimize proclamations."
+  (with-unique-names (old new)
+    `(let ((,old (cons 'optimize (optimization-qualities)))
+	   (,new (list 'optimize ',qualities-list)))
+       ,@(when qualities-list `((proclaim ,new)))
+       (unwind-protect
+	    (progn ,@body)
+         (proclaim ,old)))))
 
 ;; Make sure we have getenv
 (defun d-getenv (s)
@@ -2673,6 +2691,12 @@ a stream, it must have an element-type of (unsigned-byte 8)."
 	(stream-loop file-or-stream)
 	(with-open-file (stream file-or-stream :element-type '(unsigned-byte 8))
 	  (stream-loop stream)))))
+
+(defun read-file-form (file)
+  "Read the first form from ‘file’ and return it."
+  (with-open-file (s file :direction :input)
+    (let ((*read-eval* nil))
+      (read-preserving-whitespace s nil))))
 
 (defun package-copy-name (package &optional (prefix "COPY-OF-"))
   "Pick a stupid name for a copied package."
