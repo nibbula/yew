@@ -156,6 +156,18 @@
    #:system-process-list
    #:system-process-info
 
+   ;; threads
+   #:*supports-threads-p*
+   #:*thread-type*
+   #:threadp
+   #:make-thread
+   #:join-thread
+   #:destroy-thread
+   #:thread-name
+   #:all-threads
+   #:current-thread
+   #:thread-alive-p
+
    ;; time
    #:get-time
    #:os-time

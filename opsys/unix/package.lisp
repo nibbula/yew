@@ -463,6 +463,18 @@
    #:ptrace
    #+linux #:prctl
 
+   ;; threads
+   #:*supports-threads-p*
+   #:*thread-type*
+   #:threadp
+   #:make-thread
+   #:join-thread
+   #:destroy-thread
+   #:thread-name
+   #:all-threads
+   #:current-thread
+   #:thread-alive-p
+
    ;; time
    #:timespec
    #:timespec-seconds
