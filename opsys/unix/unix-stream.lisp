@@ -10,9 +10,21 @@
   ()
   (:documentation "A generic file descriptor stream."))
 
-;; (defmethod close (stream &key abort)
-;;   (declare (ignore abort))
-;;   (posix-close (os-stream-handle stream)))
+(defmethod-quiet close (stream &key abort)
+  (with-slots ((fd handle)) stream
+    (let ((result (posix-close fd)))
+      (cond
+	((= result -1)
+	 (if (= *errno* +ebadf+)
+	     nil			; Presumably the file wasn't open.
+	     (error-check *errno*)))	; Some other problem?
+	(t
+	 (when (and abort
+		    (eq :regular
+			(file-type-symbol (file-status-mode (fstat fd)))))
+	   ;; Abort tries to remove regular files.
+	   (syscall (posix-unlink (os-namestring stream))))
+	 t)))))
 
 (defmethod stream-file-position ((stream os-stream) &optional position-spec)
   (declare (ignore position-spec)) ;; @@@
@@ -41,7 +53,7 @@
 (defparameter *typical-mode* #o664
   "Something for nothing.")
 
-(defun %open (filename direction &key create truncate #|append |# share)
+(defun %open (filename direction &key create truncate append share)
   "Open a FILENAME in DIRECTION, which is one of the usual: :input :output :io.
 Create and truncate do the Unix things."
   (dbugf :fu "%open ~s ~s :create ~s :truncate ~a :share ~s~%"
@@ -53,8 +65,7 @@ Create and truncate do the Unix things."
 			 (:io             +O_RDWR+))
 		       (if create +O_CREAT+ 0)
 		       (if truncate +O_TRUNC+ 0)
-		       #| (if append +O_APPEND+ 0) |#
-		       ))
+		       (if append +O_APPEND+ 0)))
 	(mode *typical-mode*)
 	(interrupt-count 0)
 	fd)
@@ -89,7 +100,7 @@ Create and truncate do the Unix things."
 ;;   similar to what is specified here, it may simply signal an error.”
 ;;
 ;; But of course I'll probably end up doing a partially-assed job too, since
-;; the whole versions in file names thing worked well in Lisp Machines and
+;; the whole versions in file names thing worked well in Lisp Machines and maybe
 ;; VMS, but seems like it would be a lot of complexity that would go unused in
 ;; the modern day, because everyone just uses a more complex version control
 ;; system where they care about it, and more efficiently, nothing, where they
@@ -152,6 +163,10 @@ Create and truncate do the Unix things."
 	   ;; opening, whereas O_APPEND seeks to the end before each write,
 	   ;; which is subtly different. And of course it fails with NFS
 	   ;; anyway.
+	   ;;
+	   ;; BUT, us manually seeking to the end, is just asking for race
+	   ;; conditions, and errors on non-seekable files, so using O_APPEND
+	   ;; seems like the only reasonable choice.
 	   (setf append t))
 	  (:supersede
 	   ;; So yeah, we could unlink the old file, and leave it open, but how
@@ -203,7 +218,7 @@ Create and truncate do the Unix things."
 	   (setf fd (%open filename direction
 			   :create create
 			   :truncate truncate
-			   #| :append append |#
+			   :append append
 			   :share share))
 	   (when (< fd 0)
 	     (when old-fd
@@ -214,11 +229,21 @@ Create and truncate do the Unix things."
 	(syscall (posix-close fd)))
       (when (and unlink old-fd)
 	(syscall (posix-close old-fd))))
+    #| This idea is fucked. Because of unseekable files and race conditions, we
+       really have to just use the unix O_APPEND.
     (when append
-      (syscall (posix-lseek fd 0 +SEEK-END+))
+      (let ((result (posix-lseek fd 0 +SEEK-END+)))
+	;; If seeking to the end fails, don't complain unless it's a regular
+	;; or block device, since who knows WTF it really is becase unix sucks.
+	(when (= result -1)
+	  (when (member (file-type-symbol (file-status-mode (fstat fd)))
+			'(:regular :block-device))
+	    ;; Is it reasonable to assume it's really a problem?
+	    (error-check result))))
       ;; Of course something else could write more data after here, but
       ;; before it gets back to the calling code! Horrible.
       )
+    |#
     fd))
 
 ;; @@@ Maybe if I have nothing better to do, I could unify flush & fill, since
@@ -488,4 +513,4 @@ only happens the second time we get a zero read. Throw errors if we get 'em."
 (defmethod os-stream-system-type ((stream (eql 'os-binary-io-stream)))
   'unix-binary-io-stream)
 
-;; EOF
+;; End
