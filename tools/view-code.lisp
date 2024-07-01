@@ -32,9 +32,11 @@ This is a somewhat weird experiment, and not very useful yet.
   (flet ((get-name (n) (node-object (first (node-branches n))))
 	 (get-args (n)
 	   (let ((arg-node (second (node-branches n))))
-	     (append (list (node-object arg-node))
-		     (loop :for s :in (node-branches arg-node)
-			:collect (node-object s))))))
+	     (when arg-node
+	       (append (list (node-object arg-node))
+		       (loop :for s :in (node-branches arg-node)
+			     :when (node-object s)
+			     :collect (node-object s)))))))
     (cond
       ((symbolp (node-object node))
        (case (node-object node)
