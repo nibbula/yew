@@ -9,8 +9,8 @@
 
 (defpackage :terminal-ms
   (:documentation "Microsoft console as a terminal.")
-  (:use :cl :cffi :dlib :dlib-misc :terminal :char-util :opsys :os-ms
-	:dgray :fatchar :dcolor :terminal-crunch)
+  (:use :cl :cffi :dlib :collections :dlib-misc :terminal :char-util :opsys
+	:os-ms :dgray :fatchar :dcolor :terminal-crunch)
   (:export
    #:terminal-ms
    ;; Extras:
@@ -278,7 +278,7 @@ know."
   "Output a string to the terminal."
   (let* ((actual-string str)
 	 (actual-start (or start 0))
-	 (actual-end (or end (length str)))
+	 (actual-end (or end (olength str)))
 	 (actual-len (- actual-end actual-start)))
     (when (or start end)
       (setf actual-string (make-array actual-len
