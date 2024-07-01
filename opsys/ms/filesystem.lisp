@@ -66,7 +66,7 @@ of these can appear in path names.")
        (char= (char path 1) *directory-separator*)))
 
 (defun path-to-absolute (path)
-  "Return the PATH converted into an absolute path."
+  "Return the ‘path’ converted into an absolute path."
   ;; Make sure path is a string.
   (let* ((our-path (etypecase path
 		    (null (return-from path-to-absolute nil))
@@ -80,8 +80,8 @@ of these can appear in path names.")
     (declare (type string our-path) (type list pp))
     (macrolet
 	((get-rid-of (str snip)
-	   "Get rid of occurances of STR by snipping back to SNIP, which
-              is a numerical expression in terms of the current position POS."
+	   "Get rid of occurances of ‘str’ by snipping back to ‘snip’, which
+            is a numerical expression in terms of the current position ‘pos’."
 	   `(loop :with start = 0 :and pos
 		  :while (setq pos (position ,str pp
 					     :start start :test #'equal))
@@ -92,8 +92,11 @@ of these can appear in path names.")
       (get-rid-of "." pos)
       (get-rid-of ".." (1- pos)))
     (with-output-to-string (str)
-      (when (maybe-unc-p p)
-	(write-string "\\" str))
+      (cond
+	((maybe-unc-p p)
+	 (write-string "\\" str))
+	(t ;; (drive-prefix-p p)
+	 (write-string (car pp) str)))
       (loop :for e :in (cdr pp) :do
 	(write-char *directory-separator* str)
 	(write-string e str)))))
