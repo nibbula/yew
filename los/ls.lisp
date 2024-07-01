@@ -219,6 +219,14 @@ by nos:read-directory."))
       (path-append (file-item-directory item) (file-item-name item))
       (file-item-name item)))
 
+(defun crap-file-info (file)
+  "Like file-info but return blank info for errors."
+  (handler-case
+      (nos:file-info file)
+    #+(and windows (not unix))
+    (wos:windows-error (c)
+      (opsys::make-file-info))))
+
 (defun make-full-item (item &optional dir)
   (etypecase item
     (string
@@ -227,7 +235,7 @@ by nos:read-directory."))
 		    :name item
 		    :directory dir
 		    :info
-		    #-unix (nos:get-file-info (full-path dir item))
+		    #-unix (crap-file-info (full-path dir item))
 		    #+unix (uos:lstat (full-path dir item))))
     ((or file-item-dir file-item)
      (let ((this-dir (or dir (file-item-directory item))))
@@ -236,7 +244,7 @@ by nos:read-directory."))
 		      :name (file-item-name item)
 		      :directory this-dir
 		      :info
-		      #-unix (nos:get-file-info
+		      #-unix (crap-file-info
 			      (full-path this-dir (file-item-name item)))
 		      #+unix (uos:lstat
 			      (full-path this-dir (file-item-name item))))))
@@ -380,10 +388,11 @@ by nos:read-directory."))
 	   (table (make-hash-table :test #'equal)))
        (sort-muffled file-list str-func
 		     :key (_ (mime-type-string _ table)))))
-    (:none
+    #-sbcl (:none ; scbl starting around 2.4.4 complains about unreachable code
      file-list)
     (otherwise
-     file-list)))
+     file-list)
+    ))
 
 (defun make-default-state ()
   (make-ls-state
@@ -435,7 +444,7 @@ by nos:read-directory."))
     (labels ((get-info (file)
 	       (with-error-handling ()
 		 #+unix (uos:lstat (item-full-path file))
-		 #-unix (nos:get-file-info (item-full-path file))))
+		 #-unix (crap-file-info (item-full-path file))))
 	     (broken (f)
 	       (themed-string '(:file :type :broken-link :style) f))
 	     #+unix
@@ -489,7 +498,7 @@ by nos:read-directory."))
     (make-table-from
      (loop
 	:for file :in file-list
-	;;:for s = (nos:get-file-info (dir-entry-name file))
+	;;:for s = (crap-file-info (dir-entry-name file))
 	:for s = (get-info file)
 	:collect (list
 		  (file-info-type s)
