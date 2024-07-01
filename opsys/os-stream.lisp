@@ -100,14 +100,14 @@
 			 (if-does-not-exist :error if-does-not-exist-given)
 			 (external-format :default)
 			 share)
-  "Return a stream which reads from or writes to FILENAME.
-   Defined keywords:
-    :DIRECTION - one of :INPUT, :OUTPUT, :IO, or :PROBE
-    :ELEMENT-TYPE - the type of object to read or write, default BASE-CHAR
-    :IF-EXISTS - one of :ERROR, :NEW-VERSION, :RENAME, :RENAME-AND-DELETE,
-                        :OVERWRITE, :APPEND, :SUPERSEDE or NIL
-    :IF-DOES-NOT-EXIST - one of :ERROR, :CREATE or NIL
-    :SHARE - If true, allow passing to sub-processes."
+"Return a stream which reads from and/or writes to ‘filename’.
+Defined keywords:
+  :DIRECTION         - one of :INPUT, :OUTPUT, :IO, or :PROBE
+  :ELEMENT-TYPE      - the type of object to read or write, default BASE-CHAR
+  :IF-EXISTS         - one of :ERROR, :NEW-VERSION, :RENAME, :RENAME-AND-DELETE,
+                       :OVERWRITE, :APPEND, :SUPERSEDE or NIL
+  :IF-DOES-NOT-EXIST - one of :ERROR, :CREATE or NIL
+  :SHARE             - If true, allow passing to sub-processes."
   (declare (ignore if-exists-given if-does-not-exist-given external-format))
   ;; (let* ((type (os-stream-type-for direction element-type))
   ;; 	 (stream (make-instance (os-stream-system-type type))))
@@ -174,12 +174,20 @@ use of throw), the file is automatically closed."
   ;; Attempts to ensure that all output sent to the Stream has reached
   ;; its destination, and only then returns false.  Implements
   ;; ‘finish-output’.  The default method does nothing.
-  (flush-buffer stream))
+  (with-accessors ((output-position os-stream-output-position)
+		   (output-fill os-stream-output-fill)) stream
+      (prog1 (flush-buffer stream)
+	(setf output-position 0
+	      output-fill 0))))
 
 (defmethod stream-force-output ((stream os-output-stream))
   ;; Attempts to force any buffered output to be sent.  Implements
   ;; ‘force-output’.  The default method does nothing.
-  (flush-buffer stream :force t))
+  (with-accessors ((output-position os-stream-output-position)
+		   (output-fill os-stream-output-fill)) stream
+      (prog1 (flush-buffer stream :force t)
+	(setf output-position 0
+	      output-fill 0))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; "binary" streams
