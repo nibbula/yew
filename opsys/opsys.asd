@@ -46,6 +46,7 @@
 		   (:file "memory")
 		   (:file "signals")
 		   (:file "processes")
+		   (:file "threads")
 		   (:file "events")
 		   (:file "terminals")
 		   (:file "communication")

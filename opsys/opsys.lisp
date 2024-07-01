@@ -1064,6 +1064,41 @@ allows it. Only one of USER, PID, or GROUP should be specified.")
 (defosvar *os-process-least-favorable-priority*
   "The process priority value for least favorable scheduling.")
 
+#|──────────────────────────────────────────────────────────────────────────┤#
+ │ Threads
+ ╰|#
+
+(defosvar *supports-threads-p*
+  "True if we support threads.")
+
+(defosvar *thread-type*
+  "Type of a thread.")
+
+(defosfun threadp (thread)
+  "Return true if ‘thread’ is a thread object.")
+
+(defosfun make-thread (function &key name)
+  "Create a thread which runs ‘function’. ‘name’ will be the name reported
+by thread-name.")
+
+(defosfun join-thread (thread)
+  "Wait for ‘thread’ to complete and return it's result.")
+
+(defosfun destroy-thread (thread)
+  "Stop ‘thread’ from running and perhaps stop using it's resources.")
+
+(defosfun thread-name (thread)
+  "Return the name of ‘thread’ as given to make-thread.")
+
+(defosfun all-threads ()
+  "Return a list of all known threads.")
+
+(defosfun current-thread ()
+  "Return the current thread that we are executing in.")
+
+(defosfun thread-alive-p (thread)
+  "Return true if the ‘thread’ hasn't been destroyed.")
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Inter-process communication
 
