@@ -1464,7 +1464,8 @@ Key arguments:
         (progn
 	  (tt-cursor-off)
 	  (fix-scrolling nil)
-	  (event-loop *image-viewer*))
+	  (let ((*inator* *image-viewer*))
+	    (run *image-viewer*)))
 	(tt-cursor-on)
 	(fix-scrolling t)
 	(tt-finish-output))
