@@ -409,13 +409,12 @@ complain. Otherwise just warn, and don't redefine it."
 
 (defmacro with-optimization ((qualities-list) &body body)
   "Evaluate the ‘body’ with ‘qualities-list’ optimize proclamations."
-  (with-unique-names (old new)
-    `(let ((,old (cons 'optimize (optimization-qualities)))
-	   (,new (list 'optimize ',qualities-list)))
-       ,@(when qualities-list `((proclaim ,new)))
+  (with-unique-names (old)
+    `(let ((,old (optimization-qualities)))
+       ,@(when qualities-list `((proclaim `(optimize ,@,qualities-list))))
        (unwind-protect
-	    (progn ,@body)
-         (proclaim ,old)))))
+            (progn ,@body)
+         (proclaim `(optimize ,@,old))))))
 
 ;; Make sure we have getenv
 (defun d-getenv (s)
