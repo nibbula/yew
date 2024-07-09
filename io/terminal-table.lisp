@@ -196,4 +196,10 @@
 	      (osubseq field 0 (min width (olength field))))
 	     :stream *destination* :escape nil :readably nil :pretty nil))))
 
+(defmethod table-output-footer ((renderer terminal-box-table-renderer) table
+				&key width sizes)
+  (declare (ignorable width sizes))
+  (call-next-method)
+  (terminal-color *destination* :default nil))
+
 ;; End
