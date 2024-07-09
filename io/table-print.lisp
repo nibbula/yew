@@ -357,7 +357,8 @@ sizes."
 				(mapcar #'column-name (table-columns table))
 				:sizes sizes)
     (omapn (lambda (row)
-	     (table-output-row renderer table row row-num :sizes sizes))
+	     (table-output-row renderer table row row-num :sizes sizes)
+	     (incf row-num))
 	   table)
     (table-output-footer renderer table :sizes sizes)))
 
