@@ -941,14 +941,14 @@ line : |----||-------||---------||---|
 				:end (+ *left* (tt-width))))
     (when search-string
       (search-a-matize))
-    (let ((len (display-length *fat-buf*)))
+    (let* ((fs (make-fat-string :string *fat-buf*))
+	   (len (display-length fs)))
       ;; (if (= len (tt-width))
       ;; 	  (tt-write-string (make-fat-string :string *fat-buf*)))
       ;; 	  (tt-write-line (make-fat-string :string *fat-buf*))
-      (let ((fs (make-fat-string :string *fat-buf*)))
-	(tt-write-string (if mutate-function
-			     (funcall mutate-function fs)
-			     fs)))
+      (tt-write-string (if mutate-function
+			   (funcall mutate-function fs)
+			   fs))
       ;; @@@ or something? minus the line numbers
       ;; (max 1 (ceiling (length *fat-buf*) (tt-width)))
       ;; (max 1 (ceiling (display-length *fat-buf*) (tt-width)))
