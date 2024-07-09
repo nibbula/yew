@@ -796,6 +796,8 @@ initial-element to make-array, or if you don't supply initial-element."
   "Make a string of fatchars from THING, which can be a string or a character."
   (let (result)
     (flet ((from-string (string)
+	     ;; @@@ We probably should somehow consolidate this with what
+	     ;; span-to-thing does.
 	     (let ((graphemes (char-util:graphemes string)))
 	       (setf result (make-fatchar-string-of-length
 			     (length graphemes)
@@ -1571,18 +1573,18 @@ span-list ->
 Known colors are from dcolor:*simple-colors* and known attributes are in
 fatchar:*known-attrs*.
 
-  - START and END are character index limits.
-  - UNKNOWN-FUNC is a fuction to call with un-recognized attributes, colors, or
-    object types. The primary value is processed. If the second value is true,
-    ignore the rest of the list.
-  - FILTER is a function which is called with every string, which should return
-    similar typed string to use as a replacement."))
+  - ‘start’ and ‘end’ are character index limits.
+  - ‘unknown-func’ is a fuction to call with unrecognized attributes, colors,
+    or object types. The primary value is processed. If the second value is
+    true, ignore the rest of the list.
+  - ‘filter’ is a function which is called with every string, which should
+    return similar typed string to use as a replacement."))
 
 (defun span-to-thing (span out-func thing
 		      &key (start 0) end unknown-func filter)
   #.(s+
-     "Convert a SPAN to something else, by calling OUT-FUNC with succesive
-FATCHARS and THING. A span is a list representation of a attributed string.
+     "Convert ‘span’ to something else, by calling ‘out-func’ with succesive
+‘fatchar’s and ‘thing’. A span is a list representation of a attributed string.
 The grammar is something like:
 
 "
@@ -1595,14 +1597,19 @@ The grammar is something like:
 	   (when s
 	     (typecase s
 	       (string
-		(loop :for c :across (if filter (funcall filter s) s)
-		   :do
-		   (when (and (>= i start)
-			      (or (not end) (< i end)))
-		     (funcall out-func
-		      (make-fatchar :c c :fg (car fg) :bg (car bg) :attrs attrs)
-		      thing))
-		   (incf i)))
+		;; @@@ We probably should somehow consolidate this with what
+		;; make-fatchar-string does.
+		(let ((graphemes (char-util:graphemes
+				  (if filter (funcall filter s) s))))
+		  (loop :for g :in graphemes
+		    :do
+		    (when (and (>= i start)
+			       (or (not end) (< i end)))
+		      (funcall out-func
+		        (make-fatchar :c (if (= (length g) 1) (char g 0) g)
+				      :fg (car fg) :bg (car bg) :attrs attrs)
+			thing))
+		    (incf i))))
 	       (fat-string
 		(loop :for c :across (fat-string-string
 				      (if filter (funcall filter s) s))
@@ -1685,13 +1692,12 @@ The grammar is something like:
 
 (defun span-to-fatchar-string (span &key (start 0) end
 				      unknown-func filter fatchar-string)
-  #.(s+ "Make a FATCHAR-STRING from SPAN. A span is a list representation of a
-fatchar string. The grammar is something like: "
+  #.(s+ "Make a ‘fatchar-string’ from ‘span’. A span is a list representation of
+a fatchar string. The grammar is something like: "
 	*span-grammar*
 	*span-args* "
-  - FATCHAR-STRING can be provided as an already created adjustable string with a
-    fill-pointer to put the result into.")
-
+  - ‘fatchar-string’ can be provided as an already created adjustable string
+    with a fill-pointer to put the result into.")
   (when (not fatchar-string)
     (setf fatchar-string (make-array 40
 				     :element-type 'fatchar
