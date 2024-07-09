@@ -7,8 +7,8 @@ Terminal Notes                                        -*- org -*-
    it in terminal-test. It can be significant work to add a method to every
    type, so consider if it's really necessary.
 
-   I think it is important to try to keep the terminal protocol and not have
-   methods that only apply to very few terminals. If you want to add an
+   I think it is important to try to keep the terminal protocol simple and not
+   have methods that only apply to very few terminals. If you want to add an
    experimental feature to a terminal, you can just add it to the sub-class
    first, then if it's really of use to all terminals, add it to the
    generic. Another option for a gradually featured terminal, is to sub-class
