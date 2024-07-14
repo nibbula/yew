@@ -1583,4 +1583,44 @@ invoked."
   (let* ((expr (ask-expr)))
     (insert e (prin1-to-string (eval expr)))))
 
+;; @@@ Sadly we would have to bring in table, table-print, fui, etc to
+;; do this nicely.
+
+#|
+;; This is just fucking ridiculous. We need sub-terminal.
+(rl:defsingle view-lossage (e)
+  (declare (ignore e))
+  (let ((outer-width (- (tt-width) 4)))
+    (fui:display-text ;; show-text
+     "Lossage"
+     (osplit #\newline
+	     (make-fat-string
+	      :string
+	      (process-ansi-colors
+	       (make-fatchar-string
+		(with-terminal-output-to-string (:ansi)
+		  (table-print:print-table
+		   (make-table-from
+		    (rl::lossage-list)
+		    :columns
+		    `((:name "key"
+		       :format
+		       ,(lambda (c w)
+			  ;; How could I do this with ~? or ~n{~:}
+			  (format nil "~va" w
+			    (format nil "~{~a~^ ~}"
+				    (mapcar (_ (char-util:nice-char _)) c)))))
+		      (:name "command"
+		       :format ,(lambda (c w)
+				  (format nil "~(~va~)" w c)))))
+		   :renderer (make-instance
+			      'terminal-table:terminal-table-renderer)
+		   :max-width outer-width
+		   :stream *terminal*)))))
+	     :omit-empty t)
+     :justify nil)))
+
+(keymap:set-key `(,(char-util:ctrl #\X) #\L) 'view-lossage (lish-keymap *shell*))
+|#
+
 ;; End

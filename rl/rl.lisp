@@ -527,6 +527,7 @@ Keyword arguments:
 			(run-hooks *post-command-hook* e)
 			(when (not quit-flag)
 			  (highlight-matching-parentheses e))))
+		  (save-lossage (inator-event-sequence e) command)
 		  (setf last-command command)
 		  (run-hooks filter-hook e)
 		  ;; (when (need-to-recolor e)

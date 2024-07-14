@@ -463,6 +463,56 @@ Otherwise the region is deactivated every command loop.")
 
 (defvar *initial-line-size* 20)
 
+(defstruct lossage-item
+  "Recent keystroke history item."
+  key
+  command)
+
+(defvar *lossage-default-size* 100
+  "Default amount of keystrokes to remember.")
+
+(defstruct lossage
+  "Recent keystrokes."
+  (size *lossage-default-size* :type fixnum)
+  (fill 0 :type fixnum)
+  (items #() :type vector))
+
+(defvar *lossage* nil)
+
+(defun init-lossage ()
+  "Initialize the recent key history for editor ‘e’."
+  (when (not *lossage*)
+    (setf *lossage*
+	  (make-lossage
+	   :items (make-array *lossage-default-size* :initial-element nil)))))
+
+(defun save-lossage (key command)
+  "Save the ‘key’ and ‘command’ in the recent input history, if it's enabled."
+  (with-slots (size fill items) *lossage*
+    (when (not (zerop size))
+      (if (aref items fill)
+	  (setf (lossage-item-key (aref items fill)) key
+		(lossage-item-command (aref items fill)) command)
+	  (setf (aref items fill)
+		(make-lossage-item :key key :command command)))
+      (incf fill)
+      (when (>= fill (length items))
+	(setf fill 0)))))
+
+(defun lossage-list ()
+  "Return a list of lossage for editor ‘e’, from the most recent to the oldest."
+  (with-slots (fill items) *lossage*
+    (concatenate 'list
+      (when (plusp fill)
+	(loop :for i :from (1- fill) :downto 0
+	  :when (aref items i)
+	  :collect (vector (lossage-item-key (aref items i))
+			   (lossage-item-command (aref items i)))))
+      (loop :for i :from (1- (length items)) :downto fill
+        :when (aref items i)
+	:collect (vector (lossage-item-key (aref items i))
+			 (lossage-item-command (aref items i)))))))
+
 (defmethod initialize-instance :after ((e line-editor) &rest initargs)
   (dbugf :rl "init editor~%")
   ;; Make a terminal using the device name and class, or use *TERMINAL*.
@@ -487,6 +537,8 @@ Otherwise the region is deactivated every command loop.")
     (setf (slot-value e 'buf)
 	  (make-stretchy-vector *initial-line-size* :element-type 'fatchar)))
   (setf (slot-value e 'buf-str) (make-fat-string :string (slot-value e 'buf)))
+
+  (init-lossage)
 
   ;; Set the current dynamic var.
   (setf *line-editor* e))
