@@ -435,7 +435,7 @@ that has START and START-P and END and END-P."
 	     (,func ,@args :start start :end end)
 	     (,func ,@args :start start))
 	 (if end-p
-	     (,func ,@args ::end end)
+	     (,func ,@args :end end)
 	     (,func ,@args)))))
 
 #|
