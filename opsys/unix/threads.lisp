@@ -129,6 +129,6 @@ function should never return."
      (declare (ignore thread)))
    (defun all-threads ())
    (defun current-thread ())
-   (defun thread-alive-p (thread))))
+   (defun thread-alive-p (thread) (declare (ignore thread)))))
 
 ;; End
