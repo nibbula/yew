@@ -505,7 +505,7 @@ If every object in a column:
   (typecase from
     (string
      (case to
-       (number (safe-read-from-string from))
+       (number (or (ignore-errors (safe-read-from-string from)) from))
        (string from)
        (symbol (symbolize from))
        ((t) from) ;; don't complain
@@ -532,7 +532,7 @@ If every object in a column:
 	(warn "Don't know how to convert from a NIL to a ~a~%" to))))
     (symbol
      (case to
-       (number (safe-read-from-string (string from)))
+       (number (or (ignore-errors (safe-read-from-string from)) from))
        (string (string from))
        (symbol from)
        ((t) from) ;; don't complain
