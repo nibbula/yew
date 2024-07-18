@@ -446,7 +446,7 @@ that has START and START-P and END and END-P."
 	     (,func ,@args :start start :end end)
 	     (,func ,@args :start start))
 	 (if end-p
-	     (,func ,@args ::end end)
+	     (,func ,@args :end end)
 	     (,func ,@args)))))
 
 ;; @@@ There must be a better way to do this??
@@ -461,7 +461,7 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 		(,func ,@args :start start :end end :test-not test-not)
 		(,func ,@args :start start :test-not test-not))
 	    (if end-p
-		(,func ,@args ::end end :test-not test-not)
+		(,func ,@args :end end :test-not test-not)
 		(,func ,@args :test-not test-not))))
        (test-p
 	(if start-p
@@ -469,7 +469,7 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 		(,func ,@args :start start :end end :test test)
 		(,func ,@args :start start :test test))
 	    (if end-p
-		(,func ,@args ::end end :test test)
+		(,func ,@args :end end :test test)
 		(,func ,@args :test test))))
        (t
 	(if start-p
@@ -477,7 +477,7 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 		(,func ,@args :start start :end end)
 		(,func ,@args :start start))
 	    (if end-p
-		(,func ,@args ::end end)
+		(,func ,@args :end end)
 		(,func ,@args)))))))
 
 (defgeneric emptyp (collection)
