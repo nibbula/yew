@@ -171,6 +171,10 @@ anything important.")
     :initform #\space
     :documentation
     "Character to fill the prompt gutter with, or NIL for no gutter.")
+   (blank-line-func
+    :initarg :blank-line-func :accessor line-editor-blank-line-func
+    :initform nil
+    :documentation "Function to call for blank lines.")
 
    ;; History
    ;;

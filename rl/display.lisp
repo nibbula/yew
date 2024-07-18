@@ -411,7 +411,8 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	       buf-str buf prompt-height start-row start-col
 	       screen-relative-row last-line temporary-message region-active
 	       max-message-lines message-lines message-top message-endings
-	       auto-suggest-p suggestion auto-suggest-style gutter-char) e
+	       auto-suggest-p suggestion auto-suggest-style gutter-char
+	       blank-line-func) e
     ;; (dbugf :rl "----------------~%")
     ;; Make sure buf-str uses buf.
     (when (not (eq (fat-string-string buf-str) buf))
@@ -571,6 +572,12 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	;; Write the prompt
 	(tt-move-to-col 0)
 	(tt-erase-below)
+	(when blank-line-func
+	  (let ((row (terminal-get-cursor-position *terminal*)))
+	    (with-saved-cursor (*terminal*)
+	      (loop :repeat (- (tt-height) row 1)
+		    :do (funcall blank-line-func) (tt-newline)))))
+
 	(tt-write-string prompt)
 	(tt-erase-to-eol)
 	(setf prompt-height prompt-lines
@@ -617,7 +624,9 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
 	     :do
 	       (tt-down)
 	       (tt-move-to-col 0)
-	       (tt-erase-to-eol))
+	       (tt-erase-to-eol)
+	       (when blank-line-func
+		 (funcall blank-line-func)))
 	  (when (not (zerop erase-lines))
 	    (tt-up erase-lines)))
 
