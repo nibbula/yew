@@ -179,16 +179,53 @@ are indicated instead of being signaled."
       (return-from display-value
 	(format stream "<<Error printing a ~a>>" (type-of v))))))
 
+(defvar *debugger-stack-marks* nil
+  "An alist of (frame-number . marker-description) for displaying marks when
+printing the stack.")
+
+(defmacro with-frame-mark ((mark) &body body)
+  "Evaluate the body putting the frame mark ‘mark’ at the current frame."
+  `(let ((*debugger-stack-marks* (acons (debugger-internal-frame) ,mark
+					*debugger-stack-marks*)))
+     ,@body))
+
+(defun frame-mark (frame)
+  "Return the frame mark for ‘frame’ or NIL if there isn't one."
+  (dbugf :dbg "yo ~s~%" frame)
+  (cdr (assoc frame *debugger-stack-marks* :test #'equal)))
+
+(defun output-term ()
+  "Return the terminal we should output to."
+  (or (and *deblarg* (debugger-term *deblarg*)) *terminal*))
+
+(defun maybe-print-frame-mark (frame width)
+  (let* ((mark (frame-mark frame))
+	 (term (output-term))
+	 (width (or width (terminal-window-columns term))))
+    ;; Don't complain if it's not a known type. Errors in the debugger are
+    ;; annoying, and this isn't that important.
+    (typecase mark
+      (null)
+      ((or string fat-string)
+       (terminal-write-line term mark))
+      (character
+       (terminal-format term "~v{~a~:*~}" (1- width) '(#\─)))
+      (keyword ;; assume it's a color or attribute keyword
+       (terminal-write-span term
+         `(,mark ,(format nil "~v{~a~:*~}" (1- width) '(#\─)))))
+      (cons ;; assume it's a span
+       (terminal-write-span term mark)))))
+
 (defun print-stack-line (line &key width)
   "Print a stack LINE, which is a cons of (line-numbner . string)."
   (destructuring-bind (num . str) line
+    ;; (maybe-print-frame-mark num width)
     (print-span `((:fg-yellow ,(format nil "~3d" num) " ")))
     (debugger-print-string
      (if width
 	 (osubseq str 0 (min (olength str) (- width 4)))
 	 str))
     ;;(terpri *terminal*)
-    (terminal-write-char (or (and *deblarg* (debugger-term *deblarg*))
-			     *terminal*) #\newline)))
+    (terminal-write-char (output-term) #\newline)))
 
 ;; End
