@@ -847,13 +847,10 @@ CACHED can be one of :ONLY, :NO, :BUILD, :DEFAULT.
 
 (defun list-to-command-path (path-list)
   "Given a list of pathnames return a suitable system command path value."
-  (with-output-to-string (str)
-    (write-string (car path-list) str)
-    (mapcan (_ (write-char *path-separator* str)
-	       (write-string _ str)) (cdr path-list))))
+  (format nil (s+ "~{~a~^" *path-separator* "~}") path-list *path-separator*))
 
 (defun set-command-path-list (path-list)
-  "Set the system command path to the elements of PATH-LIST."
+  "Set the system command path to the elements of ‘path-list’."
   (setf (environment-variable *path-variable*)
 	(list-to-command-path path-list)))
 
