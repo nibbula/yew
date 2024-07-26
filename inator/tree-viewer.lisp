@@ -1107,7 +1107,8 @@ and indented properly for multi-line objects."
 ;; Just so our *viewer* is set for clients that call the ‘event-loop’ directly
 ;; instead of ‘view-tree’.
 (defmethod event-loop :around ((o tree-viewer))
-  (let ((*viewer* o))
+  (let ((*viewer* o)
+	(*inator* o))
     (call-next-method)))
 
 (defun view-tree (tree &key viewer default-action)
