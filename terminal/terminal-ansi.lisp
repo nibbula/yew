@@ -12,8 +12,9 @@
 
 (defpackage :terminal-ansi
   (:documentation "Standard terminal (ANSI).")
-  (:use :cl :cffi :dlib :collections :dlib-misc :terminal :char-util :opsys
-	:dgray :fatchar :dcolor :ansi :terminal-dumb :terminal-crunch :unicode
+  (:use :cl :cffi :dlib :collections :dlib-misc :terminal :char-util
+        :unicode :opsys :dgray :ochar :ostring :fatchar :dcolor :ansi
+        :terminal-dumb :terminal-crunch
 	#+unix :opsys-unix
 	#+windows :opsys-ms)
   (:export
@@ -560,48 +561,90 @@ know."
     `(defun ,name (tty char)
        "Update the column in TTY for CHAR."
        (with-accessors ((fake-column terminal-fake-column)) tty
-	 (cond
-	   ((graphic-char-p char)
-	    (incf fake-column
-		  (cond
-		    ((zero-width-char-p char) 0)
-		    ((combining-char-p char) 0)
-		    ((double-wide-char-p char) ,two)
-		    (t ,one))))		;normal case
-	   (t
-	    (case char
-	      (#\return
-	       (setf fake-column 0))
-	      (#\tab
-	       (incf fake-column
-		     (* (- (1+ (logior 7 fake-column)) fake-column)
-			,multiplier)))
-	      (otherwise
-	       (setf fake-column 0))))))))) ;; some non-graphic control char?
+	 (let ((c (osimplify char)))
+	   (cond
+	     ((graphic-char-p c)
+	      (incf fake-column
+		    (cond
+		      ((zero-width-char-p c) 0)
+		      ((combining-char-p c) 0)
+		      ((double-wide-char-p c) ,two)
+		      (t ,one))))	;normal case
+	     (t
+	      (case c
+		(#\return
+		 (setf fake-column 0))
+		(#\tab
+		 (incf fake-column
+		       (* (- (1+ (logior 7 fake-column)) fake-column)
+			  ,multiplier)))
+		(otherwise
+		 (setf fake-column 0)))))))))) ;; some non-graphic control char?
 
 (define-updater update-column-for-single-char 1)
 (define-updater update-column-for-double-char 2)
 
+(defvar *char-multiplier* 1
+  "How many cells the characters we are working on take.")
+
+(defun slower-updater (tty char)
+  "Update the column in ‘tty’ for ‘char’."
+  (let ((one *char-multiplier*)
+	(two (* 2 *char-multiplier*)))
+    (with-accessors ((fake-column terminal-fake-column)) tty
+      (let ((c (osimplify char)))
+	(cond
+	  ((graphic-char-p c)
+	   (incf fake-column
+		 (cond
+		   ((zero-width-char-p c) 0)
+		   ((combining-char-p c) 0)
+		   ((double-wide-char-p c) two)
+		   (t one))))		; normal case
+	  (t
+	   (case c
+	     (#\return
+	      (setf fake-column 0))
+	     (#\tab
+	      (incf fake-column
+		    (* (- (1+ (logior 7 fake-column)) fake-column)
+		       *char-multiplier*)))
+	     (otherwise
+	      (setf fake-column 0))))))))) ;; some non-graphic control char?
+
 (defmacro define-update-column (name double-width-p)
-  "Define a column updater called NAME for double width characters if
-DOUBLE-WIDTH-P is true."
+  "Define a column updater called ‘name’ for double width characters if
+‘double-width-p’ is true."
   (let ((updater (if double-width-p
 		     'update-column-for-double-char
 		     'update-column-for-single-char)))
     `(defun ,name (tty thing &key start end)
-       "Update the column for THING in TTY. If THING is string START and END are
-the range of character considered."
+       "Update the column for ‘thing’ in ‘tty’. If ‘thing’ is a string, ‘start’
+and ‘end’ are the range of character considered."
        (etypecase thing
-	 (character (,updater tty thing))
-	 (string
+	 ((or character ocharacter) (,updater tty thing))
+	 ((or string ostring)
 	  (loop
-	     :with the-end = (or end (length thing))
+	     :with the-end = (or end (olength thing))
 	     :and the-start = (or start 0)
 	     :for i :from the-start :below the-end
-	     :do (,updater tty (char thing i))))))))
+	     :do (,updater tty (ochar thing i))))))))
 
-(define-update-column update-column nil)
+;; (define-update-column update-column nil)
 (define-update-column update-column-double t)
+
+;; @@@ slower ?
+(defun update-column (tty thing &key start end)
+  "Update the column for ‘thing’ in ‘tty’. If ‘thing’ is a string, ‘start’
+and ‘end’ are the range of character considered."
+  (etypecase thing
+    ((or character ocharacter) (slower-updater tty thing))
+    ((or string ostring)
+     (loop
+       :with the-end = (or end (olength thing))
+       :and the-start = (or start 0)
+       :for i :from the-start :below the-end
+       :do (slower-updater tty (ochar thing i))))))
 
 (defun make-acs-table (&optional acs-data)
   "Make the alternate character set table."
@@ -2348,16 +2391,19 @@ links highlight differently?"
 
 (defmethod write-double-width-line ((tty terminal-ansi) line)
   (terminal-raw-format tty "~c#6" #\escape)
-  (write-line line (terminal-output-stream tty))
-  (update-column-double tty line)
+  (let ((*char-multiplier* 2))
+    (terminal-write-string tty line))
   (update-column tty #\newline)
   (when (line-buffered-p tty)
     (finish-output (terminal-output-stream tty))))
 
+(defgeneric write-double-height-line (terminal line)
+  (:documentation "Write a double height line, if the terminal supports it."))
+
 (defmethod write-double-height-line ((tty terminal-ansi) line)
   (flet ((do-line ()
-	   (write-line line (terminal-output-stream tty))
-	   (update-column-double tty line)
+	   (let ((*char-multiplier* 2))
+	     (terminal-write-string tty line))
 	   (update-column tty #\newline)))
     (terminal-raw-format tty "~c#3" #\escape) (do-line)
     (terminal-raw-format tty "~c#4" #\escape) (do-line)
