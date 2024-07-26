@@ -172,6 +172,7 @@
    #:refer-to
    ;; #-(or lispworks clasp) #:#.(code-char #x203B) #\reference_mark
    #:maybe-refer-to
+   #:maybe-symbol
    ;; #-(or lispworks clasp) #:#.(code-char #x203B)?
    ;; #:@
    #:with-internal-slots #:with-internal-accessors
@@ -2265,6 +2266,12 @@ package doesn't exist or isn't bound."
 	 (when args
 	   (warn "Useless refer-to args were provided."))
 	 (symbol-value sym))))))
+
+(defun maybe-symbol (package symbol)
+  "Return ‘symbol’ in ‘package’ if it exists, NIL otherwise."
+  (let ((pkg (find-package package)) sym)
+    (when (and pkg (find-symbol (string-upcase symbol)))
+      (setf sym (intern (string symbol) pkg)))))
 
 ;; (defalias '#.(code-char #x203b)? 'maybe-refer-to)
 
