@@ -105,7 +105,8 @@ expect. Like for example on a Unix system it should be like strerror.")
   #+openmcl  (ccl::command-line-arguments)
   #+excl     (sys:command-line-arguments) 
   #+ecl	     (ext:command-args)
-  #-(or sbcl clisp cmu openmcl excl ecl)
+  #+clasp    (loop :for i :from 0 :below (core:argc) :collect (core:argv i))
+  #-(or sbcl clisp cmu openmcl excl ecl clasp)
   (missing-implementation 'lisp-args))
 
 ;; This is really an obsolescent thing.
@@ -371,7 +372,9 @@ which can be `:INPUT` or `:OUTPUT`. If there isn't one, return NIL."
   #+abcl nil
   #+ecl (declare (ignore direction))
   #+ecl (and (typep stream 'file-stream) (ext:file-stream-fd stream))
-  #-(or ccl sbcl cmu clisp lispworks abcl ecl excl)
+  #+clasp (declare (ignore direction))
+  #+clasp (and (typep stream 'file-stream) (core:file-stream-fd stream))
+  #-(or ccl sbcl cmu clisp lispworks abcl ecl excl clasp)
   (missing-implementation 'stream-system-handle))
 
 ;; This is really just for the os-stream code.
@@ -1189,7 +1192,17 @@ current process's environment."
   ;; XXX @@@ This is very bogus! (for what it ignores)
   #+abcl (declare (ignore in-stream out-stream environment env-p))
   #+abcl (sys:process-output (sys:run-program cmd args))
-  #-(or clisp sbcl cmu openmcl ecl excl lispworks abcl)
+  #+clasp (multiple-value-bind (stream code process)
+	      (apply #'ext:run-program
+		     `(,cmd ,args :wait nil
+			    ,@(when out-stream `(:output ,out-stream))
+			    ,@(when in-stream `(:input ,in-stream))
+			    ,@(when env-p
+				`(:environ
+				  ,(environ-to-string-list environment)))))
+	    (declare (ignore code process))
+	    stream)
+  #-(or clisp sbcl cmu openmcl ecl excl lispworks abcl clasp)
   (missing-implementation 'pipe-program))
 
 (defmacro with-process-output ((var cmd args) &body body)
@@ -1746,4 +1759,4 @@ environment variables."
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-;; EOF
+;; End
