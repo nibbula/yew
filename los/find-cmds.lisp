@@ -46,7 +46,7 @@
     :help        "The mode for matching letter characters. One of 'smart',
                   'sensitive', or 'insensitive'. (default 'smart')
                   'smart' is insensitive if there are no upper case letters,
-                  sesitive otherwise. 'sesitive' matches the exact case.
+                  sensitive otherwise. 'sensitive' matches the exact case.
                   'insensitive' matches any case.")
    (unicode-normalize boolean :short-arg #\u :default t
     :help "Normalize unicode before comparison.")
