@@ -136,6 +136,8 @@ Also we really need the MOP for stuff.")
       opush
       opushnew
       opop
+      slot-element
+      set-slot-element
       make-collection-template
       make-collection))
 
