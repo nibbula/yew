@@ -8,7 +8,7 @@
 ;; back, and this is yet another useless package. In a world where CL wasn't
 ;; dead, and all this shit would have been fixed long long ago.
 
- #-(or sbcl clisp ecl openmcl allegro cmu)
+ #-(or sbcl clisp ecl openmcl allegro cmu clasp)
 (error "We don't know how to use gray streams on ~s." (lisp-implementation-type))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
