@@ -90,8 +90,8 @@ methods, and the like.
 ")
   (:nicknames :tb)
   (:use :cl :dlib :opsys :dlib-misc :dtime :char-util :keymap :pick-list
-	:glob :collections :inator :terminal :terminal-inator :fui :fatchar-io
-	:view-generic)
+	:glob :collections :ostring :inator :terminal :terminal-inator :fui
+        :fatchar-io :view-generic)
   (:export
    #:view-tree
    #:node #:node-branches #:node-open #:make-node
@@ -498,6 +498,9 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
    (closed-indicator
     :initarg :closed-indicator :accessor closed-indicator :initform #\-
     :documentation "Indicator that a node is closed.")
+   (empty-indicator
+    :initarg :empty-indicator :accessor empty-indicator :initform #\space
+    :documentation "Indicator that a node is empty.")
    (left
     :initarg :left :accessor left :initform 0 :type integer
     :documentation "Horizontal offset of the view.")
@@ -520,7 +523,8 @@ MAX-DEPTH. TEST is used to compare THINGS. TEST defaults to EQUAL."
   (:default-initargs
    :default-keymap *tree-keymap*
    :open-indicator (theme:value '(:program :tree :open-indicator))
-   :closed-indicator (theme:value '(:program :tree :closed-indicator)))
+   :closed-indicator (theme:value '(:program :tree :closed-indicator))
+   :empty-indicator (theme:value '(:program :tree :empty-indicator)))
   (:documentation "A tree viewer."))
 
 (defvar *viewer* nil
@@ -942,13 +946,13 @@ is true."
 
 (defmethod display-prefix ((node node) level)
   "Return the normal indentation and open / close indicator."
-  (with-slots (open-indicator closed-indicator indent) *viewer*
+  (with-slots (open-indicator closed-indicator empty-indicator indent) *viewer*
     (with-output-to-fat-string (str)
       (format str "~v,,,va~/fatchar-io:print-string/ "
 	      (* level indent) #\space ""
 	      (if (node-branches node)
 		  (if (node-open node) open-indicator closed-indicator)
-		  #\space)))))
+		  empty-indicator)))))
 
 (defgeneric display-node-line (node line)
   (:documentation

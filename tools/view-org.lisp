@@ -5,7 +5,7 @@
 (defpackage :view-org
   (:documentation "View Org Mode trees.")
   (:use :cl :dlib :collections :tree-viewer :terminal :inator :file-inator
-	:table :table-print :terminal-table :ostring)
+	:table :table-print :terminal-table :ostring :fancy-inator)
   (:export
    #:read-org-mode-file
    #:!view-org
@@ -81,11 +81,14 @@
       *default-colors*))
 
 (defun org-node-indicator (node)
-  (if (node-has-branches node)
-      (if (node-open node) #\- #\+)
-      (if (text node)
-	  (if (node-open node) #\- #\+)
-	  #\·)))
+  (with-accessors ((open-indicator tb::open-indicator)
+		   (closed-indicator tb::closed-indicator)
+		   (empty-indicator tb::empty-indicator)) *viewer*
+    (if (node-has-branches node)
+	(if (node-open node) open-indicator closed-indicator)
+	(if (text node)
+	    (if (node-open node) open-indicator closed-indicator)
+	    empty-indicator))))
 
 #|
 (defmethod print-object ((object org-node) stream)
@@ -129,17 +132,21 @@
 
 (defmethod display-node ((node heading-node) level)
   "Display an org-node heading node."
-  (with-accessors ((indent tb::indent)) *viewer*
+  (with-accessors ((indent tb::indent)
+		   (open-indicator tb::open-indicator)
+		   (closed-indicator tb::closed-indicator)
+		   (empty-indicator tb::empty-indicator)) *viewer*
     (let ((fake-level (max 0 (1- level))))
       (tt-color (elt (colors) (mod level (length (colors)))) :black)
       (display-node-line
        node (format nil "~v{~a~:*~} ~a ~a~%"
 		    (* fake-level indent) '(#\space)
 		    (if (node-has-branches node)
-			(if (node-open node) #\- #\+)
+			(if (node-open node) open-indicator closed-indicator)
 			(if (node-branches node)
-			    (if (node-open node) #\- #\+)
-			    #\·))
+			    (if (node-open node)
+				open-indicator closed-indicator)
+			    empty-indicator))
 		    (trim (heading node))))
       (tt-color :default :default))))
 
@@ -424,7 +431,7 @@ dashes (a.k.a. #\\hyphen-minus), convert it to the symbol |-|."
 					     :root tree
 					     :file-name file)))))
 
-(defclass org-viewer (tree-viewer file-inator)
+(defclass org-viewer (tree-viewer file-inator fancy-inator)
   ()
   (:documentation "A viewer for Emacs Org Mode files."))
 
