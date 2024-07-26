@@ -701,15 +701,14 @@ functions too."
 			 (let ((type (second
 				      (multiple-value-list
 				       (find-symbol (symbol-name s) package)))))
-			   (or (eq type :external)
-			       (and ,x (eq type :internal)))))
+			   (or (member type ',x))))
 		;; grrr
 		(with-simple-restart (skip-it "Skip it then, okay?")
 		  (eval `(trace ,s))
 		  (incf count))))))
       (if internal-p
-	  (do-it t)
-	  (do-it nil)))
+	  (do-it (:external :internal))
+	  (do-it (:external))))
     (format t "~d symbols traced.~%" count)
     count))
 
