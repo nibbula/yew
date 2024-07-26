@@ -494,6 +494,7 @@ the environemnt has <arg> and <arg>-P for all those keywords."
   (:method ((thing standard-object))
     (zerop (length (mop:class-slots (class-of thing))))))
 
+;; @@@ This should probably actually be in dlib.
 (defun slot-element (object name)
   "Return the value of the slot NAME in object, or NIL if it's doesn't exist or
 isn't bound. NAME is converted to a string, as with the STRING function, and
@@ -534,6 +535,7 @@ compared with EQUALP, which is nice for avoiding symbol package problems."
 (defmethod oelt ((thing container) key)
   (oelt (container-data thing) key))
 
+;; @@@ This should probably actually be in dlib.
 (defun set-slot-element (object name value)
   "Set the VALUE of the slot NAME in OBJECT. Call SLOT-MISSING like SETF would,
 if the slot is not found in the object."
