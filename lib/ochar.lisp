@@ -211,8 +211,8 @@ with class.")
 (defgeneric ochar-code-limit (type)
   (:documentation "Return the maximum value of ochar-code for an ochar type, or
 NIL if we don't know.")
-  (:method (type) nil)
-  (:method ((type (eql 'character))) char-code-limit))
+  (:method (type) (declare (ignore type)) nil)
+  (:method ((type (eql 'character))) (declare (ignore type)) char-code-limit))
 
 (defgeneric ochar-name (character)
   (:documentation "Return a string that is the name of the character.")
@@ -226,4 +226,4 @@ NIL if we don't know.")
 ;; specification had been written in Lisp! Consider that next time you write
 ;; a language.
 
-;; EOF
+;; End
