@@ -422,6 +422,10 @@ partial-line-idicator is overwritten by the prompt, so we don't see it."
     (assert (<= (inator-point (aref contexts 0))
 		(olength buf-str)))
 
+    (when blank-line-func
+      ;; Initialize the blank drawing.
+      (funcall blank-line-func t))
+
     (let* ((prompt (make-prompt e (prompt-string e) (prompt-func e)))
 	   (right-prompt
 	    (make-prompt e (and (ostringp (right-prompt e))
