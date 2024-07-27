@@ -112,6 +112,7 @@ See parse-util-test for examples.
   "Wrapper to handle backtracking and next tracking."
   (with-names (start result)
     `(let ((,start (state-i *state*)) ,result)
+       (declare (ignorable ,result))
        (when (state-track-next *state*)
 	 (setf (state-next *state*) ',body))
        ;; (derp)
