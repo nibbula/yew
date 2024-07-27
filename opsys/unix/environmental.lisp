@@ -259,10 +259,11 @@ is NIL, unset the ‘var’, using unsetenv."
 
 (defconstant +NGROUPS+ 16 "Max supplemental group id's")
 
-(defcstruct foreign-itimerval
-  "Interval timer."
-  (it_interval (:struct foreign-timeval))
-  (it_value    (:struct foreign-timeval)))
+;; @@@ in ./time.lisp now
+;; (defcstruct foreign-itimerval
+;;   "Interval timer."
+;;   (it_interval (:struct foreign-timeval))
+;;   (it_value    (:struct foreign-timeval)))
 
 (defcstruct foreign-loadavg
   (ldavg  fixpt-t :count 3)		; fixpt_t ldavg[3];

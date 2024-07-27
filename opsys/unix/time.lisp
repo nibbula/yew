@@ -218,4 +218,23 @@ ignore it."
   ;;   )
   ;; (defsetf timerfd set-timerfd)
 
+(defparameter *timers* nil "Types of system clocks.")
+(define-to-list *timers*
+    #(#(+ITIMER-REAL+        0 "Real wall clock time.")
+      #(+ITIMER-VIRTUAL+     1 "User mode CPU time.")
+      #(+ITIMER-PROF+        1 "User and system all thread CPU time.")))
+
+(defcstruct foreign-itimerval
+  (it_interval (:struct foreign-timeval))
+  (it_value    (:struct foreign-timeval))) ; Time until it expires
+
+(defcfun getitimer :int
+  (which :int)
+  (value (:pointer (:struct foreign-itimerval))))
+
+(defcfun setitimer :int
+  (which :int)
+  (new (:pointer (:struct foreign-itimerval)))
+  (old (:pointer (:struct foreign-itimerval))))
+
 ;; End
