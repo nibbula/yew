@@ -70,7 +70,7 @@
   (defgeneric stream-file-position (stream &optional position)))
 
 (defmethod stream-file-position (stream #-cmu &optional #-cmu position)
-  (declare (ignore position))
+  (declare (ignore stream position))
   nil)
 
 ;; End
