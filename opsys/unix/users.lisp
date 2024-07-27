@@ -375,7 +375,13 @@ return potentially updated data."
   (e-termination :short)
   (e-exit :short))
 
-#+linux 
+#+linux
+#+clasp
+(eval-when (:compile-toplevel :load-toplevel :execute)
+  (defcstruct foreign-utmp-timeval
+    (tv_sec  :int32)
+    (tv_usec :int32)))
+#-clasp
 (defcstruct foreign-utmp-timeval
   (tv_sec  :int32)
   (tv_usec :int32))
