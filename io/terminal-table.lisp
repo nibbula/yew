@@ -198,7 +198,7 @@
 
 (defmethod table-output-footer ((renderer terminal-box-table-renderer) table
 				&key width sizes)
-  (declare (ignorable width sizes))
+  (declare (ignorable table width sizes))
   (call-next-method)
   (terminal-color *destination* :default nil))
 
