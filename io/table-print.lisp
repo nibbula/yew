@@ -238,7 +238,7 @@ assuming wrapping at ‘*max-width*’."
   (let ((endings (dlib-misc:calculate-line-endings string
 						   0 *max-width* nil nil nil)))
     (if endings
-	(1+ (loop :for (p . e) :in endings
+	(1+ (loop :for (nil . e) :in endings
 		  :maximize e))
 	(display-length string))))
 
