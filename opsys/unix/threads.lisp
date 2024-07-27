@@ -60,14 +60,21 @@ function should never return."
 
 ;; This is so fucking stupid. Why can't we just get beyond 1994.
 
+;; I think this has to be at top level.
+#+os-t-threads
+(defparameter *thread-type*
+  #+sbcl 'sb-thread:thread
+  #+ccl 'ccl:process
+  #+ecl 'mp:process
+  #+clisp 'mt:thread
+  #-(or sbcl ccl ecl clisp) nil)
+
+#-os-t-threads
+(defparameter *thread-type* nil)
+
 (cond
   #+os-t-threads
   (*supports-threads-p*
-   (defparameter *thread-type*
-     #+sbcl 'sb-thread:thread
-     #+ccl 'ccl:process
-     #+ecl 'mp:process
-     #+clisp 'mt:thread)
    (defun threadp (thread)
      (typep thread *thread-type*))
    (defun make-thread (function &key name)
@@ -115,7 +122,6 @@ function should never return."
      #+clisp (mt:thread-active-p thread)
      ))
   (t
-   (defparameter *thread-type* nil)
    (defun threadp (thread)
      (declare (ignore thread))
      nil)
