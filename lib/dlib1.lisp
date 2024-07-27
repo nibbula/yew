@@ -2270,9 +2270,9 @@ package doesn't exist or isn't bound."
 
 (defun maybe-symbol (package symbol)
   "Return ‘symbol’ in ‘package’ if it exists, NIL otherwise."
-  (let ((pkg (find-package package)) sym)
-    (when (and pkg (find-symbol (string-upcase symbol)))
-      (setf sym (intern (string symbol) pkg)))))
+  (let ((pkg (find-package package)))
+    (when (and pkg (find-symbol (string-upcase symbol) pkg))
+      (intern (string-upcase symbol) pkg))))
 
 ;; (defalias '#.(code-char #x203b)? 'maybe-refer-to)
 
