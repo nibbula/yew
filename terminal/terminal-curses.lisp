@@ -373,7 +373,6 @@ element is the width."
   ()
   (:documentation "A color-izer for at least 24 bit direct color."))
 
-#|
 (defun color-number-direct-16 (color)
   "Return the curses color number given a symbol name."
   (let ((c (typecase color
@@ -381,7 +380,9 @@ element is the width."
 	     ((or vector list)
 	      (convert-color-to color :rgb8)))))
     ;; Assume a 5 5 5
-    (a
+    (logior (ash (ash (color-component c :red) -3) 10)
+	    (ash (ash (color-component c :green) -3) 5)
+	    (ash (color-component c :blue) -3))))
 
 (defun color-number-direct-24 (color)
   "Return the curses color number given a symbol name."
@@ -389,9 +390,45 @@ element is the width."
 	     (keyword (lookup-color color))
 	     ((or vector list)
 	      (convert-color-to color :rgb8)))))
-    ;; 24 bit? 32 bit?
-    (a
-|#
+    (logior (ash (color-component c :red) 24)
+	    (ash (color-component c :green) 16)
+	    (color-component c :blue))))
+
+(defmethod make-color-pair ((o color-izer-big) fg bg)
+  (declare (ignore o fg bg))
+  ;; @@@
+  )
+
+(defmethod color-init ((o color-izer-big))
+  ;; We don't do anything here because the table would be too big. Instead we
+  ;; make colors as we go.
+  )
+
+(defmethod color-number ((o color-izer-big) color)
+  "Return the curses color number given a color."
+  (typecase color
+    (keyword
+     (or (cdr (assoc color +color-names+))
+	 (lookup-color color)))
+    ((or vector list)
+      (color-number-direct-24 color))))
+
+;; (defmethod color-name ((o color-izer-big) color-number)
+;;   (declare (ignore o))
+;;   (car (rassoc color-number +color-names+)))
+
+(defmethod index-color ((o color-izer-big) color-number)
+  (declare (ignore o))
+  (cond
+    ((< 0 color-number 256)
+     ;; @@@ This is wrong in a number of ways
+     (aref fatchar:*xterm-256-color-table* color-number))))
+
+(defmethod get-pair ((o color-izer-big) fg bg)
+  (gethash (cons fg bg) (color-table o)))
+
+(defmethod pair-color ((o color-izer-big) pair-number)
+  (gethash pair-number (pair-color-table o)))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
@@ -1033,6 +1070,7 @@ i.e. the terminal is 'line buffered'."
     (t (error "Unknown terminal input mode ~s" mode))))
 
 (defmethod terminal-flush ((tty terminal-curses) which)
+  (declare (ignore which)) ;; @@@
   (flushinp))
 
 (defmethod terminal-drain ((tty terminal-curses))
