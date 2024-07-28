@@ -1,6 +1,6 @@
-;;
-;; dlib-test.lisp - Tests for dlib.
-;;
+;;;
+;;; dlib-test.lisp - Tests for dlib.
+;;;
 
 (defpackage :dlib-test
   (:documentation "Tests for DLIB.")
