@@ -13,7 +13,7 @@
    #:next-file
    #:previous-file
    #:save-file
-   #:save-as-file
+   #:save-file-as
    #:revert-file
    #:open-file
    ;; Macros
@@ -49,7 +49,7 @@
 
 (defkeymap *default-file-inator-ctrl-x-keymap* ()
   `((,(ctrl #\S)	. save-file)
-    (,(ctrl #\W)	. save-as-file)
+    (,(ctrl #\W)	. save-file-as)
     (,(ctrl #\R)	. revert-file)
     (,(ctrl #\F)	. open-file)))
 
@@ -77,7 +77,7 @@
 
 (defgeneric save-file (file-inator)
   (:documentation "Save the current file."))
-(defgeneric save-as-file (file-inator)
+(defgeneric save-file-as (file-inator)
   (:documentation "Save the current file as a different name."))
 (defgeneric revert-file (file-inator)
   (:documentation "Revert the current buffer"))
