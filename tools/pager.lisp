@@ -404,6 +404,9 @@ but perhaps reuse some resources."))
 (defun user-error (control &rest args)
   (error 'user-error :format-control control :format-arguments args))
 
+(defvar *sub-pager* nil
+  "Indicator that we're in a pager inside a pager.")
+
 (defmacro sub-page ((stream-var) &body body)
   "Generate some output and run a sub-instance of the pager on it."
   ;;(declare (ignore stream-var)) ; @@@
@@ -416,7 +419,11 @@ but perhaps reuse some resources."))
 	      (declare (ignorable ,stream-var))
 	      ,@body)))
        (let ((view:*view-things* nil))
-	 (pager ,input)))))
+         ;; We have to put a done-with-files restart here so we don't get
+         ;; thrown out of the enclosing pager.
+	 (restart-case
+	     (pager ,input)
+           (file-inator:done-with-files () #| Just quit here. |#))))))
 
 #|
 (defun nop-process-line (line)
@@ -2347,9 +2354,6 @@ q - Abort")
     (finish-inator inator)))
 |#
 
-(defvar *sub-pager* nil
-  "Indicator that we're in a pager inside a pager.")
-
 (defun %page (files &key pager suspended options)
   "View a stream with the pager. Return whether we were suspended or not."
   (with-terminal ()
@@ -2369,78 +2373,84 @@ q - Abort")
 				     (if binary 'binary-pager 'text-pager)
 				     :stream stream
 				     :page-size (1- (tt-height))
-				     :file-list t-file-list
 				     :file-index
 				     (cond
 				       (view:*view-things*
-					(position (oelt files 0)
-						  view:*view-things*
-						  :test #'equal))
+					(or (position (oelt files 0)
+						      view:*view-things*
+						      :test #'equal)
+					    ;; @@@ This isn't good. It probably
+					    ;; means we're at the wrong level.
+					    (prog1 0
+					      (setf t-file-list
+						    (if (listp files)
+							files (list files))))))
 				       (t 0))
+				     :file-list t-file-list
 				     :options options
 				     options))))
 	  (with-slots (page-size file-list file-index suspend-flag seekable
 		       stream we-opened (quit-flag inator::quit-flag)) *pager*
 	    (unwind-protect
-		 (prog ((*sub-pager* t))
-		  try-again
-		    (handler-case
-			(progn
-			  (when try-again
-			    (setf try-again nil)
-			    (when (not (next-file *pager*))
-			      (when (or (= (length file-list) 1)
-					(not (previous-file *pager*)))
-				(go done))))
-			  (when (not (pager-stream *pager*))
-			    (setf (pager-stream *pager*)
-				  (open-lossy *pager*
-					      (file-location-file
-					       (elt file-list file-index))
-					      :binary binary)))
-			  (when (not suspended)
-			    (freshen *pager*)
-			    (setf (pager-stream *pager*) stream))
-			  (setf seekable (seekable-p stream))
-			  (when file-list
-			    (when (not (zerop (file-location-offset
-					       (elt file-list file-index))))
-			      (go-to-line *pager*
-					  (file-location-offset
-					   (elt file-list file-index)))))
-			  ;; (tt-enable-events :mouse-buttons)
-			  (read-input *pager* page-size)
-			  (setf quit-flag nil
-				suspend-flag nil
-				suspended nil)
-			  (loop :do
-			    (with-simple-restart (continue "Keep going.")
-			      (handler-case
-				  (event-loop *pager*)
-				(user-error (c)
-				  (message *pager*
-					   (simple-condition-format-control c)
-					   (simple-condition-format-arguments c))
-				  (continue c))))
-			      :while (not quit-flag))
-			  (when suspend-flag
-			    (setf suspended t)
-			    (if (find-package :lish)
-				(let ((suspy (make-suspended-pager
-					      :pager *pager*
-					      :file-list file-list
-					      :stream stream)))
-				  (funcall (find-symbol "SUSPEND-JOB" :lish)
-					   "pager" "" (lambda ()
-							(pager:resume suspy)))
-				  (go done))
-				(format t "No shell loaded to suspend to.~%"))))
-		      ((or file-error stream-error opsys-error directory-error)
-			(c)
-			(message-pause "~a" (princ-to-string c))
-			(setf try-again t)
-			(go try-again)))
-		  done)
+	      (prog ((*sub-pager* t))
+	       try-again
+		 (handler-case
+		   (progn
+		     (when try-again
+		       (setf try-again nil)
+		       (when (not (next-file *pager*))
+			 (when (or (= (length file-list) 1)
+				   (not (previous-file *pager*)))
+			   (go done))))
+		     (when (not (pager-stream *pager*))
+		       (setf (pager-stream *pager*)
+			     (open-lossy *pager*
+					 (file-location-file
+					  (elt file-list file-index))
+					 :binary binary)))
+		     (when (not suspended)
+		       (freshen *pager*)
+		       (setf (pager-stream *pager*) stream))
+		       (setf seekable (seekable-p stream))
+		       (when file-list
+			 (when (not (zerop (file-location-offset
+					    (elt file-list file-index))))
+			   (go-to-line *pager*
+				       (file-location-offset
+					(elt file-list file-index)))))
+		       ;; (tt-enable-events :mouse-buttons)
+		       (read-input *pager* page-size)
+		       (setf quit-flag nil
+			     suspend-flag nil
+			     suspended nil)
+		       (loop :do
+		         (with-simple-restart (continue "Keep going.")
+			   (handler-case
+			       (event-loop *pager*)
+			     (user-error (c)
+			       (message *pager*
+				        (simple-condition-format-control c)
+					(simple-condition-format-arguments c))
+			       (continue c))))
+			  :while (not quit-flag))
+		       (when suspend-flag
+			 (setf suspended t)
+			 (if (find-package :lish)
+			     (let ((suspy (make-suspended-pager
+					   :pager *pager*
+					   :file-list file-list
+					   :stream stream)))
+			       (funcall (find-symbol "SUSPEND-JOB" :lish)
+					"pager" "" (lambda ()
+						     (pager:resume suspy)))
+			       (go done))
+			     (format t "No shell loaded to suspend to.~%"))))
+		   ((or file-error stream-error opsys-error directory-error)
+		     (c)
+		     (message-pause "~a" (princ-to-string c))
+		     (setf try-again t)
+		     (go try-again)))
+	       done)
 	      (when (and we-opened (not suspended) stream)
 		(close stream :abort t))
 	      (tt-move-to (tt-height) 0)
