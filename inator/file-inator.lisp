@@ -12,6 +12,7 @@
    ;; Generic functions
    #:next-file
    #:previous-file
+   #:done-with-files
    #:save-file
    #:save-file-as
    #:revert-file
@@ -75,6 +76,16 @@
     (when (find-restart 'previous-file)
       (invoke-restart 'previous-file))))
 
+(defgeneric done-with-files (file-inator)
+  (:documentation "Tell the file looper we're done with it.")
+  (:method ((inator file-inator))
+    (when (find-restart 'done-with-files)
+      (invoke-restart 'done-with-files))))
+
+(defmethod quit ((i file-inator))
+  (call-next-method)
+  (done-with-files i))
+
 (defgeneric save-file (file-inator)
   (:documentation "Save the current file."))
 (defgeneric save-file-as (file-inator)
@@ -98,17 +109,20 @@ restarts set up to move through the LIST, and FILE bind to the current file."
 	      ,var)
 	 (block nil
 	   (loop :while (< ,ii ,len) :do
-		(restart-case
-		    (progn
-		      (setf ,var (aref ,files ,ii))
-		      ,@body)
-		  (file-inator:next-file ()
-		    :report "Go to the next file."
-		    (when (< ,ii ,len)
-		      (incf ,i)))
-		  (file-inator:previous-file ()
-		    :report "Go to the previous file."
-		    (when (> ,ii 0)
-		      (decf ,ii))))))))))
+	     (restart-case
+		 (progn
+		   (setf ,var (aref ,files ,ii))
+		   ,@body
+                   (incf ,ii))
+	       (file-inator:next-file ()
+		 :report "Go to the next file."
+		 (when (< ,ii ,len)
+		   (incf ,i)))
+	       (file-inator:previous-file ()
+		 :report "Go to the previous file."
+		 (when (> ,ii 0)
+		   (decf ,ii)))
+               (file-inator:done-with-files ()
+                 (return)))))))))
 
-;; EOF
+;; End
