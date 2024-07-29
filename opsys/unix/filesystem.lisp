@@ -241,6 +241,11 @@ if not given."
   (or *path-max*
       (setf *path-max* (pathconf "/" +PC-PATH-MAX+))))
 
+;; This is very horrible. I wish at least we could have thread local allocation,
+;; or the kernel could tell us the size of the buffer. In addition we have to
+;; make yet another copy to translate to Lisp characters every time. Even in
+;; plain C code, this is incredibly stupid. How can I fix it?
+;; (uos:readlink (s+ "/proc/" (uos:getpid) "/cwd")) doesn't even help.
 (defun libc-getcwd ()
   "Return the full path of the current working directory as a string, using the
 C library function getcwd."
