@@ -4,7 +4,7 @@
 
 (defpackage :view
   (:documentation "Look at something.")
-  (:use :cl :view-generic :dlib :magic :pick-list :ostring)
+  (:use :cl :view-generic :dlib :magic :pick-list :ostring :file-inator :fui)
   (:export
    #:*viewer-alist*
    #:*file-name-types*
@@ -37,15 +37,27 @@
     :documentation "A keyword naming the function."))
   (:documentation "A viewer which is a Lisp function."))
 
+(defmethod print-object ((object function-viewer) stream)
+  "Print a command-viewer to ‘stream’."
+  (with-slots (package function-name) object
+    (print-unreadable-object (object stream :type t)
+      (format stream "~a:~a" package function-name))))
+
 (defclass command-viewer (viewer)
   ((command
     :initarg :command :accessor command-viewer-command :initform nil
     :documentation "A command to be invoked by a shell."))
   (:documentation "A viewer which is a system or shell command."))
 
+(defmethod print-object ((object command-viewer) stream)
+  "Print a command-viewer to ‘stream’."
+  (with-slots (command) object
+    (print-unreadable-object (object stream :type t)
+      (format stream "~a" command))))
+
 ;; @@@ This and the other data here, should really be kept somewhere else,
 ;; and probably done in a much more sophisticated way.
-(defparameter *viewer-alist*
+(defvar *viewer-alist*
   `(
     (("text" . "html")       		. (:view-html :view-html))
     (("application" . "xml") 		. (:view-html :view-html))
@@ -62,13 +74,13 @@
     ("text"                  		. (:pager :pager))
     ))
 
-(defparameter *lisp-viewer-alist*
+(defvar *lisp-viewer-alist*
   `((package            . (:view-lisp :view-package))
     (asdf:system        . (:view-list :view-system))
     )
   "Alist of (type . view-designator) for Lisp object types.")
 
-(defparameter *file-name-types*
+(defvar *file-name-types*
   `(("csv"          . ("text"		. "csv"))
     ("org"	    . ("text"		. "org"))
     ("nx"	    . ("text"		. "neox"))
@@ -77,7 +89,7 @@
     ("json"	    . ("application"	. "json"))
     ))
 
-(defparameter *raw-viewer* '(:pager :pager)
+(defvar *raw-viewer* '(:pager :pager)
   "The function")
 
 (defun find-in-list (cat name list)
@@ -185,6 +197,12 @@ or a system command, designated by either a string, or a list of
     (t
      (error "Sorry, but I don't know how to make a viewer out of ~s." thing))))
 
+(defun find-file-viewer (thing)
+  "Return a viewer for a thing that is like a file."
+  (let* ((type (guess-type thing))
+	 (designator (find-viewer type)))
+    (and designator (make-viewer-from designator))))
+
 (defun view-file (thing)
   "Look at a file."
   (let* ((type (guess-type thing))
@@ -216,6 +234,17 @@ or a system command, designated by either a string, or a list of
 (defmethod view ((thing stream))
   (view-file thing))
 
+(defvar *view-things* nil
+  "List of things we're currently viewing. Dynamically bound in ‘view-things’.")
+
+(defvar *view-things-args* nil
+  "A stupid way to pass arguments.")
+
+#+lish
+(defmethod view ((object lish:file-expansion))
+  "View shell file expansions as a group of things."
+  (apply #'view-things (lish:file-expansion-files object) *view-things-args*))
+
 ;; This is mostly if the viewer package isn't loaded yet. When the viewer
 ;; package is loaded, it can provide it's own ‘view’ method, so this default
 ;; one won't get invoked.
@@ -225,19 +254,29 @@ or a system command, designated by either a string, or a list of
       (invoke-viewer (make-viewer-from (cdr entry)) thing))))
 
 (defun print-viewer (thing)
-  (let ((entry (assoc (type-of thing) *lisp-viewer-alist*)))
-    (format t "~s~%"
-	    (if entry (make-viewer-from (cdr entry))
-		"No viewer found."))))
+  "Print what viewer will be used to view ‘thing’."
+  (let* ((entry (assoc (type-of thing) *lisp-viewer-alist*))
+         (maybe-file (typep thing '(or string ostring pathname stream)))
+         (file-viewer (when maybe-file (find-file-viewer thing))))
+    (format t "~a~%"
+            (cond
+              (entry
+               (make-viewer-from (cdr entry)))
+              (file-viewer file-viewer)
+              (t
+               (let ((method (find-method #'view-generic:view
+                                          nil (list (class-of thing)) nil)))
+                 (or method
+                     (format nil "No viewer found for the ~a ~a."
+                             (if maybe-file (guess-type thing) (type-of thing))
+                             thing))))))))
 
-(defvar *view-things* nil
-  "List of things we're currently viewing. Dynamically bound in ‘view-things’.")
-
-(defun view-things (things &key (method 'view))
-  (let ((*view-things* things))
-    (loop :for thing :in things :do
-      (with-simple-restart (continue "View the next thing.")
-	(apply method (list thing))))))
+(defun view-things (things &rest args &key (method 'view) pause)
+  (let ((*view-things* things)
+        (*view-things-args* args))
+    (with-file-list (thing things)
+      (apply method (list thing))
+      (when pause (pause)))))
 
 (defmethod view-raw ((thing string))
   (view-raw-file thing))
@@ -251,17 +290,23 @@ or a system command, designated by either a string, or a list of
 (defmethod view-raw ((thing stream))
   (view-raw-file thing))
 
-(defun view-raw-things (things)
-  (loop :for thing :in things :do
-     (with-simple-restart (continue "View the next thing.")
-       (view-raw thing))))
+(defun view-raw-things (things &key pause)
+  (let ((*view-things* things))
+    (with-file-list (thing things)
+      (with-simple-restart (continue "View the next thing.")
+	(view-raw thing)
+        (when pause (pause))))
+    ;; (loop :for thing :in things :do
+    ;;   (with-simple-restart (continue "View the next thing.")
+    ;; 	(view-raw thing)))
+  ))
 
-;; This is really stubby yet.
 #+lish
 (lish:defcommand view
   ((raw boolean :short-arg #\r :help "View the raw data.")
    (name boolean :short-arg #\n
     :help "Print the name of the viewers, but don't view.")
+   (pause boolean :short-arg #\p :help "Pause between multiple items.")
    ;; (things pathname :repeating t :optional t :help "The things to view.")
    (things case-preserving-object :repeating t :optional t
     :help "The things to view."))
@@ -286,6 +331,7 @@ or a system command, designated by either a string, or a list of
 		 :method (cond
 			   (name 'print-viewer)
 			   (raw 'view-raw)
-			   (t 'view)))))
+			   (t 'view))
+                 :pause pause)))
 
 ;; End
