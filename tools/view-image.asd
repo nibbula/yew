@@ -13,6 +13,7 @@
   :depends-on (:dlib :collections :dlib-misc :dtime :keymap :fatchar :char-util
 	       :terminal :terminal-ansi :terminal-crunch :terminal-inator :image
 	       :image-ops :dcolor :magic :grout :flexi-streams :view-image-popi
-	       :glob :rl-widget :fui :table :table-viewer :terminal-table)
+	       :glob :rl-widget :fui :table :table-viewer :terminal-table
+	       :file-inator :fancy-inator)
   :components
   ((:file "view-image")))

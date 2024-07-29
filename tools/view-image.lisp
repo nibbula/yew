@@ -5,8 +5,8 @@
 (defpackage :view-image
   (:documentation "Image viewer")
   (:use :cl :dlib :collections :dtime :keymap :char-util :terminal
-   :terminal-ansi :terminal-crunch :inator :terminal-inator :magic :grout
-   :image :image-ops :dcolor)
+   :terminal-ansi :terminal-crunch :inator :magic :grout
+   :image :image-ops :dcolor :file-inator :fancy-inator)
   (:export
    #:view-image
    #:!view-image
@@ -34,7 +34,7 @@
 (defkeymap *image-viewer-keymap* ())
 (defkeymap *image-viewer-escape-keymap* ())
 
-(defclass image-inator (terminal-inator)
+(defclass image-inator (fancy-inator file-inator)
   ((image
     :initarg :image :accessor image-inator-image :initform nil
     :documentation "The image to viewer.")
@@ -445,6 +445,41 @@ the first time it fails to identify the image."
       ;; (reset-image o)
       )))
 
+(defun visit-file (o file)
+  (with-slots (file-list file-index image file-name file-format) o
+    (let ((old-image image))
+      (setf file-name file)
+      (with-image-error-handling (file-name)
+	(setf (values image file-format)
+	      (perserverant-read-image file-name)))
+      (clear-image o)
+      (when old-image
+	(reset-image o)))))
+
+(defun visit-first-file (o)
+  (visit-file o (oelt (image-inator-file-list o) 0)))
+
+(defmethod next-file ((o image-inator))
+  (with-slots (file-list file-index) o
+    (let ((len (length file-list)))
+      (cond
+	((and (> len 1) (< file-index (1- len)))
+	 (incf file-index)
+	 (visit-file o (oelt file-list file-index)))
+	(t
+	 (call-next-method))))))
+
+(defmethod previous-file ((o image-inator))
+  (with-slots (file-list file-index) o
+    (let ((len (length file-list)))
+      (cond
+	((and (> len 1) (> file-index 0))
+	 (decf file-index)
+	 (visit-file o (oelt file-list file-index)))
+	(t
+	 (call-next-method))))))
+
+#|
 (defmethod next-file ((o image-inator))
   (with-slots (file-list file-index image file-name file-format) o
     (let ((image-in nil)
@@ -493,6 +528,7 @@ the first time it fails to identify the image."
 	(setf image image-in
 	      file-format format-in)
 	(reset-image o)))))
+|#
 
 (defun next-sub-image (o)
   (with-slots (image subimage) o
@@ -688,7 +724,7 @@ Some useful functions or macros are:
   (with-slots (show-mode-line) o
     (setf show-mode-line (not show-mode-line))))
 
-(defun open-file (o)
+(defmethod open-file (o)
   "Open a file."
   (with-slots (image file-name file-format) o
     (tt-move-to 0 (1- (tt-height)))
@@ -710,7 +746,7 @@ Some useful functions or macros are:
 	)
       (tt-cursor-off))))
 
-(defun save-file (o)
+(defmethod save-file (o)
   (with-slots (image file-name file-format) o
     (cond
       (file-name
@@ -719,7 +755,7 @@ Some useful functions or macros are:
       (t
        (save-file-as o)))))
 
-(defun save-file-as (o)
+(defmethod save-file-as (o)
   (with-slots (image file-name file-format) o
     (prog* ((file-name (prompt o "Save as: ")))
        (when (nos:file-exists file-name)
@@ -827,8 +863,6 @@ Some useful functions or macros are:
     (#\+		  . zoom-in)
     (#\-		  . zoom-out)
     (#\=		  . zoom-reset)
-    (,(meta-char #\n)     . next-file)
-    (,(meta-char #\p)     . previous-file)
     (,(ctrl #\R)	  . reload-file)
     (,(meta-char #\l)     . toggle-looping)
     (#\t     		  . toggle-looping)
@@ -849,15 +883,11 @@ Some useful functions or macros are:
 
 (defkeymap *ctlx-keymap* ()
   `((,(ctrl #\C)	. quit)
-    (,(ctrl #\F)	. open-file)
-    (,(ctrl #\W)	. save-file-as)
-    (,(ctrl #\S)	. save-file)
     (,(ctrl #\P)	. toggle-use-serial-map)))
 
 (defmethod await-event ((o image-inator))
   "Image viewer event."
-  (with-slots (looping subimage image frame-start-time delay-factor
-	       #| initial-command |#) o
+  (with-slots (looping subimage image frame-start-time delay-factor) o
     (with-slots ((subimages image::subimages)) image
       (if (and looping subimages)
 	  (let* ((t-o (truncate (* delay-factor
@@ -1431,7 +1461,7 @@ Key arguments:
 	((or string pathname)
 	 (setf *image-viewer*
 	       (make-instance inator-type
-			      :initial-command 'next-file
+			      :initial-command 'visit-first-file
 			      :file-list (or file-list
 					     (list image-designator))
 			      :own-window own-window
@@ -1454,7 +1484,7 @@ Key arguments:
 	   (error "Must provide an image or a file-list."))
 	  (setf *image-viewer*
 		(make-instance inator-type
-			       :initial-command 'next-file
+			       :initial-command 'vist-first-file
 			       :file-list file-list
 			       :own-window own-window
 			       :debug debug
