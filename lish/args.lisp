@@ -398,6 +398,9 @@
 (defmethod convert-arg ((arg arg-stream) (value symbol) &optional quoted)
   (declare (ignore arg quoted))
   (symbol-value value))
+(defmethod convert-arg ((arg arg-stream) (value stream) &optional quoted)
+  (declare (ignore arg quoted))
+  value)
 
 (defclass arg-input-stream (arg-stream)
   () (:documentation "An input stream."))
