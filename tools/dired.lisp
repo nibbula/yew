@@ -42,6 +42,10 @@
 (defparameter *select-mark* (make-mark :name 'M  :display (ß `(:white "M")))
   "A generic selection mark.")
 
+(define-constant +empty+ " ")
+(defparameter *empty-mark* (make-mark :name nil :display +empty+)
+  "The empty mark, or no mark.")
+
 (defun mark-equal (a b)
   "Return true if we consider the marks equal."
   (flet ((prepare (x)
@@ -65,6 +69,7 @@
   `((#\q			. quit)
     (#\Q			. quit-all)
     (#\?			. help)
+    "Movement"
     (:home			. move-to-top)
     (:end			. move-to-bottom)
     (:up			. previous)
@@ -79,9 +84,10 @@
     (#\b			. previous-page)
     (#\<			. move-to-top)
     (#\>			. move-to-bottom)
-    (#\/			. search-command)
     (,(meta-char #\<)		. move-to-top)
     (,(meta-char #\>)		. move-to-bottom)
+    (#\/			. search-command)
+    "Editing"
     (,(ctrl #\@)		. select)
     (,(ctrl #\w)		. cut)
     (,(meta-char #\w)		. copy)
@@ -91,21 +97,32 @@
     ;;(,(char-util:ctrl #\v)	. paste)
     (#\d			. mark-for-delete)
     (#\r			. rename)
+    (:f2                        . rename-in-place)
     (#\n			. new-directory)
+    (#\+                        . new-directory)
     (#\m			. mark-item)
     (#\M			. mark-region)
     (#\u			. unmark-item)
     (#\U			. unmark-region)
     (#\V			. view-raw-command)
+;    (#\C                        . copy-file-command)
+;    (#\G                        . change-group-command)
+;    (#\M                        . change-mode-command)
+;    (#\O                        . change-owner-command)
+;    (#\T                        . touch-command)
+;    (#\Z                        . compress-command)
+    "Other"
     (,(ctrl #\L)		. refresh)
+    (#\g                        . refresh)
     (#\x			. execute)
     (#\!			. dired-run)
     (#\&			. dired-run-in-background)
-    (,(char-util:meta-char #\x)	. shell-command)
+    (,(meta-char #\x)           . shell-command)
     (#\^			. dired-up)
-    (,(char-util:meta-char #\u)	. dired-up)
+    (,(meta-char #\u)           . dired-up)
     (#\c			. dired-cd)
     (#\:			. shell-command)
+    (#\X			. shell-command)
     (:mouse-1			. handle-click)
     (:mouse-3			. handle-menu)
     (#\escape			. *dired-escape-keymap*)
@@ -195,37 +212,45 @@
 	(setf (mark-cell row) value)))))
 
 (defun marked-files (o)
+  "Return a list of file names marked as selected."
   (with-accessors ((table table-viewer-table)) o
-    (let (files)
+    (with-collecting ()
       (omapn (_ (when (mark-equal (mark-cell _) *select-mark*)
-		  (push (osimplify (file-cell _)) files))) table)
-      (setf files (nreverse files)))))
+		  (collect (osimplify (file-cell _))))) table))))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defmacro with-error-handling (() &body body)
     "Handle errors in ‘body’ and allow picking a restart."
     `(handler-bind
-	 ((serious-condition
-	    (lambda (c)
-	      (let ((restarts (compute-restarts c)))
-		(fui:show-text
-		 (list-restarts restarts c)
-		 :input-func
-		 (lambda (w)
-		   (declare (ignore w))
-		   (loop
-		     :with key = (tt-get-key) :and digit
-		     :do
-		     (setf digit (and (characterp key) (digit-char-p key)))
-		     (cond
-		       ((or (eql key #\q)
-			    (eql key #\a))
-			(invoke-restart (find-restart 'abort)))
-		       ((and digit (< 0 digit (length restarts)))
-			;; (invoke-restart (nth digit (cdr restarts))))
-			(invoke-restart (nth digit restarts)))
-		       (t (message "What? ~s" key))))))))))
-       ,@body))
+       ((serious-condition
+          (lambda (c)
+            (let ((restarts (compute-restarts c)))
+              (fui:show-text
+	       (list-restarts restarts c)
+	       :input-func
+	       (lambda (w)
+                 (declare (ignore w))
+                 (loop
+                   :with key = (tt-get-key) :and digit
+                   :do
+                      (setf digit (and (characterp key) (digit-char-p key)))
+                      (cond
+			((or (eql key #\q)
+                             (eql key #\a))
+			 (invoke-restart (find-restart 'abort)))
+			((and digit (< 0 digit (length restarts)))
+			 ;; (invoke-restart (nth digit (cdr restarts))))
+			 (invoke-restart (nth digit restarts)))
+			(t (message *dired* "What? ~s" key))))))))))
+       (with-simple-restart (continue "Continue with the directory editor.")
+         (handler-case
+             (progn ,@body)
+           (dired-error (c)
+             (tt-format-at 0 0 "~a~%" c)
+             (tt-get-key)
+	     ;; (message *dired* "~a" c)
+             (continue c)
+             )))))
 
   (defmacro with-simple-error-handling (() &body body)
     "Handle errors in ‘body’ and allow entering the debugger or ignoring."
@@ -255,11 +280,14 @@ the terminal is reset when comming back."
        (tt-clear)
        (redraw *dired*))))
 
+(defun full-path (o name)
+  (nos:path-append (dired-directory o) (osimplify name)))
+
 (defun view-thing (o &key raw)
   (with-slots (directory last) o
     (with-simple-error-handling ()
       (let* ((name (osimplify (current-file-cell o)))
-	     (full (nos:path-append directory name)))
+	     (full (full-path o name)))
 	(flet ((view-one (file)
 		 (if raw
 		     (view:view-raw file)
@@ -272,10 +300,10 @@ the terminal is reset when comming back."
 		 ;; 	 (if raw
 		 ;; 	     (view:view-raw-things file)
 		 ;; 	     (view:view-things file))))
-		 (if raw
-		     (view:view-raw-things files)
-		     (view:view-things files))
-		 ))
+		 (let ((files (mapcar (_ (full-path o _)) files)))
+		   (if raw
+		       (view:view-raw-things files)
+		       (view:view-things files)))))
 	  (cond
 	    ;; If we're going back up to the previous editor, just quit.
 	    ((and last (equal name "..")
@@ -453,12 +481,26 @@ the terminal is reset when comming back."
     (mkdir:mkdir :directories `(,new-name))
     (refresh o)))
 
+(define-condition dired-error (simple-error)
+  ()
+  (:documentation "An error in dired."))
+
+(defun mark-set-p ()
+  (and (slot-boundp *dired* 'inator::mark)
+       (slot-value *dired* 'inator::mark)))
+
+(defun check-mark ()
+  "Give an error and continue if ‘mark’ is not set."
+  (unless (mark-set-p)
+    (error 'dired-error :format-control "The mark is not set.")))
+
 (defmethod select ((o directory-editor))
   "Set the start of the region."
   (setf (inator-mark o) (table-point-row (inator-point o))))
 
 (defun map-region (o function)
   "Call ‘function’ with each row between the current point and mark."
+  (check-mark)
   (with-slots ((point inator::point)
 	       (mark inator::mark)
 	       (table table-viewer::table)
@@ -616,9 +658,15 @@ or ‘to’ exists."
   (map-region o (_ (mark-row _))))
 
 (defun unmark-item (o)
-  "Mark the current item."
-  (setf (current-mark-cell o) " ")
+  "Remove the mark on the current item."
+  (setf (current-mark-cell o) +empty+)
   (next o))
+
+(defun unmark-region (o)
+  "Un-mark the region or all marks if no region."
+  (if (mark-set-p)
+      (map-region o (_ (setf (mark-cell _) +empty+)))
+      (omapn (_ (setf (mark-cell _) +empty+)) (table-viewer-table o))))
 
 (defun mark-file (o file-name mark)
   "Mark the row of ‘file-name’ in the table, with ‘mark’."
@@ -705,7 +753,7 @@ or ‘to’ exists."
 		   (table table-viewer-table)) o
     (setf table (ls:list-files :files `(,directory) :collect t :nice-table t
 			       :long t :quiet t :hidden t)
-	  table (table:insert-column 0 "Mark" table :value " "))
+	  table (table:insert-column 0 "Mark" table :value +empty+))
     (resize o)))
 
 (defun refresh (o)
@@ -778,27 +826,51 @@ or ‘to’ exists."
 	  ;;(tt-move-to (table-point-row cursor) 0)
 	  (tt-move-to (+ y (table-point-row cursor)) x))))))
 
+;; @@@ Consider how we could add easily customizable error handling to inators.
+;; Because it's stupid to have to duplicate the generic event-loop here.
+
+(defmethod event-loop ((inator directory-editor))
+  (unwind-protect
+       (progn
+	 (start-inator inator)
+	 (update-display inator)
+	 (loop :with event
+	   :do
+           (with-simple-restart (continue "Continue with the directory editor.")
+             (handler-case
+	       (when (setf event (await-event inator))
+	         (process-event inator event))
+               (dired-error (c)
+                 ;; (tt-format-at 0 0 "~a~%" c)
+                 ;; (tt-get-key)
+	         (notify *dired* "~a" c)
+                 (continue c))))
+	    :while (not (inator-quit-flag inator))
+	    :do
+	    (update-display inator)))
+    (finish-inator inator)))
+
 (defun dired (&optional (directory (nos:current-directory)))
   (with-terminal ()
     (when (not *no-warning*)
       (fui:show-text *warning* :justify nil
-			       :y (round (- (/ (tt-height) 2) 11/2))))
+                               :y (round (- (/ (tt-height) 2) 11/2))))
     (let ((top-level (not *dired*))
-	  (*no-warning* t))
+          (*no-warning* t))
       (flet ((body ()
-	       (with-terminal-inator (*dired* 'directory-editor
-					      :directory directory
-					      :last *dired*)
-		 (update-items *dired*)
-		 (inator:resize *dired*)
-		 (table-print:table-output-sizes (table-viewer-renderer *dired*)
-						 (table-viewer-table *dired*))
-		 (event-loop *dired*)
-		 (tt-move-to (1- (tt-height)) 0))))
-	(if top-level
-	    (catch 'quit-all
-	      (body))
-	    (body))))
+               (with-terminal-inator (*dired* 'directory-editor
+                                              :directory directory
+                                              :last *dired*)
+                 (update-items *dired*)
+                 (inator:resize *dired*)
+                 (table-print:table-output-sizes (table-viewer-renderer *dired*)
+                                                 (table-viewer-table *dired*))
+                 (event-loop *dired*)
+                 (tt-move-to (1- (tt-height)) 0))))
+        (if top-level
+            (catch 'quit-all
+              (body))
+            (body))))
     (tt-move-to (1- (tt-height)) 0)))
 
 #+lish
