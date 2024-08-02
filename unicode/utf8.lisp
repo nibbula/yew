@@ -91,8 +91,8 @@
       (go resync))))
 
 (defun get-utf8-char (byte-getter char-setter)
-  "Convert bytes of (unsigned-byte 8) returned by BYTE-GETTER to a character
-to be given to CHAR-SETTER."
+  "Convert bytes of (unsigned-byte 8) returned by ‘byte-getter’ to a character
+to be given to ‘char-setter’."
   (flet ((our-byte-getter () (funcall byte-getter))
 	 (our-char-setter (c) (funcall char-setter c)))
     (%get-utf8-char our-byte-getter our-char-setter)))
@@ -123,7 +123,7 @@ to be given to CHAR-SETTER."
 	  (2 (,byte-setter (logior #xc0 (ldb (byte 5 6) ,code)))
 	     (,byte-setter (logior #x80 (ldb (byte 6 0) ,code))))
 	  (3 (when (<= #xd800 ,code #xdfff)
-	       (error "Yalls' got an invalid unicode character?"))
+	       (error "You got an invalid unicode character ~x." ,code))
 	     (,byte-setter (logior #xe0 (ldb (byte 4 12) ,code)))
 	     (,byte-setter (logior #x80 (ldb (byte 6  6) ,code)))
 	     (,byte-setter (logior #x80 (ldb (byte 6  0) ,code))))
@@ -133,8 +133,8 @@ to be given to CHAR-SETTER."
 	     (,byte-setter (logior #x80 (ldb (byte 6  0) ,code))))))))
 
 (defun put-utf8-char (char-getter byte-setter)
-  "Convert a character returned by CHAR-GETTER to bytes to be given to
-BYTE-SETTER, which takes an (unsigned-byte 8)."
+  "Convert a character returned by ‘char-getter’ to bytes to be given to
+‘byte-setter’, which takes an (unsigned-byte 8)."
   (flet ((our-char-getter () (funcall char-getter))
 	 (our-byte-setter (c) (funcall byte-setter c)))
     (%put-utf8-char our-char-getter our-byte-setter)))
