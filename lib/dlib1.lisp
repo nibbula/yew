@@ -1000,6 +1000,9 @@ just return SEQUENCE. Elements are compared with TEST which defaults to EQL."
     ((null rest) (make-string 0))
     ((every #'stringp rest)
      `(concatenate 'string ,@rest))
+    ;; Is this a reasonable thing to do?
+    ((every #'constantp rest)
+     (apply #'s+ (mapcar (lambda (x) (if (symbolp x) (symbol-value x) x)) rest)))
     (t whole)))
 
 (defparameter *ascii-whitespace*
