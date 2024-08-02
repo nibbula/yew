@@ -1632,11 +1632,27 @@ matching subsequence is returned.")
   (apply #'osearch
 	 (container-data collection-1) (container-data collection-2) args))
 
+(defgeneric omismatch (collection-1 collection-2 &key from-end test test-not
+                                                   key start1 start2 end1 end2)
+  (:documentation
+   "Return the index in ‘collection-1’ where it fails to match ‘collection-2’.
+If the subsequences specified with ‘start1’ and ‘end1’, and ‘start2’ and ‘end2’
+are of the same length and matching elements compared with ‘test’ or ‘test-not’,
+and return false. As usual ‘test’ defaults to #'eql, and ‘key’ is used to access
+elements if it's provided.")
+  (:method ((collection-1 sequence) (collection-2 sequence) &rest args
+	     &key from-end test test-not key start1 start2 end1 end2)
+    (declare (ignorable from-end test test-not key start1 start2 end1 end2))
+    (apply #'mismatch collection-1 collection-2 args)))
+
+(defmethod omismatch ((collection-1 container) (collection-2 container)
+		      &rest args
+		      &key from-end test test-not key start1 start2 end1 end2)
+  (declare (ignorable from-end test test-not key start1 start2 end1 end2))
+  (apply #'omismatch
+	 (container-data collection-1) (container-data collection-2) args))
+
 #|
-(defgeneric omismatch (collection ...)
-  (:documentation "")
-  (:method ((collection XX))
-	    ))
 
 (defgeneric oreplace (collection ...)
   (:documentation "")
