@@ -88,6 +88,7 @@
    #:join-by-string
    #:join-by
    #:fill-by
+   #:repeated-string
 
    ;; lists
    #:delete-nth
@@ -1150,6 +1151,12 @@ FUNCTION. START defaults to 0. END defaults to the end of the sequence."
      (loop :for i :from start :below (or end (length sequence))
 	:do (setf (aref sequence i) (funcall function)))))
   sequence)
+
+;; @@@ I wish I could think of a shorter name.
+(defun repeated-string (n object)
+  "Return a string with ‘object’ printed ‘n’ times, as if by princ-to-string."
+  (with-output-to-string (s)
+    (dotimes (i n) (princ object s))))
 
 ;; As you may know, improper use of this can cause troublesome bugs.
 (defun delete-nth (n list)
