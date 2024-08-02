@@ -10,8 +10,7 @@
     :license            "GPL-3.0-only"
     :source-control	:git
     :long-description   "Cut off part of a stream."
-    :depends-on (:dlib :cl-ppcre :opsys :stretchy :lish :los-config
-		 :utf8b-stream)
+    :depends-on (:dlib :cl-ppcre :opsys :stretchy :los-config :utf8b-stream)
     :components
     ((:file "snip")
      (:module "cmds"

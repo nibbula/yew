@@ -4,7 +4,7 @@
 
 (defpackage :snip
   (:documentation "Snip the output.")
-  (:use :cl :dlib :opsys :stretchy :utf8b-stream)
+  (:use :cl :dlib :opsys :stretchy :utf8b-stream #+lish :lish)
   (:export
    #:!snip
    #:snip-bytes
@@ -15,7 +15,7 @@
 
 (declaim #.`(optimize ,.(getf los-config::*config* :optimization-settings)))
 
-;; @@@ This performance of this is horrible!
+;; @@@ The performance of this is horrible!
 (defun snip-bytes (file-or-stream count direction &key collect quiet)
   (declare (type integer count))
   (when (not (or (eq direction :before) (eq direction :after)))
