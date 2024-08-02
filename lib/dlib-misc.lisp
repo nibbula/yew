@@ -368,8 +368,8 @@ or a list of function designators."
  ╰|#
 
 (defun untabify (line &optional (col 0))
-  "Return a new string with all tabs in the LINE to the appropriate number
-of spaces, preserving columns. Assumes that LINE is starting in column COL,
+  "Return a new string with all tabs in the ‘line’ to the appropriate number
+of spaces, preserving columns. Assumes that ‘line’ is starting in column ‘col’,
 which defaults to zero."
   (with-output-to-string (str)
     (loop
@@ -629,8 +629,8 @@ is printed. This is useful for printing, e.g. slots of a structure or class."
 		       (ignore-errors (apply f (list object))))
 		   (symbol-value f))))))
 
-;; @@@ Is this really necessary or maybe should it be a constant?
-(defparameter *inter-space* 2)
+(defconstant +inter-space+ 2
+  "Minimum spaces between columns for ‘print-columns’.")
 
 (defun format-length (object format-char)
   "Return the length in characters to print OBJECT with FORMAT-CHAR."
@@ -688,7 +688,7 @@ the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
 	  (setf max-len (max max-len
 			     (+ ;(format-length (car l) format-char)
 			      (aref lengths i)
-			      (if (= col (1- cols)) 0 *inter-space*))))
+			      (if (= col (1- cols)) 0 +inter-space+))))
 	  (setf l (cdr l))
 	  (incf i)
 	  (incf row)
@@ -739,7 +739,7 @@ the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
        :for n = 0 :then (1+ n)
        :do
        (setf l (+ (setf (aref cached-lengths n)
-			(format-length i format-char)) *inter-space*)
+			(format-length i format-char)) +inter-space+)
 	     max-len (max max-len l)
 	     min-len (min min-len l))
        (incf area l)
@@ -762,11 +762,14 @@ the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
 	  last-new-rows new-rows
 	  not-fit-count 0)
 
-    (if (= new-rows 1)
-	(progn
-	  (multiple-value-setq (last-col-list extra)
-	    (smush-columns list new-cols new-rows cached-lengths))
-	  (setf last-new-rows 1))
+    (cond
+      ((< (- area +inter-space+) columns)
+       ;; It can fit on one line.
+       (format stream (s+ "~{~" format-char "~^"
+                          (format nil "~v,1@t" +inter-space+)
+                          "~}~%") list)
+       (setf last-new-rows 1))
+      (t
 	(loop
 	   :while (and (< not-fit-count 4)
 		       (<= (apply #'+ col-list)
@@ -802,14 +805,14 @@ the last column, or the reason it didn't fit, either :TOO-NARROW or :TOO-WIDE."
 	     (smush-columns list new-cols new-rows cached-lengths))
 	   ;; (dbug "Squish: ~d x ~d (~d)~25t~a~%"
 	   ;; 	 new-cols new-rows extra col-list)
-	   ))
+	   )
+        (smush-output list last-col-list last-new-rows format-char stream
+		  row-limit screen-width)))
 
     ;; Output the last good setup
     ;; (dbug "Squish Final: ~d x ~d (~d ~d)~25t~a~%"
     ;; 	  (length last-col-list) last-new-rows
     ;; 	  extra not-fit-count last-col-list)
-    (smush-output list last-col-list last-new-rows format-char stream
-		  row-limit screen-width)
     last-new-rows))
 
 (defun print-columns-sizer (list &key (columns 80) (stream *standard-output*)
