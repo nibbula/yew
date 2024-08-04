@@ -126,6 +126,7 @@ The shell command takes any number of file names.
     (,(meta-char #\N)	. next-file)
     (,(meta-char #\P)	. previous-file)
     (,(meta-char #\+)	. set-key-command)
+    (,(meta-char #\m)	. set-mutate-command)
     (#\?		. help)
     (,(ctrl #\H)	. help-key)
     (:backspace		. help-key)
@@ -1315,7 +1316,17 @@ end."
 	     :accept-does-newline nil)
     (setf (tt-input-mode) :char)))
 
+(defun flanky-read-from-string (string)
+  "Like dlib:safe-read-from-string but preserve the *package*."
+  (let ((saved-package *package*))
+    (with-standard-io-syntax
+      (let ((*read-eval* nil)
+            (*package* saved-package))
+        (read-from-string string)))))
+
 (defun ask-for-function (&optional prompt)
+  "Prompt for a function, displaying ‘prompt’. Return a function designator, or
+nil if one wan't entered, or :empty if the input was empty or aborted."
   (tt-move-to (1- (tt-height)) 0)
   (tt-erase-to-eol)
   (tt-finish-output)
@@ -1324,8 +1335,15 @@ end."
 		     :history-context :ask-function-name
 		     :accept-does-newline nil))
 	 (cmd (and str (stringp str)
-		   (ignore-errors (safe-read-from-string str)))))
-    (and (symbolp cmd) (fboundp cmd) cmd)))
+		   (ignore-errors (flanky-read-from-string str))))
+         func)
+    (cond
+      ((or (null str) (zerop (length str)))
+       :empty)
+      ((and (symbolp cmd) (fboundp cmd))
+       cmd)
+      ((and (listp cmd) (functionp (setf func (eval cmd))))
+       func))))
 
 (defun search-line (str line)
   "Return true if LINE contains the string STR. LINE can be a string, or a
@@ -2218,9 +2236,25 @@ byte-pos."
   (let* ((key-seq (read-key-sequence pager))
 	 (cmd (ask-for-function (format nil "Set key ~a to command: "
 					(key-sequence-string key-seq)))))
-    (if cmd
-	(set-key key-seq cmd (inator-keymap pager))
-	(display-message "Not a function."))))
+    (case cmd
+      (:empty
+       (message pager "Input empty. Not setting key."))
+      ((nil)
+       (message pager "Not a function."))
+      (t
+       (set-key key-seq cmd (inator-keymap pager))))))
+
+(defun set-mutate-command (pager)
+  "Set the mutate function interactively."
+  (let* ((cmd (ask-for-function "Mutate function: ")))
+    (case cmd
+      (:empty
+       (message pager "Input empty. Unsetting mutate function.")
+       (setf (pager-mutate-function pager) nil))
+      ((nil)
+       (message pager "Not a function."))
+      (t
+       (setf (pager-mutate-function pager) cmd)))))
 
 (defun eval-expression-command (pager)
   "Prompt for an expression an evaluate it."
