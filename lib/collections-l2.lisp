@@ -11,6 +11,10 @@ for things with functionality not in the standard.
   (:use :cl :collections :dlib :dlib-misc)
   (:export
    #:orandomize
+   #:obegins-with
+   #:oends-with
+   #:oremove-prefix
+   #:oremove-suffix
    ))
 (in-package :collections-l2)
 
@@ -45,5 +49,44 @@ modfied collection.")
 
 (defmethod orandomize ((collection container))
   (orandomize (container-data collection)))
+
+(defgeneric obegins-with (prefix thing &key test)
+  (:documentation "True if ‘thing’ begins with ‘prefix’.")
+  (:method (prefix thing &key test)
+    (let ((pos (if test
+                   (osearch prefix thing :test test)
+                   (osearch prefix thing))))
+      (and pos (zerop pos)))))
+
+(defgeneric oends-with (suffix thing &key test)
+  (:documentation "True if ‘thing’ ends with ‘suffix’.")
+  (:method (suffix thing &key test)
+    (let ((pos (if test
+                   (mismatch suffix thing :test test :from-end t)
+                   (mismatch suffix thing :from-end t))))
+      (and pos (zerop pos)))))
+
+(defgeneric oremove-prefix (thing prefix &key test)
+  (:documentation
+  "Remove ‘prefix’ from ‘thing’. ‘thing’ and ‘prefix’ are both collections.
+If ‘thing’ is is not prefixed by ‘prefix’, just return ‘thing’.")
+  (:method (thing prefix &key test)
+    (if (if test
+            (obegins-with prefix thing :test test)
+            (obegins-with prefix thing))
+        (osubseq thing (length prefix))
+        (ocopy thing))))
+
+(defgeneric oremove-suffix (thing suffix &key test)
+  (:documentation
+   "Remove ‘suffix’ from the end of ‘thing’. If ‘thing’ doesn't end in ‘suffix’,
+just return ‘thing’. Elements are compared with ‘test’.")
+  (:method (thing suffix &key test)
+    (let ((pos (if test
+                   (osearch suffix thing :from-end t :test test)
+                   (osearch suffix thing :from-end t))))
+      (if (and pos (= pos (- (olength thing) (olength suffix))))
+	  (osubseq thing 0 pos)
+	  (ocopy thing)))))
 
 ;; End
