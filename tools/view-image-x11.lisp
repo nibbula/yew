@@ -1,6 +1,6 @@
-;;
-;; view-image-x11.lisp - Image viewer X11 driver.
-;;
+;;;
+;;; view-image-x11.lisp - Image viewer X11 driver.
+;;;
 
 ;; This whole package is just a temporary hack for my enjoyment/suffering.
 
@@ -129,7 +129,7 @@
 
 (defmethod start-inator ((o image-x11-inator))
   "Start the inator."
-  (call-next-method)
+  ;; (call-next-method)
   (with-slots ((image view-image::image)
 	       display window window-width window-height own-window font
 	       draw-gc erase-gc overlay-gc depth) o
@@ -193,7 +193,7 @@
 	    (let ((wmh (make-wm-hints :input :on)))
 	      (setf (wm-hints window) wmh))
 	    (map-window window))
-	  ;; (call-next-method)
+	  (call-next-method)
 	  (when (view-image::image-inator-image o)
 	    (view-image::center o)
 	    (view-image::fit-image-to-window o))
