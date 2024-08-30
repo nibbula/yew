@@ -751,7 +751,7 @@ This can be quicker for large tables.")
 
 (defgeneric scroll-down (table-viewer)
   (:documentation "Scroll the table back some lines.")
-  (:method ((o table-viewer))
+  (:method ((o table-viewer-base))
     (with-slots ((point inator::point) renderer cached-table-length) o
       (with-slots (start rows) renderer
 	(incf (table-point-row start) 5)
@@ -762,7 +762,7 @@ This can be quicker for large tables.")
 
 (defgeneric scroll-up (table-viewer)
   (:documentation "Scroll the table forward some lines.")
-  (:method ((o table-viewer))
+  (:method ((o table-viewer-base))
     (with-slots ((point inator::point) renderer) o
       (with-slots (start rows) renderer
 	(decf (table-point-row start) 5)
@@ -792,7 +792,7 @@ This can be quicker for large tables.")
 
 (defgeneric press-to-cell (table-viewer)
   (:documentation "Go to the row indicated by the press event.")
-  (:method ((o table-viewer))
+  (:method ((o table-viewer-base))
     (with-slots ((point inator::point) renderer) o
       (with-slots (start rows x y width height data-offset) renderer
 	(let* ((ev (terminal-inator-last-event-untranslated o)))
