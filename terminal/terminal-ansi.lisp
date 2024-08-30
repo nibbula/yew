@@ -2211,7 +2211,8 @@ wheren <N> is a number 1-7."
 TYPE  defaults to :select or :cut-buffer-0."
   (terminal-raw-format tty "~a52;~a;~a~a" +osc+
 		       (selection-type-code type)
-		       (cl-base64:string-to-base64-string selection)
+		       (cl-base64:usb8-array-to-base64-string
+                        (unicode:string-to-utf8-bytes selection))
 		       +st+)
   selection)
 
