@@ -737,8 +737,8 @@ start and end indices."
 |#
 
 (defun replace-subseq (target replacement sequence &key count)
-  "Return a copy of SEQUECE but with sub-sequences of TARGET replaced
-REPLACEMENT."
+  "Return a copy of ‘sequence’ but with sub-sequences of ‘target’ replaced
+‘replacement’."
   (if (and (> (length target) 0) (or (not count) (> count 0)))
       (let ((pos 0)
 	    (i 0)
@@ -2235,10 +2235,11 @@ SYMBOLS is a designator for a symbol or list of symbols like for EXPORT."
   (let ((pkg (find-package package)) sym)
     (when (not pkg)
       (error "Package not found ~s" package))
-    (setf sym (intern (string symbol) pkg))
-    (if (fboundp sym)
-	(apply sym args)
-	(error "Symbol ~s not found in ~s" symbol package))))
+    (if (and (find-symbol (string symbol) pkg)
+             (setf sym (intern (string symbol) pkg))
+             (fboundp sym))
+      (apply sym args)
+      (error "Symbol ~s not found in ~s" symbol package))))
 
 (defalias 'symbol-call 'not-so-funcall)
 ;; (defalias 'ﬀ 'not-so-funcall)
