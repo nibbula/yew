@@ -62,6 +62,7 @@
    #:*unicode-braille-spin-string*
    #:*unicode-square-spin-string*
    #:*emoji-spin-string*
+   #:*emoji-moon-spin-string*
    #:spin
    #:with-spin
 
@@ -1055,6 +1056,9 @@ isn't 1, the result will potentially not be exactly ‘width’ wide."
   (defspin *emoji-spin-string* "🕐🕑🕒🕓🕔🕕🕖🕗🕘🕙🕚🕛"
     "Spin string with fancy emoji clock face characters.")
 
+  (defspin *emoji-moon-spin-string* "🌕🌖🌗🌘🌑🌒🌓🌔"
+    "Spin string with the emoji moon.")
+
   (defvar *default-spin-string* *plain-spin-string*
     "The default spin string.")
   )
@@ -1062,13 +1066,15 @@ isn't 1, the result will potentially not be exactly ‘width’ wide."
 (defun spin (&optional (stream *standard-output*))
   "Do one iteration of a spin animation."
   (when *spin*
-    (write-char (char *spin-string* *spin*) stream)
-    (write-char #\backspace stream)
+    (let ((s (char *spin-string* *spin*)))
+      (write-char s stream)
+    (dotimes (i (display-length s))
+      (write-char #\backspace stream))
     (finish-output stream)
     (incf *spin*)
     (setf *spin-spun* t)
     (when (>= *spin* *spin-length*)
-      (setf *spin* 0))))
+      (setf *spin* 0)))))
 
 (defun unspin (&optional (stream *standard-output*))
   "Hopefully remove the spinning character."
