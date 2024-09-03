@@ -6,7 +6,7 @@
   (:documentation "Process status listing")
   (:use :cl :dlib :dlib-misc :opsys #+unix :os-unix #+windows :os-ms
         :table :table-print :grout :collections :los-config :los-util
-        :dtime)
+        :dtime :glob)
   (:export
    #:!ps
    #:ps-tree
@@ -350,6 +350,31 @@ owned by ‘user’."
 	(grout-print-table table :trailing-spaces nil))
       table)))
 
+(defparameter *terminal-device-prefix* "/dev/")
+(defparameter *terminal-devices-patterns*
+  (mapcar (_ (s+ *terminal-device-prefix* _)) '("tty[0-9]*" "pts/[0-9]*"))
+  "List of glob patterns for tty devices.")
+
+(defun find-tty (id)
+  "Return the name of the tty device ‘id’."
+  #+unix
+  (or
+   (loop :for f :in (apply #'concatenate 'list
+                           (mapcar #'glob *terminal-devices-patterns*))
+         :when (= id (uos:file-status-device-type (uos:stat f)))
+         :return (remove-prefix f *terminal-device-prefix*))
+   "")
+  #-unix
+  "??")
+
+(defun find-ttys (process-list)
+  "Convert the TTY numbers in ‘process-list’ to names."
+  #+unix
+  (loop :for p :in process-list :do
+        (setf (uos:unix-process-terminal p)
+              (find-tty (uos:unix-process-terminal p))))
+  process-list)
+
 (defun ps-long (&key matching show-kernel-processes (print t) user)
   "Process status: Reformat the output of the \"ps\" command."
   (declare (ignore #-linux show-kernel-processes))
@@ -362,6 +387,7 @@ owned by ‘user’."
 				:key #'unix-process-text-size)))
 	   (out-list (filter proc-list matching user))
 	   table)
+      (find-ttys out-list)
       (setf table (make-table-from
 		   #-linux out-list
 		   #+linux
@@ -373,17 +399,17 @@ owned by ‘user’."
 		   #+linux
 		   :columns
 		   #+linux
-		   `((:name "PID"  :type number)
-		     (:name "PPID" :type number)
-		     (:name "GID"  :type number)
-		     (:name "UID"  :type number)
+		   `((:name "PID"  :type number :align :right)
+		     (:name "PPID" :type number :align :right)
+		     (:name "GID"  :type number :align :right)
+		     (:name "UID"  :type number :align :right)
 		     (:name "TTY")
 		     (:name "Text" :type number
 		      :format ,#'ps-print-size-with-width)
 		     (:name "RSS" :type number
 		      :format ,#'ps-print-size-with-width)
-		     (:name "CPU%" :type number)
-		     (:name "Nice" :type number)
+		     (:name "CPU%" :type number :align :right)
+		     (:name "Nice" :type number :align :right)
 		     (:name "Usage")
 		     (:name "Command")
 		     (:name "Args" :format "~*~{~a~^ ~}"))))
