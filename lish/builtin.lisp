@@ -558,7 +558,9 @@ Shell options:~%")
 
 (defun help-subjects ()
   "Return a list of help subjects."
-  (sort (omap-as 'list (_ (string-downcase (oelt _ 0))) (help-table)) #'string<))
+  (sort (with-collecting () (omapk (_ (collect (string-downcase (okey _))))
+                                   (help-table)))
+        #'string<))
 
 (defun help-function (subject)
   "Return the help function for for ‘subject’, or NIL if it isn't defined."
