@@ -576,15 +576,17 @@ program that messes with the terminal, we can still type at the debugger."
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
   (defmacro with-deblargger ((frame condition) &body body)
-    `(let ((*deblarg*
-	     (make-deblargger :condition ,condition :saved-frame ,frame)))
+    (with-names (c)
+    `(let* ((,c ,condition)             ; only once
+            (*deblarg* (make-deblargger :condition ,c :saved-frame ,frame))
+            (*condition* ,c))
        (when (not *thread*)
 	 ;; @@@ This isn't really thread local yet.
 	 (setf *thread* (make-thread)))
        (when (not *debugger-keymap*)
 	 (setup-keymap))
        (with-new-debugger-io (*deblarg*)
-	 ,@body))))
+	 ,@body)))))
 
 (defvar *deblargger-entry-hook* nil
   "Customize something that happens when you enter the debugger.")

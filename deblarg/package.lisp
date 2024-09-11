@@ -18,6 +18,7 @@ least you can type things using RL.")
    #:deblargger-visual-mode
    #:deblargger-visual-term
    #:*deblarg*
+   #:*condition*
    #:*debug-term*
    #:*deblargger-entry-hook*
    #:deblarg

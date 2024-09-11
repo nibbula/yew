@@ -85,8 +85,8 @@ If ‘quiet’ is true, the default method doesn't apologize."
 	 ,doc-string
 	 (append (list ',generic-name ',first-arg) (cdr ,whole-arg))))))
 
-;; (defvar *interceptor-condition* nil
-;;   "The condition that happened.")
+(defvar *condition* nil
+  "The condition that happened.")
 
 ;; @@@ Do we really need this separate here? Could we just use *terminal*
 ;; in with-new-terminal?
