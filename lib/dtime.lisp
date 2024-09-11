@@ -37,9 +37,53 @@ live on Earth very recently only!")
 ;; To do better we probably need arbitrary precision floats.
 ;; [Could use mpfr or bfloats from maxima] (see wip/units.lisp)
 
-(defstruct dtime
+(defstruct (dtime (:constructor %make-dtime))
+  "A point in time in nanoseconds."
   (seconds 0 :type integer)
   (nanoseconds 0 :type integer))
+
+(defun make-dtime (&key seconds nanoseconds
+                     second minute hour date month year)
+  "Make a dtime. ‘seconds’ is the universal-time, ‘nanoseconds’ adds more
+precision. If any of ‘second’, ‘minute’, ‘hour’, ‘date’, ‘month’, or ‘year’ are
+specified, set the ‘seconds’ is set as the universal-time based on them as
+arguments for ‘encode-universal-time’. If the ‘hour’, ‘minute’, or ‘second’
+aren't specified, they default to 0. If ‘date’, ‘month’, or ‘year’ are not fully
+specified, they default to the current, unless less specific parts of the date
+are given, in which case they default to 1. If no arguments are given, it
+defaults to the current time."
+  (cond
+    ((or second minute hour date month year)
+     ;; Specified some indirect values.
+     (let ((now (when (some #'null `(,date ,month ,year))
+                  (get-universal-time)))
+           now-ss now-mm now-hh now-dd now-mo now-yy
+           default-dd default-mo)
+       (when now
+         (multiple-value-setq (now-ss now-mm now-hh now-dd now-mo now-yy)
+           (decode-universal-time now)))
+       (when (or second minute hour)
+         (setf default-dd now-dd
+               default-mo now-mo))
+       (when (or year month)
+         (setf default-dd 1))
+       (when year
+         (setf default-mo 1))
+       (when date
+         (setf default-mo now-mo))
+       (let ((ss (or second 0))
+             (mm (or minute 0))
+             (hh (or hour 0))
+             (dd (or date default-dd))
+             (mo (or month default-mo))
+             (yy (or year now-yy)))
+         (%make-dtime :seconds (encode-universal-time ss mm hh dd mo yy)
+                      :nanoseconds (or nanoseconds 0)))))
+    ((or seconds nanoseconds)
+     (%make-dtime :seconds (or seconds 0)
+                  :nanoseconds (or nanoseconds 0)))
+    (t
+     (%make-dtime :seconds (get-universal-time)))))
 
 (defun get-dtime ()
   "Return the current time as a new DTIME."
