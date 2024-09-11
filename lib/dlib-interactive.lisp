@@ -1,6 +1,6 @@
-;;
-;; dlib-interactive.lisp - Functions for interactive use.
-;;
+;;;
+;;; dlib-interactive.lisp - Functions for interactive use.
+;;;
 
 (defpackage :dlib-interactive
   (:documentation
@@ -220,7 +220,7 @@ defaults to 0.2."
 ;; This is mostly for pedagogic purposes. I don't really have a use for it.
 (defun dotted (stream obj colon-p at-sign-p &rest args)
   "A format function for use with ~//, which print lists as dotted lists,
-e.g (format nil \"~/dlib-i:dotted/\" (1 2 3)) => \"(1 . (2 . (3 . ())))\"."
+e.g (format nil \"~/dlib-i:dotted/\" '(1 2 3)) => \"(1 . (2 . (3 . ())))\"."
   (declare (ignore colon-p at-sign-p args))
   (typecase obj
     (null
