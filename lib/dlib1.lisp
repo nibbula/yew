@@ -107,6 +107,9 @@
    #:flatten
    #:circular-equal
    #:circular-equalp
+   #:circular-list-p
+   #:proper-list-p
+   #:dotted-list-p
    #:ensure-list
    #:with-collecting
    #:with-collecting-into
@@ -1358,6 +1361,48 @@ of LIST is an atom, assume it's a plist, otherwise it's an alist."
 (defun circular-equalp (a b)
   "Like ‘equalp’, but handle circularity in lists."
   (equalp (all-objects-in-thing a) (all-objects-in-thing b)))
+
+(macrolet
+ ;; This is mostly so we don't have to traverse the list twice when testing
+ ;; proper-ness. Macroing so we don't have to repeat it, and of course macrolet
+ ;; so we don't really have to explain. Except we did.
+ ((circular-detect (list yes no)
+    "Detect if ‘list’ is circular. Return ‘yes’ form if it is, ‘no’ form
+otherwise. ‘rabbit’, ‘turtle’, ‘list’, and the usual loop context things are
+defined in the forms, and ‘list’ is evaled a lot, so be careful."
+    `(and (listp ,list)
+          (loop :for rabbit :on ,list :by #'cddr
+                :for turtle :on (cons (car ,list) (cdr ,list)) :by #'cdr
+                :do
+                (cond
+                  ((not (and (consp rabbit) (listp (cdr rabbit))))
+                   ,no)
+                  ((eq rabbit turtle)
+                   ,yes))))))
+
+  (defun circular-list-p (list)
+    "True if ‘list’ is a circular list."
+    (circular-detect list (return t) (return nil)))
+
+  (defun proper-list-p (list)
+    "True if ‘list’ is a proper list, i.e. it isn't circular and the last CDR
+is NIL."
+    (let (circular last)
+      (circular-detect list
+                       (progn (setf last rabbit circular t) (return t))
+                       (progn (setf last rabbit circular nil) (return nil)))
+      (and (not circular)
+           (null last))))
+
+  (defun dotted-list-p (list)
+    "True if ‘list’ is a proper list, i.e. it isn't circular and the last CDR
+isn't NIL."
+    (let (circular last)
+      (circular-detect list
+                       (progn (setf last rabbit circular t) (return t))
+                       (progn (setf last rabbit circular nil) (return nil)))
+      (and (not circular)
+           (not (null last))))))
 
 (defun ensure-list (x)
   "If ‘x’ is a list, return it. If ‘x’ isn't a list, return a list with ‘x’ as
