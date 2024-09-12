@@ -529,6 +529,13 @@ two values ROW and COLUMN."
   (logand (logxor (ash value 3) integer) +cut-off+))
 (declaim (ftype (function (fixnum fixnum) fixnum) bix-hash))
 
+(defun cdb-hash-seed () 5381) ;; see quicklisp/cdb.lisp
+(declaim (ftype (function () fixnum) cdb-hash-seed))
+(defun cdb-hash (integer value)
+  (declare (type fixnum integer value))
+  (logxor (logand +cut-off+ (+ value (ash value 5))) integer))
+(declaim (ftype (function (fixnum fixnum) fixnum) cdb-hash))
+
 #+64-bit-target
 (progn
   (defparameter *fnv64-offset*
@@ -541,7 +548,7 @@ two values ROW and COLUMN."
   (declaim (ftype (function () fixnum) bix-hash-seed))
   (defun fnv-like-hash-fixnum (integer value)
     (declare (type fixnum integer value))
-    (logand (* (logxor value integer) *fnv64-prime*) +cut-off+))
+    (the fixnum (logand (* (logxor value integer) *fnv64-prime*) +cut-off+)))
   (declaim (ftype (function (fixnum fixnum) fixnum) fnv-like-hash-fixnum))
   (defun fnv-like-hash-integer (integer value)
     (declare (type integer integer)
@@ -553,7 +560,7 @@ two values ROW and COLUMN."
 	:while (> i +cut-off+)
 	:do
 	(setf i (ash +cut-off+ +cut-off-shift+)))
-      v))
+      (the fixnum v)))
   (declaim (ftype (function (integer fixnum) fixnum) fnv-like-hash-integer))
   (defun fnv-like-hash-float (f value)
     (multiple-value-bind (i-significand i-exponent i-sign)
@@ -562,7 +569,7 @@ two values ROW and COLUMN."
 	(setf v (fnv-like-hash-integer i-significand v)
 	      v (fnv-like-hash-integer i-exponent v)
 	      v (fnv-like-hash-integer i-sign v))
-	v)))
+	(the fixnum v))))
   (declaim (ftype (function (float fixnum) fixnum) fnv-like-hash-float))
 
   ;;(defun sxhash-hash-seed () #xCBF29CE484222325)
@@ -585,7 +592,8 @@ two values ROW and COLUMN."
   (declaim (ftype (function () fixnum) bix-hash-seed))
   (defun fnv-like-hash-fixnum (integer value)
     (declare (type fixnum integer value))
-    (logand (* (logxor value integer) *fnv32-prime*) +cut-off+))
+    (the fixnum
+         (logand (* (logxor value integer) *fnv32-prime*) +cut-off+)))
   (declaim (ftype (function (fixnum fixnum) fixnum) fnv-like-hash-fixnum))
   (defun fnv-like-hash-integer (integer value)
     (declare (type integer integer)
@@ -597,7 +605,7 @@ two values ROW and COLUMN."
 	:while (> i +cut-off+)
 	:do
 	(setf i (ash +cut-off+ +cut-off-shift+)))
-      v))
+      (the fixnum v)))
   (declaim (ftype (function (integer fixnum) fixnum) fnv-like-hash-integer))
   (defun fnv-like-hash-float (f value)
     (multiple-value-bind (i-significand i-exponent i-sign)
@@ -606,7 +614,7 @@ two values ROW and COLUMN."
 	(fnv-like-hash-integer i-significand v)
 	(fnv-like-hash-integer i-exponent v)
 	(fnv-like-hash-integer i-sign v)
-	v)))
+	(the fixnum v))))
   (declaim (ftype (function (float fixnum) fixnum) fnv-like-hash-float))
 
   ;;(defun sxhash-hash-seed () #xCBF29CE484222325)
@@ -623,7 +631,7 @@ two values ROW and COLUMN."
     (let ((f-func (symbolify (s+ hash-func "-FIXNUM")))
 	  (i-func (symbolify (s+ hash-func "-INTEGER")))
 	  (fl-func (symbolify (s+ hash-func "-FLOAT"))))
-    `(typecase ,thing
+    `(values (typecase ,thing
        (character (,f-func (char-code ,thing) ,value))
        (fixnum    (,f-func ,thing ,value))
        (integer   (,i-func ,thing ,value))
@@ -673,10 +681,11 @@ two values ROW and COLUMN."
 		   #-sbcl (sxhash ,thing))
 	     ,hv))
 	  (t
-	   (error "I don't know how to hash a ~s." (type-of ,thing)))))))))
+	   (error "I don't know how to hash a ~s." (type-of ,thing))))))))))
 
 (defun hash-thing (thing &optional (value (fnv-like-hash-seed)))
-  (hash-thing-with thing value fnv-like-hash fnv-like-hash-seed))
+  (the fixnum
+       (hash-thing-with thing value fnv-like-hash fnv-like-hash-seed)))
 ;; (defun hash-thing (thing &optional (value (fnv-like-hash-seed)))
 ;;    (hash-thing-with thing value curses-hash curses-hash-seed))
 ;; (defun hash-thing (thing &optional (value (bix-hash-seed)))
