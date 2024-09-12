@@ -548,7 +548,7 @@ Aruguments are:"
       ;;:when collect :collect result))
       (when (and collect files-with-match)
 	(setf results
-	      (remove-duplicates (mapcar #'first results) :test #'equal)))
+	      (remove-duplicates results :test #'equal)))
       results)))
 
 (defmethod make-result-table (table results)
