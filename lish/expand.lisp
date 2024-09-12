@@ -278,9 +278,11 @@ Otherwise, return words which will evaluate a lisp expression."
 		      (setf eval-results (eval (shell-word-word w)))
 		      (cond
 			((and (listp eval-results) (not (shell-word-quoted w)))
-			 ;; Spread list results into separate args
-			 (mapcar #'(lambda (x) (make-shell-word :word x))
-				 eval-results))
+                         (if (dotted-list-p eval-results)
+                             (list (make-shell-word :word eval-results))
+			     ;; Spread list results into separate args
+			     (mapcar #'(lambda (x) (make-shell-word :word x))
+				     eval-results)))
 			((and prev (or (eq (shell-word-join w) :left)
 				       (eq (shell-word-join w) :both)))
 			 ;; string append to previous, and omit this word
@@ -737,6 +739,7 @@ into a shell-expr with shell-read."
   (possibly-expand-aliases
    *shell*
      (do-expansions
+         ;; @@@ doesn't this mean we can put expand-lisp-exp back in the list??
 	 (lisp-exp-eval
 	  (etypecase thing
 	    (string (shell-read thing))
