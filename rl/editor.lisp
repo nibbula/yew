@@ -297,6 +297,11 @@ not to print one.")
     :initarg :prompt-height
     :initform nil
     :documentation "Height of the prompt in lines.")
+   (redraw-rate
+    :initarg :redraw-rate :accessor redraw-rate
+    :initform nil
+    :documentation "Seconds between redrawing the display. NIL to only redraw
+between events.")
 
    ;; Completion
    (completion-func
@@ -843,9 +848,15 @@ but perhaps reuse some resources."))
   "Read a character from the editor's terminal."
   (declare (type line-editor e))
   ;; (tt-finish-output)
-  (let ((c (if (queued-input e)
-	       (pop (queued-input e))
-	       (tt-get-key))))
+  (let ((c (cond
+             ((queued-input e)
+	      (pop (queued-input e)))
+             ((redraw-rate e)
+              (loop :while (not (tt-listen-for (redraw-rate e)))
+                    :do (update-display e))
+	      (tt-get-key))
+             (t
+              (tt-get-key)))))
     (when (line-editor-input-callback e)
       (funcall (line-editor-input-callback e) c))
     c))
