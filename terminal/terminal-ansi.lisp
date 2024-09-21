@@ -27,7 +27,6 @@
    #:with-raw
    #:write-double-width-line
    #:write-double-height-line
-   ;; #:with-immediate
    #:set-bracketed-paste-mode
    #:read-bracketed-paste
    #:*selection-codes*
@@ -779,16 +778,6 @@ TTY is a terminal, in case you didn't know."
 				 :echo nil)
 	      ,@body)
 	 (set-terminal-mode ,tty :mode ,mode)))))
-
-;; (defmacro with-immediate ((tty) &body body)
-;;   (with-names (mode)
-;;     `(let ((,mode (get-terminal-mode (terminal-file-descriptor ,tty))))
-;;        (unwind-protect
-;; 	    (progn
-;; 	      (set-terminal-mode (terminal-file-descriptor ,tty)
-;; 				 :line nil :echo nil)
-;; 	      ,@body)
-;; 	 (set-terminal-mode (terminal-file-descriptor ,tty) :mode ,mode)))))
 
 (defparameter *report-timeout* 0.05
   "How long to wait for the terminal to send back characters when reporting.")
