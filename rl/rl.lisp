@@ -323,7 +323,7 @@ Keyword arguments:
   eof-error-p          True to signal an error on end of file. [t]
   eof-value            Value to return on end of file. 
   quit-value           Value to return if the user quit.
-  prompt                String to prompt with. [*default-prompt*]
+  prompt               String to prompt with. [*default-prompt*]
   output-prompt-func   Function to print out a prompt. Called with the
                        ‘line-editor’ instance and a prompt string.
   right-prompt         String to output on the right side of the input line.
