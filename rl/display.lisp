@@ -199,7 +199,7 @@ in it."
 	 (s (if (and output-prompt-func
 		     (or (functionp output-prompt-func)
 			 (fboundp output-prompt-func)))
-		(with-output-to-string (*standard-output*)
+		(with-output-to-fat-string (*standard-output*)
 		  ;; (log-message e "make-prompt output-prompt-func -> ~s"
 		  ;; 	       output-prompt-func)
 		  (or (ignore-errors (funcall output-prompt-func e prompt))
