@@ -151,7 +151,7 @@ Also we really need the MOP for stuff.")
 ;; This isn't really the way the type system is supposed to work.
 ;; E.g. (typep x 'collection) doesn't match up.
 (defgeneric collection-p (thing)
-  (:documentation "Return true if THING is a collection.")
+  (:documentation "Return true if ‘thing’ is a collection.")
   (:method ((thing t))                nil)
   (:method ((thing list))             t)
   (:method ((thing vector))	      t)
@@ -176,7 +176,7 @@ Also we really need the MOP for stuff.")
 
 ;; I supposed we could treat a vector as a keyed collection too, but why?
 (defgeneric keyed-collection-p (collection)
-  (:documentation "Return true if COLLECTION is a keyed-collection.")
+  (:documentation "Return true if ‘collection’ is a keyed-collection.")
   (:method ((collection t))                nil)
   (:method ((collection list))             nil)
   (:method ((collection vector))	   nil)
@@ -197,7 +197,7 @@ Also we really need the MOP for stuff.")
 numbers."))
 
 (defgeneric ordered-collection-p (collection)
-  (:documentation "Return true if COLLECTION is an ordered-collection.")
+  (:documentation "Return true if ‘collection’ is an ordered-collection.")
   (:method ((collection t))                  nil)
   (:method ((collection list))               t)
   (:method ((collection vector))	     t)
@@ -284,7 +284,7 @@ returned by successive calls to ‘generator’ if provided.")
    "An iterator that we can move forward through a collection with."))
 
 (defgeneric forward-collection-p (collection)
-  (:documentation "Return true if COLLECTION is an forward-collection.")
+  (:documentation "Return true if ‘collection’ is an forward-collection.")
   (:method ((collection t))                  nil)
   (:method ((collection list))               t)
   (:method ((collection vector))	     t)
@@ -301,7 +301,7 @@ returned by successive calls to ‘generator’ if provided.")
    "A collection that can do oprev and oprev-p."))
 
 (defgeneric backward-collection-p (collection)
-  (:documentation "Return true if COLLECTION is an backward-collection.")
+  (:documentation "Return true if ‘collection’ is an backward-collection.")
   (:method ((collection t))                  nil)
   (:method ((collection list))               nil)
   (:method ((collection vector))	     t)
@@ -324,7 +324,7 @@ returned by successive calls to ‘generator’ if provided.")
 backward-collection can."))
 
 (defgeneric bi-directional-collection-p (collection)
-  (:documentation "Return true if COLLECTION is an backward-collection.")
+  (:documentation "Return true if ‘collection’ is an backward-collection.")
   (:method ((collection t))
     (and (forward-collection-p collection)
 	 (backward-collection-p collection))))
@@ -352,11 +352,11 @@ with."))
 
 (defgeneric oincr (iterator &optional increment)
   (:documentation
-   "Increment the iterator position by INCREMENT which defaults to 1."))
+   "Increment the iterator position by ‘increment’ which defaults to 1."))
 
 (defgeneric odecr (iterator &optional decrement)
   (:documentation
-   "Decrement iterator position by INCREMENT which defaults to 1."))
+   "Decrement iterator position by ‘increment’ which defaults to 1."))
 
 (defgeneric obeginning-p (iterator)
   (:documentation
@@ -440,8 +440,8 @@ with."))
 |#
 
 (defmacro call-with-start-and-end (func args)
-  "Call func with args and START and END keywords, assume that an environemnt
-that has START and START-P and END and END-P."
+  "Call func with args and ‘start’ and ‘end’ keywords, assume that an
+environemnt that has ‘start’ and ‘start-p’ and ‘end’ and ‘end-p’."
   `(progn
      (if start-p
 	 (if end-p
@@ -453,8 +453,8 @@ that has START and START-P and END and END-P."
 
 ;; @@@ There must be a better way to do this??
 (defmacro call-with-start-end-test (func args)
-  "Call func with args and START, END, TEST, and TEST-NOT keywords. Assume that
-the environemnt has <arg> and <arg>-P for all those keywords."
+  "Call func with args and ‘start’, ‘end’, ‘test’, and ‘test-not’ keywords.
+Assume that the environemnt has <arg> and <arg>-P for all those keywords."
   `(progn
      (cond
        (test-not-p
@@ -496,9 +496,9 @@ the environemnt has <arg> and <arg>-P for all those keywords."
 
 ;; @@@ This should probably actually be in dlib.
 (defun slot-element (object name)
-  "Return the value of the slot NAME in object, or NIL if it's doesn't exist or
-isn't bound. NAME is converted to a string, as with the STRING function, and
-compared with EQUALP, which is nice for avoiding symbol package problems."
+  "Return the value of the slot ‘name’ in object, or NIL if it's doesn't exist
+or isn't bound. ‘name’ is converted to a string, as with the ‘string’ function,
+and compared with ‘equalp’, which is nice for avoiding symbol package problems."
   (let ((slot (find (string name) (mop:class-slots (class-of object))
 		    :key #'mop:slot-definition-name
 		    :test (lambda (a b) (equalp (string a) (string b))))))
@@ -508,7 +508,7 @@ compared with EQUALP, which is nice for avoiding symbol package problems."
 
 ;; This is probably only defined for sequences and keyed-collections
 (defgeneric oelt (keyed-collection key)
-  (:documentation "Return the element of COLLECTION specified by KEY.")
+  (:documentation "Return the element of ‘collection’ specified by KEY.")
   ;; Keyed collections
   (:method ((thing hash-table) key)    (gethash key thing))
   (:method ((thing structure-object) (key integer))
@@ -537,8 +537,8 @@ compared with EQUALP, which is nice for avoiding symbol package problems."
 
 ;; @@@ This should probably actually be in dlib.
 (defun set-slot-element (object name value)
-  "Set the VALUE of the slot NAME in OBJECT. Call SLOT-MISSING like SETF would,
-if the slot is not found in the object."
+  "Set the ‘value’ of the slot ‘name’ in ‘object’. Call SLOT-MISSING like
+SETF would, if the slot is not found in the object."
   (let ((slot (find (string name) (mop:class-slots (class-of object))
 		    :key #'mop:slot-definition-name
 		    :test (lambda (a b) (equalp (string a) (string b))))))
@@ -548,7 +548,7 @@ if the slot is not found in the object."
 
 (defgeneric (setf oelt) (value keyed-collection key)
   (:documentation
-   "Set the element of KEYED-COLLECTION specified by KEY to VALUE.")
+   "Set the element of ‘keyed-collection’ specified by KEY to VALUE.")
   (:method (value (thing hash-table) key)    (setf (gethash key thing) value))
   (:method (value (thing structure-object) (key integer))
     (let ((slot (nth key (mop:class-slots (class-of thing)))))
@@ -578,8 +578,8 @@ if the slot is not found in the object."
   (:method (value (thing sequence) key) (setf (elt thing key)  value)))
 
 (defun oitem (key collection)
-  "Return the element of COLLECTION specified by KEY. This is the same as OELT, 
-but with the arguments reversed for convenient use in pipelines."
+  "Return the element of ‘collection’ specified by ‘key’. this is the same
+as ‘oelt’, but with the arguments reversed for convenient use in pipelines."
   (oelt collection key))
 
 (eval-when (:compile-toplevel :load-toplevel :execute)
@@ -601,7 +601,7 @@ but with the arguments reversed for convenient use in pipelines."
 
 ;; Palpable.
 (defgeneric olength (collection)
-  (:documentation "Return the length of a COLLECTION.")
+  (:documentation "Return the length of a ‘collection’.")
   (:method ((collection list)) 	 		(length collection))
   (:method ((collection vector)) 	        (length collection))
   (:method ((collection sequence))      	(length collection))
@@ -616,7 +616,7 @@ but with the arguments reversed for convenient use in pipelines."
 
 ;; Palpable.
 (defgeneric olength-at-least-p (n collection)
-  (:documentation "Return true if the length of COLLECTION is at least N.")
+  (:documentation "Return true if the length of ‘collection’ is at least N.")
   (:method (n (collection list))
     ;; Stolen from the CL spec entry for list-length.
     (do ((i 0 (+ i 2))	      ;; Counter.
@@ -660,8 +660,8 @@ but with the arguments reversed for convenient use in pipelines."
 ;; potentially much more expensive operation.
 (defgeneric olast (collection)
   (:documentation
-   "Return the last item of a COLLECTION. Note that this differs from the
-standard LAST function for lists, in that it doesn't return a LIST. It will
+   "Return the last item of a ‘collection’. Note that this differs from the
+standard LAST function for lists, in that it doesn't return a list. It will
 probably only work for ordered-collections.")
   (:method ((collection list))
     (car (last collection)))
@@ -709,22 +709,23 @@ probably only work for ordered-collections.")
 
 (defgeneric omap (function collection) ;; should be &rest collections
   (:documentation
-   "Return a sequence of the results of applying FUNCTION to successive elements
-of COLLECTION. The sequence returned is usually a list unless COLLECTION is a
-sequence.")
+   "Return a sequence of the results of applying ‘function’ to successive
+elements of ‘collection’. The sequence returned is usually a list unless
+‘collection’ is a sequence.")
   (:method (function (collection list))
     (mapcar function collection))
   (:method (function (collection vector))
-    ;; @@@ Why did I have it just return the collection??
-    ;; (progn (map nil function collection) collection))
     (map (type-of collection) function collection))
   ;; (:method (function (collection sequence))
   ;;   ;;(progn (map nil function collection) collection))
   ;;   (map (type-of collection) function collection))
   (:method (function (collection hash-table))
-    (progn (maphash #'(lambda (k v)
-			(declare (ignore k))
-			(funcall function v)) collection)))
+    (let ((new-table (make-similar-hash-table collection)))
+      (loop :for k :being :the :hash-keys :of collection
+            :do
+            (setf (gethash k new-table)
+                  (funcall function (gethash k collection))))
+      new-table))
   (:method (function (collection structure-object))
     (loop :for slot :in (mop:class-slots (class-of collection))
        :collect
@@ -755,7 +756,7 @@ values into a ‘type’ and return it.")
   (:method ((type (eql 'list)) function collection)
     (let ((results '()))
       (omapn (lambda (_) (push (funcall function _) results)) collection)
-      (nreverse results)))
+      (nreverse results))) ;; @@@ or maybe use with-collecting
   (:method ((type (eql 'vector)) function collection)
     (let ((results
 	    (make-collection type :size (olength collection)
@@ -772,6 +773,16 @@ values into a ‘type’ and return it.")
       (omapn (lambda (_)
 	       (setf (oelt results i) (funcall function _))
 	       (incf i))
+	     collection)
+      results))
+  (:method ((type (eql 'hash-table)) function collection)
+    (let ((results
+            (if (hash-table-p collection)
+                (make-similar-hash-table collection)
+                (make-collection type :size (olength collection)))))
+      (omapn (lambda (_)
+               (setf (gethash _ results)
+                     (funcall function (gethash _ collection))))
 	     collection)
       results)))
 
@@ -835,8 +846,8 @@ sequence.")
 
 (defgeneric omapn (function collection)
   (:documentation
-   "Apply FUNCTION to successive elements of COLLECTION. Do not collect return
-values.")
+   "Apply ‘function’ to successive elements of ‘collection’. Do not collect
+return values.")
   (:method (function (collection list))
     ;; (mapcan function collection)
     (mapc function collection)
@@ -846,8 +857,10 @@ values.")
   (:method (function (collection sequence))
     (map nil function collection))
   (:method (function (collection hash-table))
-    (progn
-      (maphash #'(lambda (k v) (funcall function (make-kv  k v))) collection)))
+    ;; (maphash #'(lambda (k v) (funcall function (make-kv  k v))) collection))
+    (maphash #'(lambda (k v)
+                 (declare (ignore k))
+                 (funcall function v)) collection))
   (:method (function (collection structure-object))
     (loop :for slot :in (mop:class-slots (class-of collection))
        :do
@@ -942,6 +955,18 @@ arguments. Return a collection of ‘type’.")
 ;; (defmethod omapcan-as (type function (collection container))
 ;;   (omapcan-as type function (container-data collection)))
 
+;; Of course this could have some discernable properties that are
+;; different than the original.
+(defun make-similar-hash-table (hash-table
+                                &key test size rehash-size rehash-threshold)
+  "Make a new empty hash-table similar to ‘hash-table’."
+  (make-hash-table
+   :test (or test (hash-table-test hash-table))
+   :size (or size (hash-table-size hash-table))
+   :rehash-size (or rehash-size (hash-table-rehash-size hash-table))
+   :rehash-threshold
+   (or rehash-threshold (hash-table-rehash-threshold hash-table))))
+
 (defgeneric omapcan (function collection)
   (:documentation
    "Apply ‘function’ to successive elements of ‘collection’, conceptually
@@ -957,11 +982,7 @@ arguments.")
   ;;   )
   (:method (function (collection hash-table))
     (mapcan-hashlike
-     (make-hash-table
-      :test (hash-table-test collection)
-      :size (hash-table-size collection)
-      :rehash-size (hash-table-rehash-size collection)
-      :rehash-threshold (hash-table-rehash-threshold collection)))))
+     (make-similar-hash-table collection))))
 ;; Structure and standard object versions don't seem useful.
 
 (defmethod omapcan (function (collection container))
@@ -981,7 +1002,7 @@ collection of RESULT-TYPE."
 |#
 
 (defgeneric mappable-p (collection)
-  (:documentation "Return true if the COLLECTION can be iterated with OMAP.")
+  (:documentation "Return true if the ‘collection’ can be iterated with ‘omap’.")
   (:method ((collection t))                nil)
   (:method ((collection list))             t)
   (:method ((collection vector))	   t)
@@ -1028,7 +1049,7 @@ value of the key, and collections can be a keyed-collection.")
 ;; @@@ Yes, I know these don't do the multi-dimensional iteration thing yet.
 
 (defun oevery (function &rest collections)
-  "Return true if FUNCTION returns true for every element of COLLECTIONS."
+  "Return true if ‘function’ returns true for every element of ‘collections’."
   (omapn (lambda (c)
 	   (omapn
 	    (lambda (e)
@@ -1038,7 +1059,7 @@ value of the key, and collections can be a keyed-collection.")
   t)
 
 (defun oany (function &rest collections)
-  "Return true if FUNCTION returns true for any element of COLLECTIONS."
+  "Return true if ‘function’ returns true for any element of ‘collections’."
   (omapn (lambda (c)
 	   (omapn
 	    (lambda (e)
@@ -1052,7 +1073,7 @@ value of the key, and collections can be a keyed-collection.")
       (documentation 'osome 'function) (documentation 'oany 'function))
 
 (defun onotevery (function &rest collections)
-  "Return true if FUNCTION returns false for all elements of COLLECTIONS."
+  "Return true if ‘function’ returns false for all elements of ‘collections’."
   (omapn (lambda (c)
 	   (omapn
 	     (lambda (e)
@@ -1062,7 +1083,7 @@ value of the key, and collections can be a keyed-collection.")
   nil)
 
 (defun onotany (function &rest collections)
-  "Return true if FUNCTION returns false for all elements of COLLECTIONS."
+  "Return true if ‘function’ returns false for all elements of ‘collections’."
   (omapn (lambda (c)
 	   (omapn
 	    (lambda (e)
@@ -1089,19 +1110,12 @@ value of the key, and collections can be a keyed-collection.")
 
 (defgeneric ocopy (collection)
   (:documentation
-   "Return new collection with the same elements as COLLECTION.")
+   "Return new collection with the same elements as ‘collection’.")
   (:method ((collection list)) (copy-seq collection))
   (:method ((collection vector)) (copy-seq collection))
   (:method ((collection sequence)) (copy-seq collection))
   (:method ((collection hash-table))
-    ;; Of course this could have some discernable properties that are
-    ;; different than the original.
-    (let ((new-table
-	   (make-hash-table
-	    :test (hash-table-test collection)
-	    :size (hash-table-size collection)
-	    :rehash-size (hash-table-rehash-size collection)
-	    :rehash-threshold (hash-table-rehash-threshold collection))))
+    (let ((new-table (make-similar-hash-table collection)))
       (maphash #'(lambda (key value)
 		   (setf (gethash key new-table) value))
 	       collection)
@@ -1120,7 +1134,8 @@ value of the key, and collections can be a keyed-collection.")
 
 (defgeneric ofill (collection item &key start end)
   (:documentation
-   "Replaces the elements of SEQUENCE bounded by START and END with ITEM.")
+   "Replaces the elements of ‘sequence’ bounded by ‘start’ and ‘end’ with
+‘item’.")
   (:method ((collection list) item &key start end)
     (fill collection item :start start :end end))
   (:method ((collection vector) item &key start end)
@@ -1156,8 +1171,8 @@ OFILL-WITH."
 
 (defgeneric osubseq (collection start &optional end)
   (:documentation
-   "OSUBSEQ creates a sequence that is a copy of the subsequence of sequence
-bounded by START and END.")
+   "Create a collection that is a copy of the sub-collection of ‘collection’
+bounded by ‘start’ and ‘end’.")
   (:method ((collection list) start &optional end)
     (subseq collection start end))
   (:method ((collection vector) start &optional end)
@@ -1177,8 +1192,8 @@ bounded by START and END.")
 
 (defgeneric (setf osubseq) (value collection start &optional end)
   (:documentation
-   "OSUBSEQ creates a sequence that is a copy of the subsequence of sequence
-bounded by START and END.")
+   "Create a collection that is a copy of the subsequence of ‘collection’
+bounded by ‘start’ and ‘end’.")
   (:method (value (collection list) start &optional end)
     (setf (subseq collection start end) value))
   (:method (value (collection vector) start &optional end)
@@ -1199,13 +1214,13 @@ bounded by START and END.")
 ;; used up here.
 
 (defun oslice (start end collection)
-  "This is the same as OSUBSEQ, but with the arguments reversed for convenient
-use in pipelines. See also OSLICE-FROM."
+  "This is the same as ‘osubseq’, but with the arguments reversed for convenient
+use in pipelines. See also ‘oslice-from’."
   (osubseq collection start end))
 
 (defun oslice-from (start collection)
-  "This is the same as OSUBSEQ, but with the arguments reversed for convenient
-use in pipelines, and without the END argument. See also OSLICE."
+  "This is the same as ‘osubseq’, but with the arguments reversed for convenient
+use in pipelines, and without the ‘end’ argument. See also ‘oslice’."
   (osubseq collection start))
 
 ;; Yes, more stupid subseq wrappers. I know there is wisdom in not having
@@ -1283,8 +1298,9 @@ arguments.")
 				   :initial-value initial-value)))
 
 (defgeneric ocount (item collection &key from-end start end key test test-not)
-  (:documentation "Return the number of elements of COLLECTION, bounded by START
-and END, that satisfy the TEST.")
+  (:documentation
+   "Return the number of elements of ‘collection’, bounded by ‘start’ and ‘end’,
+that satisfy the ‘test’.")
   (:method (item (collection list) &key from-end key
 				     (test nil test-p)
 				     (test-not nil test-not-p)
@@ -1346,8 +1362,9 @@ and END, that satisfy the TEST.")
 					 :from-end from-end :key key)))
 
 (defgeneric ocount-if (predicate collection &key from-end start end key)
-  (:documentation "Return the number of elements of COLLECTION, bounded by START
-and END, that satisfy the PREDICATE.")
+  (:documentation
+   "Return the number of elements of ‘collection’, bounded by ‘start’ and ‘end’,
+that satisfy the ‘predicate’.")
   (:method (predicate (collection list) &key from-end key
 				     (start nil start-p)
 				     (end nil end-p))
@@ -1387,7 +1404,7 @@ and END, that satisfy the PREDICATE.")
 
 (defgeneric oreverse (ordered-collection)
   (:documentation
-   "Return a new sequence containing the same elements but in reverse order.")
+   "Return a new collection containing the same elements but in reverse order.")
   (:method ((collection list)) 	 		(reverse collection))
   (:method ((collection vector)) 	        (reverse collection))
   (:method ((collection sequence))      	(reverse collection)))
@@ -1397,7 +1414,7 @@ and END, that satisfy the PREDICATE.")
 
 (defgeneric onreverse (ordered-collection)
   (:documentation
-   "Return a sequence of the same elements in reverse order, possibly modifying
+   "Return a collection of the same elements in reverse order, possiblyomodifying
 or destroying the argument.")
   (:method ((collection list)) 	 		(nreverse collection))
   (:method ((collection vector)) 	        (nreverse collection))
@@ -1467,8 +1484,8 @@ but with the arguments reversed for convenience in pipelines."
 
 (defgeneric ofind (item collection &key from-end start end key test test-not)
   (:documentation
-   "Search for an element of the COLLECTION bounded by START and END that
-satisfies the test TEST or TEST-NOT, as appropriate.")
+   "Search for an element of the ‘collection’ bounded by ‘start’ and ‘end’ that
+satisfies the test ‘test’ or ‘test-not’, as appropriate.")
   (:method (item (collection list) &key from-end (start 0) end key test test-not)
     (find item collection :from-end from-end :start start :end end :key key
 	  :test test :test-not test-not))
@@ -1498,8 +1515,8 @@ satisfies the test TEST or TEST-NOT, as appropriate.")
 (defgeneric ofind-if (predicate collection
 		      &key from-end start end key)
   (:documentation
-   "Search for an element of the COLLECTION bounded by START and END that
-satisfies the PREDICATE.")
+   "Search for an element of the ‘collection’ bounded by ‘start’ and ‘end’ that
+satisfies the ‘predicate’.")
   (:method (predicate (collection list) &key from-end (start 0) end key)
     (find-if predicate collection :from-end from-end :start start :end end
 	     :key key))
@@ -1523,14 +1540,14 @@ satisfies the PREDICATE.")
 	    :end end :key key))
 
 (defun ofind-with-key (item key collection)
-  "Like ofind with supplying a KEY argument, but convenient for use in
+  "Like ofind with supplying a ‘key’ argument, but convenient for use in
 pipelines."
   (ofind item collection :key key))
 
 (defgeneric oposition (item collection &key from-end test test-not start end key)
   (:documentation
-   "Return the index of the element that satisfies the TEST in COLLECTION.
-Return the leftmost if FROM-END is true, or of the rightmost if FROM-END is
+   "Return the index of the element that satisfies the ‘test’ in ‘collection’.
+Return the leftmost if ‘from-end’ is true, or of the rightmost if ‘from-end’ is
 false. If no element satifies the test, NIL is returned.")
   (:method (item (collection list)
 	    &key from-end
@@ -1576,8 +1593,8 @@ false. If no element satifies the test, NIL is returned.")
 
 (defgeneric oposition-if (predicate collection &key from-end start end key)
   (:documentation
-   "Return the index of the element that satisfies the TEST in COLLECTION.
-Return the leftmost if FROM-END is true, or of the rightmost if FROM-END is
+   "Return the index of the element that satisfies the ‘test’ in ‘collection’.
+Return the leftmost if ‘from-end’ is true, or of the rightmost if ‘from-end’ is
 false. If no element satifies the test, NIL is returned.")
   (:method (predicate (collection list)
 	    &key from-end key (start nil start-p) (end nil end-p))
@@ -1610,7 +1627,7 @@ false. If no element satifies the test, NIL is returned.")
 		     &key from-end test test-not key start1 start2 end1 end2)
   (:documentation
    "Searches collection-2 for a subsequence that matches collection-1.
-If from-end is true, the index of the leftmost element of the rightmost
+If ‘from-end’ is true, the index of the leftmost element of the rightmost
 matching subsequence is returned.")
   (:method ((collection-1 list) (collection-2 list) &rest args
 	     &key from-end test test-not key start1 start2 end1 end2)
@@ -2086,7 +2103,7 @@ first collection. For some")
   (:documentation
    "Return a collection containing all the individual elements of all the
 collections. If they are ordered collections, the elements will be in the order
-that they were supplied. The resulting collection is of type RESULT-TYPE.")
+that they were supplied. The resulting collection is of type ‘result-type’.")
   (:method ((result-type (eql 'list)) &rest collections)
     (when (not (every #'(lambda (_) (typep _ 'sequence)) collections))
       (error
@@ -2115,11 +2132,7 @@ that they were supplied. The resulting collection is of type RESULT-TYPE.")
 	   ;; Use the first hash table found as a template.
 	   (let ((hh (find-if #'hash-table-p collections)))
 	     (if hh
-		 (make-hash-table
-		  :test (hash-table-test hh)
-		  :size (hash-table-size hh)
-		  :rehash-size (hash-table-rehash-size hh)
-		  :rehash-threshold (hash-table-rehash-threshold hh))
+                 (make-similar-hash-table hh)
 		 ;; There's no hash tables. We can just make any old one, but
 		 ;; there could be problems.
 		 (progn
@@ -2180,8 +2193,8 @@ that satisfy TEST."
 (defgeneric opick (predicate collection
 		   &key from-end start end count key)
   (:documentation
-   "Return a new collection with only elemnets of COLLECTION that satisfy
-PREDICATE.")
+   "Return a new collection with only elemnets of ‘collection’ that satisfy
+‘predicate’.")
   (:method (predicate (collection list)
 	    &key from-end key (start nil start-p) (end nil end-p) count)
     (declare (ignorable start start-p end end-p))
@@ -2218,7 +2231,7 @@ PREDICATE.")
 
 (defgeneric oremove (item collection
 		     &key from-end test test-not start end count key)
-  (:documentation "Return a copy of the collection with ITEM removed.")
+  (:documentation "Return a copy of the ‘collection’ with ‘item’ removed.")
   (:method (item (collection list)
 	    &key from-end key
 	      (test nil test-p)
@@ -2276,7 +2289,7 @@ PREDICATE.")
 (defgeneric oremove-if (predicate collection
 			&key from-end start end count key)
   (:documentation
-   "Return a copy of the collection with elements removed for which PREDICATE
+   "Return a copy of the ‘collection’ with elements removed for which ‘predicate’
 is true.")
   (:method (predicate (collection list)
 	    &key from-end key (start nil start-p) (end nil end-p) count)
@@ -2316,20 +2329,20 @@ is true.")
 (defgeneric osplit (separator ordered-collection
 		    &key omit-empty start end test key #| count |# bag)
   (:documentation
-   "Split the ORDERED-COLLECTION into subsequences separated by SEPARATOR.
-Return an ORDERED-COLLECTION of the subsequences. SEPARATOR can be a
-ORDERED-COLLECTION itself, which means the whole sequence is the separator.
+   "Split the ‘ordered-collection’ into subsequences separated by ‘separator’.
+Return an ‘ordered-collection’ of the subsequences. ‘separator’ can be a
+‘ordered-collection’ itself, which means the whole sequence is the separator.
 The returned collection might not be the same type you passed in. For example it
 might always be a list. But the pieces in that collection should be of the same
 type as the one given.
-  OMIT-EMPTY - If true, then don't return empty subsequnces.
-  START      - Element number to start gathering from. Defaults to 0.
-  END        - Element number to end gathering at. Defaults to the end of the
+  ‘omit-empty’ - If true, then don't return empty subsequnces.
+  ‘start’      - Element number to start gathering from. Defaults to 0.
+  ‘end’        - Element number to end gathering at. Defaults to the end of the
                collection.
-  TEST       - A function called with an element which should return true if
-               that element is a separator. The SEPARATOR argument is ignored
-               if TEST is supplied and non-NIL.
-  KEY        - A function called with each element, which should return an
+  ‘test’       - A function called with an element which should return true if
+               that element is a separator. The ‘separator’ argument is ignored
+               if ‘test’ is supplied and non-NIL.
+  ‘key’        - A function called with each element, which should return an
                element to be tested.
 ")
   (:method (separator (collection list)
@@ -2368,16 +2381,16 @@ type as the one given.
 (defgeneric osplit-if (predicate ordered-collection
 		       &key omit-empty start end key #| count |#)
   (:documentation
-   "Split the ORDERED-COLLECTION into subsequences separated by elements for
-which PREDICATE returns true. Return an ORDERED-COLLECTION of the subsequences.
-The returned collection might not be the same type you passed in. For example it
-might always be a list. But the pieces in that collection should be of the same
-type as the one given.
-  OMIT-EMPTY - If true, then don't return empty subsequnces.
-  START      - Element number to start gathering from. Defaults to 0.
-  END        - Element number to end gathering at. Defaults to the end of the
+   "Split the ‘ordered-collection’ into subsequences separated by elements for
+which ‘predicate’ returns true. Return an ‘ordered-collection’ of the
+subsequences. The returned collection might not be the same type you passed in.
+For example it might always be a list. But the pieces in that collection should
+be of the same type as the one given.
+  ‘omit-empty’ - If true, then don't return empty subsequnces.
+  ‘start’      - Element number to start gathering from. Defaults to 0.
+  ‘end’        - Element number to end gathering at. Defaults to the end of the
                collection.
-  KEY        - A function called with each element, which should return an
+  ‘key’        - A function called with each element, which should return an
                element to be tested.
 ")
   (:method (predicate (collection list)
@@ -2412,8 +2425,8 @@ type as the one given.
 
 ;; Collection-ified version of replace-subseq from dlib.
 (defun oreplace-subseq-as (type target replacement sequence &key count)
-  "Return a copy of SEQUECE as a TYPE, but with sub-sequences of TARGET replaced
-REPLACEMENT."
+  "Return a copy of ‘sequence’ as a ‘type’, but with sub-sequences of ‘target’
+replaced by ‘replacement’."
   (if (and (> (olength target) 0) (or (not count) (> count 0)))
       (let ((pos 0)
 	    (i 0)
@@ -2421,36 +2434,31 @@ REPLACEMENT."
 	    new)
 	(loop :while (setf pos (osearch target sequence :start2 i))
 	   :do
-	   ;;(format t "i = ~a pos = ~a new = ~a~%" i pos new)
 	   (setf new (nconc new (list (osubseq sequence i pos) replacement)))
 	   (setf i (+ pos (olength target)))
-	   ;;(format t "i = ~a pos = ~a new = ~a~%" i pos new)
 	   (incf n)
 	   :until (and count (>= n count)))
 	(setf new (nconc new (list (osubseq sequence i))))
-	;;(apply #'concatenate (append '(string) new)))
-	;;(apply #'oconcatenate-as (type-of sequence) new)
-	(apply #'oconcatenate-as type new)
-	)
+	(apply #'oconcatenate-as type new))
       (ocopy sequence)))
 
 ;; @@@ This is horrible.
-(defgeneric oreplace-subseq (target replacement sequence &key count)
+(defgeneric oreplace-subseq (target replacement collection &key count)
   (:documentation
-   "Return a copy of SEQUECE but with sub-sequences of TARGET replaced
-REPLACEMENT.")
-  (:method (target replacement (sequence list) &key count)
+   "Return a copy of ‘collection’ but with sub-sequences of ‘target’ replaced
+‘replacement’.")
+  (:method (target replacement (collection list) &key count)
     #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
     (apply #'oreplace-subseq-as 'list
-	   target replacement sequence (list :count count)))
-  (:method (target replacement (sequence string) &key count)
+	   target replacement collection (list :count count)))
+  (:method (target replacement (collection string) &key count)
     #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
     (apply #'oreplace-subseq-as 'string
-	   target replacement sequence (list :count count)))
-  (:method (target replacement (sequence vector) &key count)
+	   target replacement collection (list :count count)))
+  (:method (target replacement (collection vector) &key count)
     #+sbcl (declare (sb-ext:muffle-conditions sb-ext:compiler-note))
     (apply #'oreplace-subseq-as 'vector
-	   target replacement sequence (list :count count))))
+	   target replacement collection (list :count count))))
 
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -2474,7 +2482,7 @@ REPLACEMENT.")
 
 (defgeneric (setf oaref) (value array &rest subscripts)
   (:documentation
-   "Set the element of ARRAY specified by SUBSCRIPTS to VALUE.")
+   "Set the element of ‘array’ specified by ‘subscripts’ to ‘value’.")
   (:method (value (array vector) &rest subscripts)
     (setf (apply #'aref array subscripts) value))
   (:method (value (array array) &rest subscripts)
@@ -2497,7 +2505,7 @@ REPLACEMENT.")
 ;; @@@ Why did I make the args reversed from normal push??
 
 (defgeneric opush-element (collection item)
-  (:documentation "Add ITEM to COLLECTION and return COLLECTION.")
+  (:documentation "Add ‘item’ to ‘collection’ and return ‘collection’.")
   (:method ((thing list) item)   (push item thing))
   ;; @@@ Hmmm. This isn't prepending, it's appending. Prepending is too
   ;; expensive for a vector, but appending is too expensive for a list, which
@@ -2508,14 +2516,14 @@ REPLACEMENT.")
   (opush-element (container-data collection) item))
 
 (defmacro opush (collection item)
-  "Prepend ITEM to COLLECTION and return COLLECTION."
+  "Prepend ‘item’ to ‘collection’ and return ‘collection’."
   `(setf ,collection (opush-element ,collection ,item)))
 
 (defgeneric opushnew-element (collection item &rest key-args
 			      &key key test test-not)
   (:documentation
-   "Add ITEM to COLLECTION only if it isn't already the same as any
-existing element, and return COLLECTION.")
+   "Add ‘item’ to ‘collection’ only if it isn't already the same as any
+existing element, and return ‘collection’.")
   (:method ((thing list) item &rest key-args &key key test test-not)
     (declare (ignore key-args))
     (cond
@@ -2540,13 +2548,13 @@ existing element, and return COLLECTION.")
 
 (defgeneric opop-element (collection)
   (:documentation
-   "Remove the element from COLLECTION and return the element AND
-the modified COLLECTION.")
+   "Remove the element from ‘collection’ and return the element AND
+the modified ‘collection’.")
   (:method ((thing list))   (values (pop thing) thing))
   (:method ((thing vector)) (values (vector-pop thing) thing)))
 
 (defmacro opop (collection)
-  "Remove the first element from COLLECTION and return the element."
+  "Remove the first element from ‘collection’ and return the element."
   (dlib:with-names (val new)
     `(multiple-value-bind (,val ,new) (opop-element ,collection)
        (setf ,collection ,new)
@@ -2682,7 +2690,7 @@ So why is this 1 or 2 orders of magnitude slower than the list version?
 (defgeneric ointersection (collection-1 collection-2 &key key test test-not)
   (:documentation
    "Return a collection that contains every element that occurs in both
-COLLECTION-1 and COLLECTION-2.")
+‘collection-1’ and ‘collection-2’.")
   (:method ((collection-1 list)
 	    (collection-2 list) &key key test test-not)
     (cond
@@ -2724,12 +2732,7 @@ COLLECTION-1 and COLLECTION-2.")
 		   :collect (cons k (gethash k collection-1))
 		   :and :do (incf count)))))
       (when (plusp count)
-	(let ((new-table
-	       (make-hash-table
-		:test (hash-table-test collection-1)
-		:size count
-		:rehash-size (hash-table-rehash-size collection-1)
-		:rehash-threshold (hash-table-rehash-threshold collection-1))))
+	(let ((new-table (make-similar-hash-table collection-1 :size count)))
 	  (loop :for (k . v) :in result
 	     :do (setf (gethash k new-table) v))
 	  new-table)))))
@@ -2742,38 +2745,38 @@ COLLECTION-1 and COLLECTION-2.")
 
 (defgeneric onintersection (collection-1 collection-2 &key key test test-not)
   (:documentation
-   "Return COLLECTION-1 destructively modified to contain every element that
-occurs in both COLLECTION-1 and COLLECTION-2."))
+   "Return ‘collection-1’ destructively modified to contain every element that
+occurs in both ‘collection-1’ and ‘collection-2’."))
 
 (defgeneric oset-difference (collection-1 collection-2 &key key test test-not)
   (:documentation
-   "Returns a collection of elements of COLLECTION-1 that do not appear in
-COLLECTION-2."))
+   "Returns a collection of elements of ‘collection-1’ that do not appear in
+‘collection-2’."))
 
 (defgeneric onset-difference (collection-1 collection-2 &key key test test-not)
   (:documentation
-   "Returns COLLECTION-1 possibly destructively modified to remove elements
-that do not appear in COLLECTION-2."))
+   "Returns ‘collection-1’ possibly destructively modified to remove elements
+that do not appear in ‘collection-2’."))
 
 (defgeneric oset-exclusive-or (collection-1 collection-2 &key key test test-not)
   (:documentation
-   "Return a collection of elements that appear in exactly one of COLLECTION-1
-and COLLECTION-2"))
+   "Return a collection of elements that appear in exactly one of ‘collection-1’
+and ‘collection-2’"))
 
 (defgeneric onset-exclusive-or (collection-1 collection-2 &key key test test-not)
   (:documentation
-   "Return a COLLECTION-1 possibly destructively modified to contain only
-elements that appear in exactly one of COLLECTION-1 and COLLECTION-2"))
+   "Return a ‘collection-1’ possibly destructively modified to contain only
+elements that appear in exactly one of ‘collection-1’ and ‘collection-2’"))
 
 (defgeneric osubsetp (collection-1 collection-2 &key key test test-not)
   (:documentation
-   "Return true if every elemnt of COLLECTION-1 matches eome element of
-COLLECTION-2."))
+   "Return true if every elemnt of ‘collection-1’ matches eome element of
+‘collection-2’."))
 
 (defgeneric ounion (collection-1 collection-2 &key key test test-not)
   (:documentation
    "Return a collection that contains every element that occurs in either
-COLLECTION-1 or COLLECTION-2.")
+‘collection-1’ or ‘collection-2’.")
   (:method ((collection-1 list)
 	    (collection-2 list) &key key test test-not)
     (cond
@@ -2842,8 +2845,8 @@ COLLECTION-1 or COLLECTION-2.")
 
 (defgeneric onunion (collection-1 collection-2 &key key test test-not)
   (:documentation
-   "Return COLLECTION-1 possibly destructively modfied so that contains every
-element that occurs in either COLLECTION-1 or COLLECTION-2."))
+   "Return ‘collection-1’ possibly destructively modfied so that contains every
+element that occurs in either ‘collection-1’ or ‘collection-2’."))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Generate a template
@@ -2920,4 +2923,4 @@ collection type."
 	(format stream ";; End~%"))
       (format t "Wrote ~a.~%" file-name)))
 
-;; EOF
+;; End

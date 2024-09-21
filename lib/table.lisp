@@ -246,8 +246,38 @@ found."
 
 (defmethod omap (function (table mem-table))
   (if (keyed-collection-p (container-data table))
-      (omapk function (container-data table))
+      (omapk (_ (funcall function (list (okey _) (ovalue _))))
+             (container-data table))
       (omap function (container-data table))))
+
+(defmethod omapn (function (table mem-table))
+  (if (keyed-collection-p (container-data table))
+      (omapk (_ (funcall function (list (okey _) (ovalue _))))
+             (container-data table))
+      (omapn function (container-data table))))
+
+(defmethod oelt ((table mem-table) key)
+  ;; A hash table (or whatever) doesn't necessarily have a stable order,
+  ;; but let's just pretend. Also we pretend the row type is a list of
+  ;; (key value). Also this slow. But what's worse? Duplicating the whole
+  ;; hash table as an array, or this.
+  (cond
+    ((and (keyed-collection-p (container-data table))
+          (hash-table-p (container-data table)))
+     (typecase key
+       (integer
+        (multiple-value-bind (value exists-p)
+            (gethash key (container-data table))
+          (if exists-p
+              (list key value)
+              (loop :for i :from 0
+                    :for k :being :the :hash-keys :of (container-data table)
+                    :when (= i key)
+                       :return (list k (gethash k (container-data table)))))))
+       (t
+        (list key (oelt (container-data table) key)))))
+    (t
+     (oelt (container-data table) key))))
 
 (defmethod oaref ((table mem-table) &rest subscripts)
     (flet ((fail ()
