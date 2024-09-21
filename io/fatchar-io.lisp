@@ -371,8 +371,9 @@ colinc, and the space character for padchar.
   ;;   (setf (fat-string-output-stream-column stream) 0)))
   (write-fatchar (make-fatchar :c character) stream))
 
-(defun write-fat-string (string &key (stream *standard-output*) (start 0) end)
-  "Write a the fat-string STRING to STREAM, preserving the attributes if
+(defun write-fat-string (string &key (stream *standard-output*)
+                                  (start 0) end)
+  "Write a the fat-string ‘string’ to ‘stream’, preserving the attributes if
 possible."
   (when (not start)
     (setf start 0))
@@ -411,7 +412,8 @@ possible."
 	   :do
 	   (setf c (aref string src-i))
 	   ;;(stretchy-set (fat-string-string stream) i (make-fatchar :c c))
-	   (stretchy-set (fat-string-string stream) dst-i (make-fatchar :c c))
+	   (stretchy-set (fat-string-string stream) dst-i
+                         (make-fatchar :c c))
 	   (incf (fat-string-output-stream-column stream))
 	   (when (char= c #\newline)
 	     (setf (fat-string-output-stream-column stream) 0))
@@ -533,20 +535,18 @@ possible."
        (string (write-string (fatchar-c obj) stream))))))
 
 (defmacro with-output-to-fat-string ((var &optional string) &body body)
+  "Evaluate ‘body’ with ‘var’ bound to a fat-string-output-stream.
+If ‘string’ is given, it should be a strechy-vector of fatchars which will
+be used as the stream's string."
   `(let* ((,var (make-instance 'fat-string-output-stream
-			      ,@(when string `(:string ,string))))
-	  ;;(*standard-output* ,var)
-	  )
+			      ,@(when string `(:string ,string)))))
      ,@body
-     ;; (dbugf :fatchar "w-o-t-f-s -> ~s ~s~%" ,var (type-of ,var))
-     ;; (dbugf :fatchar "w-o-t-f-s ~s ~s~%" (type-of (fat-string-string ,var))
-     ;; 	    (fat-string-string ,var))
      (make-fat-string :string (fat-string-string ,var))))
 
 (defun fs+ (s &rest rest)
   "Return a fat-string which is the arguments concatenated as if output by
-PRINC. If an argument is a fat-string it's attribtues will be preserved in the
-result."
+‘princ’. If an argument is a fat-string it's attribtues will be preserved in
+the result."
   (with-output-to-fat-string (result)
     (princ s result)
     (loop :for x :in rest :do (princ x result))))
