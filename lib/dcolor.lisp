@@ -210,14 +210,14 @@ support. And finally:
       *default-color-model*))
 
 (defun structured-color-p (x)
-  "True if x maybe could be a structured color."
+  "True if ‘x’ maybe could be a structured color."
   (and (not (null x))
        (or (consp x) (arrayp x))
        (or (find (elt x 0) *color-models*)
 	   (every #'numberp x))))
 
 (defun copy-color (color)
-  "Return a copy of COLOR."
+  "Return a copy of ‘color’."
   (typecase color
     (sequence (copy-seq color))
     (t color)))
@@ -246,11 +246,11 @@ support. And finally:
 
 (defgeneric color-model-component (color-model color component-name)
   (:documentation
-   "Return the component COMPONENT-NAME of the color of the COLOR-MODEL."))
+   "Return the component ‘component-name’ of the ‘color’ of the ‘color-model’."))
 
 (defgeneric color-model-components (color-model)
   (:documentation
-   "Return the sequence of COMPONENT-NAMEs for the COLOR-MODEL."))
+   "Return the sequence of COMPONENT-NAMEs for the ‘color-model’."))
 
 (defun color-component (color component-name)
   "Return the named color component."
@@ -259,8 +259,8 @@ support. And finally:
 
 (defgeneric set-color-model-component (color-model color component-name value)
   (:documentation
-   "Set the component COMPONENT-NAME of the color of the COLOR-MODEL to
-the VALUE."))
+   "Set the component ‘component-name’ of the color of the ‘color-model’ to
+the ‘value’."))
 
 (defun set-color-component (color component-name value)
   (set-color-model-component
@@ -272,10 +272,10 @@ the VALUE."))
 
 ;; The from-color-model is separated out so we can specialize on it.
 (defgeneric convert-color (color from-color-model to-color-model)
-  (:documentation "Return the COLOR converted to the TO-COLOR-MODEL."))
+  (:documentation "Return the ‘color’ converted to the ‘to-color-model’."))
 
 (defun convert-color-to (color to-color-model)
-  "Return COLOR converted to color model TO-COLOR-MODEL."
+  "Return ‘color’ converted to color model ‘to-color-model’."
   (let ((from-model (color-model-name color)))
     (if (eq from-model to-color-model)
 	color
@@ -283,7 +283,7 @@ the VALUE."))
 
 (defgeneric make-color (color-model &key &allow-other-keys)
   (:documentation
-   "Make a color of the COLOR-MODEL with the given components."))
+   "Make a color of the ‘color-model’ with the given components."))
 
 (defun component-to-8bit (component)
   "Convert a [0-1] value to a [0-255] value."
@@ -830,7 +830,7 @@ and GREEN, components. Default to 8 bit color."
 ;; different syntax. rgb(r, g, b) vs rgb:(r/g/b), and also alpha.
 
 (defun xcolor-to-color (string)
-  "Return an :RGB color from a XParseColor format string. Doesn't
+  "Return an :RGB color from a XParseColor format ‘string’. Doesn't
 handle device independant color spaces yet, e.g. CIELab."
   (flet ((device-to-intensity (c n)
 	   "Convert a scaled device color of N hex digits to a 0 - 1 intensity."
@@ -887,4 +887,4 @@ handle device independant color spaces yet, e.g. CIELab."
       (t
        (error "Can't parse the color string ~s." string)))))
 
-;; EOF
+;; End
