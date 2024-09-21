@@ -1063,29 +1063,30 @@ position. Return the primary result of evaluating the body."
     ((&optional (type :ansi-stream)) &body body)
   "Evaluate the body with *TERMINAL* bound to a terminal-stream which outputs to
 a string and return the string."
-  (with-names (stream terminal-state result)
+  (with-names (stream terminal-state result otype)
     `(with-output-to-string (,stream)
-       (when (not (find-terminal-class-for-type ,type))
-	 (error "I couldn't find a terminal type ~s. Provide a type or set ~
-                 *DEFAULT-TERMINAL-TYPE*." ,type))
-       (let* ((*terminal* (make-terminal-stream
-			  ,stream
-			  (find-terminal-class-for-type ,type)
-			  :window-rows (if *terminal*
-					   (terminal-window-rows *terminal*)
-					   24)
-			  :window-columns (if *terminal*
-					      (terminal-window-columns
-					       *terminal*)
-					      80)))
-	      (*standard-output* *terminal*) ;; mostly for grout?
-	      ,terminal-state ,result)
-	 (unwind-protect
-	      (progn
-		(setf ,terminal-state (terminal-start *terminal*))
-		(setf ,result (progn ,@body)))
-	   (terminal-done *terminal* ,terminal-state))
-	 ,result))))
+       (let ((,otype ,type))
+         (when (not (find-terminal-class-for-type ,otype))
+	   (error "I couldn't find a terminal type ~s. Provide a type or set ~
+                   *DEFAULT-TERMINAL-TYPE*." ,otype))
+         (let* ((*terminal* (make-terminal-stream
+			     ,stream
+			     (find-terminal-class-for-type ,otype)
+			     :window-rows (if *terminal*
+					      (terminal-window-rows *terminal*)
+					      24)
+			     :window-columns (if *terminal*
+					         (terminal-window-columns
+					          *terminal*)
+					         80)))
+	        (*standard-output* *terminal*) ;; mostly for grout?
+	        ,terminal-state ,result)
+	   (unwind-protect
+	        (progn
+		  (setf ,terminal-state (terminal-start *terminal*))
+		  (setf ,result (progn ,@body)))
+	     (terminal-done *terminal* ,terminal-state))
+	   ,result)))))
 
 ;; @@@ There is overlap here between this and fatchar:span-to-fatchar-string.
 ;; fatchar depends on us, so maybe consider moving part of that code here?
