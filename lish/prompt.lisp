@@ -274,23 +274,30 @@ Strings can have '%' directives which are expanded by format-prompt."
 		      (error (c)
 			(setf prompt-error c)
 			(throw 'problems nil))))))
-      (if (eq side :right)
+      (cond
+        ((eq side :right)
 	  (or (and (lish-right-prompt sh)
-		   (or
-		    (handle-it (make-prompt sh (lish-right-prompt sh)))
+                   (or
+                    (typecase (lish-right-prompt sh)
+                      ((or string cons)
+		       (handle-it (make-prompt sh (lish-right-prompt sh))))
+                      ((or function symbol)
+                       (handle-it (funcall (lish-right-prompt sh) sh)))
+                      (t nil))
 		    (progn
 		      (format t "Your right prompt is broken: ~s~%"
 			      prompt-error)
 		      "")))
-	      "")
-	  (or (and (lish-prompt-function sh)
-		   (or (handle-it (funcall (lish-prompt-function sh) sh))
-		       (format t "Your prompt function failed: ~s.~%"
-			       prompt-error)))
-	      (or (handle-it (make-prompt sh (lish-prompt sh)))
-		  (progn
-		    (format t "Your prompt is broken: ~s~%" prompt-error)
-		    *fallback-prompt*)))))))
+	      ""))
+        (t ;; left
+	 (or (and (lish-prompt-function sh)
+		  (or (handle-it (funcall (lish-prompt-function sh) sh))
+		      (format t "Your prompt function failed: ~s.~%"
+			      prompt-error)))
+	     (or (handle-it (make-prompt sh (lish-prompt sh)))
+		 (progn
+		   (format t "Your prompt is broken: ~s~%" prompt-error)
+		   *fallback-prompt*))))))))
 
 (defun is-lisp-expr-p (expr)
   "Return true if the the shell expr is likely just a wrapped Lisp expr."

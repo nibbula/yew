@@ -1347,11 +1347,20 @@ suspend itself."
 		  :re-edit (when pre-str
 			     (setf pre-str nil)
 			     t)
-		  :prompt
-		  ;; (if pre-str
-		  ;;     (lish-sub-prompt sh)
-		  (safety-prompt sh)
-		  :right-prompt (safety-prompt sh :right)))
+		  :prompt (when (lish-prompt sh) (safety-prompt sh))
+		  :output-prompt-func
+                  (when (lish-prompt-function sh)
+                    (lambda (e p)
+                      (declare (ignore e p))
+                      (princ (safety-prompt sh))))
+		  :right-prompt
+                  (typecase (lish-right-prompt sh)
+                    ((or string cons)
+                     (safety-prompt sh :right))
+                    ((or function symbol)
+                     (lambda (e p)
+                       (declare (ignore e p))
+                       (princ (safety-prompt sh :right)))))))
     (cond
       ((and (stringp str) (equal 0 (length str))) *empty-symbol*)
       ((equal str *real-eof-symbol*)		  *real-eof-symbol*)

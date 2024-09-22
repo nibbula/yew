@@ -56,6 +56,7 @@ without any particular knowledge of it's Lisp programming features.")
    #:lish-prompt-function          #:set-lish-prompt-function
    #:lish-right-prompt             #:set-lish-right-prompt
    #:lish-sub-prompt               #:set-lish-sub-prompt
+   #:lish-redraw-rate              #:set-lish-redraw-rate
    #:lish-ignore-eof               #:set-lish-ignore-eof
    #:lish-debug                    #:set-lish-debug
    #:lish-collect-stats            #:set-lish-collect-stats

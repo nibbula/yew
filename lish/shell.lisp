@@ -159,10 +159,10 @@
   "Set a shell option for the current ‘*shell*’.")
 
 (defmacro defoption (name (&key omit-setter) &rest arg)
-  "Define a shell option named NAME, with the properties in arg. The syntax
+  "Define a shell option named ‘name’, with the properties in arg. The syntax
 is like Lish arguments, e.g.:
   (defoption \"foo\" type :help \"Make sure to foo.\" :short-arg #\\f)"
-  (let* ((sym (symbolify (s+ "LISH-" name)))
+  (let* ((sym (symbolify (s+ "LISH-" name))) ; @@@ should be SHELL-
 	 (setter (symbolify (s+ "SET-" sym)))
 	 (name-string (string-downcase name))
 	 (setter-def (when (not omit-setter)
@@ -203,12 +203,23 @@ prompt."
 (defoption right-prompt () object
   :help "Prompt for the right side of the input line. Output with
 SYMBOLIC-PROMPT-TO-STRING and FORMAT-PROMPT. See the documentation for
-those functions for more detail about prompt formatting."
+those functions for more detail about prompt formatting. If it's function it's
+called with the shell as an argument and should return the string."
   :default nil)
 
 (defoption sub-prompt () string
   :help "String to print when prompting for more input."
   :default "- ")	; @@@ maybe we need sub-prompt-char & sub-prompt-func?
+
+(defoption redraw-rate () number
+  :help "Seconds between redrawing the display. NIL to only redraw between
+events."
+  :default nil)
+
+(defmethod set-lish-redraw-rate (value (sh shell))
+  (setf (arg-value (find-option sh 'redraw-rate)) value)
+  (when (lish-editor sh)
+    (setf (rl::redraw-rate (lish-editor sh)) value)))
 
 (defoption ignore-eof () integer
   :help "If true, prevent the EOF (^D) character from exiting the shell. If a 
