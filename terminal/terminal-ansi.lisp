@@ -82,7 +82,7 @@ require terminal driver support."))
 
 (defmethod terminal-start ((tty terminal-ansi-stream))
   "This doesn't do anything for a stream."
-  (declare (ignore tty)))
+  (terminal-colors tty))
 
 (defmethod terminal-end ((tty terminal-ansi-stream) &optional state)
   "Stop using a stream."
@@ -279,7 +279,7 @@ the typeahead."
 	    (if errorp
 		(signal c)
 		(return-from ansi-terminal-query nil)))))
-    (with-immediate ()
+    (with-immediate (tty)
       (handle-excess tty (terminal-query (terminal-file-descriptor tty)
 					 query
 					 end-tag
@@ -367,6 +367,21 @@ two values ROW and COLUMN."
     ;; This might be too dangerous.
     (add-typeahead *terminal* :resize)))
 
+;; @@@ This really needs to save at least the mask and flags
+(defun set-signals (tty)
+  (when (not (equal (signal-action +SIGWINCH+) 'extraneous-sigwinch-handler))
+    (push (cons +SIGWINCH+ (signal-action +SIGWINCH+)) (previous-siggy tty))
+    (set-signal-action +SIGWINCH+ 'extraneous-sigwinch-handler))
+  ;; If a ^Z handler is active, don't overrride it.
+  (when (member (signal-action +SIGTSTP+) '(:default :ignore))
+    (push (cons +SIGTSTP+ (signal-action +SIGTSTP+)) (previous-siggy tty))
+    (set-signal-action +SIGWINCH+ 'extraneous-sigwinch-handler)))
+
+(defun restore-signals (tty)
+  (when (previous-siggy tty)
+    (loop :for (signal . action) :in (previous-siggy tty)
+	  :do (set-signal-action signal action))))
+
 (defmethod terminal-start ((tty terminal-ansi))
   "Set up the terminal for reading a character at a time without echoing."
   (with-slots ((file-descriptor	   terminal::file-descriptor)
@@ -395,10 +410,12 @@ two values ROW and COLUMN."
 					    :domain :file))
       )
     (terminal-get-size tty)
-    #+unix
-    (when (not (equal (signal-action +SIGWINCH+) 'extraneous-sigwinch-handler))
-      (setf (previous-siggy tty) (signal-action +SIGWINCH+))
-      (set-signal-action +SIGWINCH+ 'extraneous-sigwinch-handler))
+    ;; @@@ This isn't great to have here, since it might be unecessary to do the
+    ;; complicated backchannel querying, but otherwise it can get in the way
+    ;; of drawing a color character.
+    (terminal-colors tty)
+
+    #+unix (set-signals tty)
     saved-mode))
 
 (defmethod terminal-end ((tty terminal-ansi) &optional state)
@@ -411,9 +428,7 @@ two values ROW and COLUMN."
       ;; 	   tty state (saved-mode tty))
       (set-terminal-mode (terminal-file-descriptor tty)
 			 :mode (or state (saved-mode tty))))
-    #+unix
-    (when (previous-siggy tty)
-      (set-signal-action +SIGWINCH+ (previous-siggy tty))))
+    #+unix (restore-signals tty))
 
 (defmethod terminal-done ((tty terminal-ansi) &optional state)
   "Forget about the whole terminal thing and stuff."
@@ -1201,7 +1216,7 @@ i.e. the terminal is 'line buffered'."
     (and qq (xcolor-to-color qq))))
 
 (defun set-foreground-color (tty color)
-  "Set the default forground color for text."
+  "Set the default forground ‘color’ for text."
   (cond
     ((known-color-p color)
      (terminal-raw-format tty "~a10;~a~a"
@@ -1212,7 +1227,7 @@ i.e. the terminal is 'line buffered'."
      (error "Unknown color ~s." color))))
 
 (defun set-background-color (tty color)
-  "Set the default background color for the terminal."
+  "Set the default background ‘color’ for the terminal."
   (cond
     ((known-color-p color)
      (terminal-raw-format tty "~a11;~a~a"
@@ -1232,6 +1247,202 @@ i.e. the terminal is 'line buffered'."
   "Reset the whole color pallet to the default."
   (terminal-raw-format tty "~a104~a" +osc+ +st+))
 
+(defparameter *16-color-rgb-base*
+  (flet ((c (r g b) (make-color :rgb8 :red r :green g :blue b)))
+    (vector
+     `(,(c #x00 #x00 #x00) :black           "30"   "40")
+     `(,(c #xff #x00 #x00) :red             "31"   "41")
+     `(,(c #x00 #xff #x00) :green           "32"   "42")
+     `(,(c #xff #xff #x00) :yellow          "33"   "43")
+     `(,(c #x00 #x00 #xff) :blue            "34"   "44")
+     `(,(c #xff #x00 #xff) :magenta         "35"   "45")
+     `(,(c #x00 #xff #xff) :cyan            "36"   "46")
+     `(,(c #xdc #xdc #xdc) :white           "37"   "47")
+     `(,(c #x44 #x44 #x44) :bold-black    "1;30" "1;40")
+     `(,(c #xff #x24 #x24) :bold-red      "1;31" "1;41")
+     `(,(c #x24 #xff #x24) :bold-green    "1;32" "1;42")
+     `(,(c #xff #xff #x24) :bold-yellow   "1;33" "1;43")
+     `(,(c #x25 #x25 #xff) :bold-blue     "1;34" "1;44")
+     `(,(c #xff #x24 #xff) :bold-magenta  "1;35" "1;45")
+     `(,(c #x24 #xff #xff) :bold-cyan     "1;36" "1;46")
+     `(,(c #xff #xff #xff) :bold-white    "1;37" "1;47")))
+  "Data for finding nearest 16 color for RGB.")
+
+(defparameter *16-color-rgb*
+  (map 'vector (_ (cons (first _) (second _))) *16-color-rgb-base*)
+  "Array of 16 color (color . keyword).")
+
+(defparameter *16-color-rgb-string-fg*
+  (map 'vector (_ (cons (first _) (third _))) *16-color-rgb-base*)
+  "Array of 16 color (color . foreground-string).")
+
+(defparameter *16-color-rgb-string-bg*
+  (map 'vector (_ (cons (first _) (fourth _))) *16-color-rgb-base*)
+  "Array of 16 color (color . background-string).")
+
+#+(or)
+(defun keyword-to-rgb8 (keyword)
+  "Return an :rgb8 color for 16 color keyword. The bold color keywords have
+a ‘bold-’ prefixe, e.g. :bold-red."
+  (let ((color (find keyword *16-color-rgb-base* :key #'second))
+        (color-bold (find (keywordify (s+ "BOLD-" keyword))
+                          *16-color-rgb-base* :key #'second)))
+    (when (and color color-bold)
+      (values (first color)
+              (first color-bold)))))
+
+#+(or)
+(defun test-nearest-16-values ()
+  "See if we have the right colors, at least for xterm."
+  (tt-newline)
+  (let ((colors '(:black :red :green :yellow :blue :magenta :cyan :white)))
+    (loop :for c :in colors :do
+      (tt-format "~:(~10a~) " c)
+      (multiple-value-bind (k1 k2) (keyword-to-rgb8 c)
+        (dotimes (i 10)
+          (tt-write-char (make-fatchar :c #\space :bg k1)))
+        (dotimes (i 10)
+          (tt-write-char (make-fatchar :c #\space :bg k2 :attrs '(:bold)))))
+      (tt-newline))
+    (tt-finish-output)
+    (loop :for i :from 0 :to 7
+          :for c :in colors :do
+          (format t "~:(~10a~) ~c[~dm~10,1@t~c[m" c #\esc (+ 40 i) #\esc)
+          (format t "~c[1;~dm~10{█~}~c[m" #\esc (+ 30 i) t #\esc)
+          (terpri))))
+
+(defun nearest-16 (c vector)
+  "Return the nearest color to ‘c’ in ‘vector’."
+  (let ((c8 (convert-color-to c :rgb8))
+        (color-index 0)
+        (min-dist (+ #xff #xff #xff))
+        (tdist 0))
+    (loop :for i :from 0 :below (length vector) :do
+      (setf tdist (+ (abs (- (color-component c8 :red)
+                             (color-component (car (aref vector i)) :red)))
+                     (abs (- (color-component c8 :green)
+                             (color-component (car (aref vector i)) :green)))
+                     (abs (- (color-component c8 :blue)
+                             (color-component (car (aref vector i)) :blue)))))
+      (when (< tdist min-dist)
+        (setf min-dist tdist
+              color-index i)))
+    (aref vector color-index)))
+
+(defun nearest-16-string (c which)
+  "Return the nearest attribute string to color ‘c’. ‘which’ is either :fg or
+for the foreground, or :bg for the background."
+  (cdr (nearest-16 c (if (eq which :fg)
+                         *16-color-rgb-string-fg*
+                         *16-color-rgb-string-bg*))))
+
+#+(or)
+(defun test-nearest-16 ()
+  "Print the data for nearest finding."
+  (loop :for c :across *16-color-rgb* :do
+    (format t "(#x~6,'0x . :~(~12a~)) ~(~s~)~%" (car c) (cdr c)
+            (nearest-16 (car c) *16-color-rgb*)))
+  ;; (loop :with r :and low :and hi :and c
+  ;;   :for i :from 0 :below (1- (length *16-color-rgb*)) :do
+  ;;   (setf c   (aref *16-color-rgb* i)
+  ;;         low (car (aref *16-color-rgb* i))
+  ;;         hi  (car (aref *16-color-rgb* (1+ i)))
+  ;;         r   (+ low (random (- hi low))))
+  ;;   (format t "(#x~6,'0x . :~(~12a~)) #x~6,'0x ~(~14s~) ~c[~am~10{█~}~c[m~%"
+  ;;           (car c) (cdr c)
+  ;;           r (nearest-16 r *16-color-rgb*) #\escape
+  ;;           (nearest-16-string r :fg) t #\escape))
+  )
+
+#+(or)
+(defun test-nearest-16-rgb ()
+  "Show how the 16 color mapping works by filling the screen with a color
+cube slice."
+  (let* ((rows (- (tt-height) 1))
+	 (cols (tt-width))
+	 (blue-step (/ 255.0 rows))
+	 (red-green-step (/ 255.0 cols))
+	 (r 0.0) (g 0.0) (b 0.0))
+    (format t "~c[2J~c[H" #\esc #\esc)
+    (loop :for row :from 0 :below rows
+       :do
+       (setf r 0 g 255)
+       (loop :for col :from 0 :below cols :do
+          (format t "~c[~am" #\escape
+                  (nearest-16-string
+                   (make-color :rgb8
+			       :red (truncate r)
+			       :blue (truncate b)
+			       :green (truncate g))
+                   :fg))
+	  ;; (write-char #\space)
+	  (write-char (code-char #x2588))
+	  (incf r red-green-step)
+	  (decf g red-green-step))
+       (incf b blue-step))
+    (format t "~c[m" #\escape)
+    (finish-output)))
+
+(defun %terminal-color (tty fg bg &key unwrapped)
+  "Do the inside part of the ‘terminal-color’ method. If ‘unwrapped’ is true,
+just output the parameters, not the escape codes intro and suffix."
+  (when (and unwrapped (not (cached-color-count tty)))
+    (error "We had better know the colors if we're doing unwrapped."))
+
+  (let ((ncolors (terminal-colors tty)) did-intro did-one)
+    (labels ((output (fmt &rest args)
+               (when (and (not unwrapped) (not did-intro))
+	         (terminal-raw-format tty +csi+)
+                 (setf did-intro t))
+               (when did-one
+                 (terminal-raw-format tty ";"))
+               (apply #'terminal-raw-format tty fmt args)
+               (setf did-one t))
+             (normalize-color (c which)
+               "Convert a keyword color to an integer or a dcolor."
+	       (if (keywordp c)
+                   (or (position c *colors*)
+	               (lookup-color c)
+                       (error "~aground ~a is not a known color."
+                              (if (eq which :fg) "Fore" "Back") c))
+                   c))
+             (do-structured-color (color fg-p)
+               (case ncolors
+                 ((#.(* 256 256 256) 256 88)
+	          (let ((c (convert-color-to color :rgb8)))
+	            (case ncolors
+	              (#.(* 256 256 256)
+	               (output "~a;2;~d;~d;~d"
+                               (if fg-p "38" "48")
+			       (color-component c :red)
+			       (color-component c :green)
+			       (color-component c :blue)))
+	              (256
+	               (output "~a;5;~d"
+                               (if fg-p "38" "48")
+			       (get-nearest-xterm-color-index c)))
+	              (88
+	               (output "~a;5;~d"
+                               (if fg-p "38" "48")
+			       (get-nearest-xterm-color-index c))))))
+                 (16
+                  (output (nearest-16-string color (if fg-p :fg :bg))))
+	         (0 #| (error "Zero colors? Really?") |#)
+	         (otherwise #| what? |#)))
+             (do-color (color which)
+               (let ((c (normalize-color color which)))
+                 (typecase c
+                   (null) ;; Unchanged
+                   (integer
+                    (output "~d" (+ (if (eq which :fg) 30 40) c)))
+                 ((or vector cons)
+                  (do-structured-color c (eq which :fg)))))))
+      (do-color fg :fg)
+      (do-color bg :bg)
+      (when did-intro ;; (and (not unwrapped) did-one)
+        (terminal-raw-format tty "m")))))
+
+#| old version
 (defun %terminal-color (tty fg bg &key unwrapped)
   (let (ncolors did-intro did-one)
     (when fg
@@ -1269,7 +1480,9 @@ i.e. the terminal is 'line buffered'."
 	       (terminal-raw-format tty "38;5;~d"
 				    (get-nearest-xterm-color-index c))
 	       (setf did-one t)))
-	    (16)
+	    (16
+             (terminal-raw-format tty (nearest-16-string nfg :fg))
+	     (setf did-one t))
 	    (0)
 	    (otherwise #| what? |#)))
 	(when (and fg fg-pos)
@@ -1311,7 +1524,9 @@ i.e. the terminal is 'line buffered'."
 	       (terminal-raw-format tty "48;5;~d"
 				    (get-nearest-xterm-color-index c))
 	       (setf did-one t)))
-	    (16)
+	    (16
+	       (terminal-raw-format tty (nearest-16-string nbg :bg))
+	       (setf did-one t))
 	    (0)
 	    (otherwise
 	     )))
@@ -1321,93 +1536,10 @@ i.e. the terminal is 'line buffered'."
 	  (setf did-one t))))
     (when (and (not unwrapped) did-one)
       (terminal-raw-format tty "m"))))
-
-;; @@@ older version
-#|
-(defun %terminal-color (tty fg bg &key unwrapped)
-  (let ((fg-pos (and (keywordp fg) (position fg *colors*)))
-        (bg-pos (and (keywordp bg) (position bg *colors*)))
-        did-one
-        (structured-fg-p (structured-color-p fg))
-        (structured-bg-p (structured-color-p bg))
-        ncolors)
-    (when (and (keywordp fg) (not fg-pos))
-      (error "Forground ~a is not a known color." fg))
-    (when (and (keywordp bg) (not bg-pos))
-      (error "Background ~a is not a known color." bg))
-    (when (or structured-fg-p structured-bg-p)
-      (setf ncolors (terminal-colors tty)))
-    (when (not unwrapped)
-      (terminal-raw-format tty +csi+))
-    (when structured-fg-p
-      (case ncolors
-        (#.(* 256 256 256)
-         (let ((c (convert-color-to fg :rgb8)))
-           (terminal-raw-format tty "38;2;~d;~d;~d"
-                                (color-component c :red)
-                                (color-component c :green)
-                                (color-component c :blue))
-           (setf did-one t)))
-        (256
-         (let ((c (convert-color-to fg :rgb8)))
-           (terminal-raw-format tty "38;5;~d" (get-nearest-xterm-color-index c))
-           (setf did-one t)))
-        (88
-         (let ((c (convert-color-to fg :rgb8)))
-           (terminal-raw-format tty "38;5;~d" (get-nearest-xterm-color-index c))
-           (setf did-one t)))
-        (16)
-        (0)
-        (otherwise #| what? |#)))
-    (when structured-bg-p
-      (when did-one (write-char #\; (terminal-output-stream tty)))
-      (case ncolors
-        (#.(* 256 256 256)
-         (let ((c (convert-color-to bg :rgb8)))
-           (terminal-raw-format tty "48;2;~d;~d;~d"
-                                (color-component c :red)
-                                (color-component c :green)
-                                (color-component c :blue))
-           (setf did-one t)))
-        (256
-         (let ((c (convert-color-to bg :rgb8)))
-           (terminal-raw-format tty "48;5;~d" (get-nearest-xterm-color-index c))
-           (setf did-one t)))
-        (88
-         (let ((c (convert-color-to bg :rgb8)))
-           (terminal-raw-format tty "48;5;~d" (get-nearest-xterm-color-index c))
-           (setf did-one t)))
-        (16)
-        (0)
-        (otherwise
-         )))
-    (cond
-      ((and fg bg fg-pos bg-pos)
-       (terminal-raw-format tty "~d;~d" (+ 30 fg-pos) (+ 40 bg-pos)))
-      ((and fg fg-pos)
-       (if did-one (write-char #\; (terminal-output-stream tty)))
-       (terminal-raw-format tty "~d" (+ 30 fg-pos)))
-      ((and bg bg-pos)
-       (if did-one (write-char #\; (terminal-output-stream tty)))
-       (terminal-raw-format tty "~d" (+ 40 bg-pos))))
-    (when (not unwrapped)
-      (terminal-raw-format tty "m"))))
 |#
 
 (defmethod terminal-color ((tty terminal-color-mixin) fg bg)
   (%terminal-color tty fg bg))
-
-(defun decode-hex-string (string)
-  "Decode a string encoded in hex bytes."
-  (with-output-to-string (stream)
-    (loop :with x
-       :for i :from 0 :below (length string) :by 2
-       :do
-       (setf x (parse-integer (subseq string i (+ i 2))
-			      :radix 16 :junk-allowed t))
-       (if x
-	   (princ (code-char x) stream)
-	   (loop-finish)))))
 
 (defstruct emulator
   type
@@ -1497,13 +1629,15 @@ i.e. the terminal is 'line buffered'."
   ;; or a bunch of other bullcrap from the environment, but for now,
   ;; just try to respect FORCE_COLOR turning it off,
   ;; and assume we do have full color.
-  (cond
-    ((let ((fc (nos:env "FORCE_COLOR")))
-       (or (equal fc "0")
-	   (string-equal fc "false")))
-     0)
-    (t ;; Assume the most, because so what.
-     (* 256 256 256))))
+  (or (cached-color-count tty)
+      (setf (cached-color-count tty)
+            (cond
+              ((let ((fc (nos:env "FORCE_COLOR")))
+                 (or (equal fc "0")
+	             (string-equal fc "false")))
+               0)
+              (t ;; Assume the most, because so what.
+               (* 256 256 256))))))
 
 (defmethod terminal-colors ((tty terminal-ansi))
   #|
