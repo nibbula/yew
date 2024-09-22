@@ -326,7 +326,8 @@ Keyword arguments:
   prompt               String to prompt with. [*default-prompt*]
   output-prompt-func   Function to print out a prompt. Called with the
                        ‘line-editor’ instance and a prompt string.
-  right-prompt         String to output on the right side of the input line.
+  right-prompt         String or function to output on the right side of the
+                       input line.
   completion-func      Completion function to use. See the completion package
                        for details. [#'complete-symbol]
   string               A string to set as the initial contents of the buffer.
